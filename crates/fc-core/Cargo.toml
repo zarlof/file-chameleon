@@ -19,7 +19,7 @@ pdfium-render = { version = "0.9", default-features = false, features = ["thread
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 csv = "1.4"
 serde_yaml = "0.9"
-toml = "1.2"
+toml = { version = "1.2", features = ["preserve_order"] }
 
 # Engine manager / downloader
 ureq = { version = "3.5", default-features = false, features = ["native-tls"] }
