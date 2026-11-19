@@ -76,7 +76,7 @@ pub fn commit(temp: &Path, final_path: &Path) -> io::Result<PathBuf> {
 /// return its path. Reserved device names get a trailing "_".
 pub fn unique_dir(parent: &Path, name: &str) -> io::Result<PathBuf> {
     let base = OsString::from(if is_reserved(name) {
-        format!("{name}_")
+        fix_reserved(name)
     } else {
         name.to_string()
     });
@@ -115,10 +115,16 @@ fn stem_with_suffix(input: &Path, suffix: Option<&str>) -> OsString {
     if let Some(s) = suffix {
         stem.push(s);
     }
-    if is_reserved(&stem.to_string_lossy()) {
-        stem.push("_");
+    match stem.to_str() {
+        Some(s) if is_reserved(s) => OsString::from(fix_reserved(s)),
+        _ => stem,
     }
-    stem
+}
+
+/// Insert "_" after the first dot-segment (`con.tar` -> `con_.tar`), where Windows looks.
+fn fix_reserved(name: &str) -> String {
+    let at = name.find('.').unwrap_or(name.len());
+    format!("{}_{}", &name[..at], &name[at..])
 }
 
 /// Windows reserves these names regardless of extension (the part before the first dot).

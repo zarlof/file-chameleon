@@ -507,7 +507,11 @@ fn bad_inputs_are_reported_precisely() {
     // No route.
     let png = dir.path().join("a.png");
     touch(&png);
-    let err = run_default(std::slice::from_ref(&png), Operation::Convert { to: "mp4".into() }).unwrap_err();
+    let err = run_default(
+        std::slice::from_ref(&png),
+        Operation::Convert { to: "mp4".into() },
+    )
+    .unwrap_err();
     assert!(matches!(err, Error::Unsupported(_)));
 
     // Split needs a pdf; trim needs media; compress of data is unsupported.
@@ -547,4 +551,135 @@ fn cancelled_token_stops_before_any_work() {
         .unwrap_err();
     assert!(matches!(err, Error::Cancelled));
     assert_eq!(dir_entries(dir.path()), 1);
+}
+
+// ---------- fix round 1 ----------
+
+#[test]
+fn reserved_name_is_fixed_after_first_dot_segment() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("con.tar.gz");
+    assert_eq!(
+        output_path(&input, "html", None, None),
+        dir.path().join("con_.tar.html")
+    );
+    let made = fc_core::jobs::naming::unique_dir(dir.path(), "nul.v2").unwrap();
+    assert_eq!(made, dir.path().join("nul_.v2"));
+}
+
+/// Tracks how many jobs of each input extension run at the same time.
+#[derive(Default)]
+struct Concurrency {
+    now: Mutex<std::collections::HashMap<String, usize>>,
+    max: Mutex<std::collections::HashMap<String, usize>>,
+}
+impl Executor for Concurrency {
+    fn run(
+        &self,
+        inputs: &[PathBuf],
+        _op: &Operation,
+        _o: &ConvertOptions,
+        _c: &CancelToken,
+        _p: &dyn Fn(f32),
+    ) -> Result<Vec<PathBuf>> {
+        let ext = inputs[0]
+            .extension()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        {
+            let mut now = self.now.lock().unwrap();
+            let n = now.entry(ext.clone()).or_default();
+            *n += 1;
+            let mut max = self.max.lock().unwrap();
+            let m = max.entry(ext.clone()).or_default();
+            *m = (*m).max(*n);
+        }
+        std::thread::sleep(Duration::from_millis(60));
+        *self.now.lock().unwrap().get_mut(&ext).unwrap() -= 1;
+        Ok(vec![])
+    }
+}
+
+#[test]
+fn mixed_request_keeps_ffmpeg_jobs_serial() {
+    let ex = Arc::new(Concurrency::default());
+    let (q, _l) = recording_queue(ex.clone());
+    let ids = q.submit(convert(
+        &["a.png", "b.mp4", "c.mp4", "d.mp4", "e.mp4"],
+        "gif",
+    ));
+    wait_until("done", || {
+        ids.iter().all(|i| state_of(&q, *i) == JobState::Done)
+    });
+    assert_eq!(
+        ex.max.lock().unwrap()["mp4"],
+        1,
+        "ffmpeg route must never overlap"
+    );
+}
+
+/// Blocks until released.
+struct Gate(std::sync::atomic::AtomicBool);
+impl Executor for Gate {
+    fn run(
+        &self,
+        _i: &[PathBuf],
+        _op: &Operation,
+        _o: &ConvertOptions,
+        _c: &CancelToken,
+        _p: &dyn Fn(f32),
+    ) -> Result<Vec<PathBuf>> {
+        while !self.0.load(std::sync::atomic::Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        Ok(vec![])
+    }
+}
+
+#[test]
+fn second_submit_gets_a_worker_while_first_still_runs() {
+    if std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        < 4
+    {
+        eprintln!("skipped: cpu pool has a single slot on this machine");
+        return;
+    }
+    let gate = Arc::new(Gate(Default::default()));
+    let (q, _l) = recording_queue(gate.clone());
+    let a = q.submit(convert(&["a.png"], "jpg"))[0];
+    wait_until("A running", || state_of(&q, a) == JobState::Running);
+    let b = q.submit(convert(&["b.png"], "jpg"))[0];
+    wait_until("B running while A runs", || {
+        state_of(&q, b) == JobState::Running
+    });
+    assert_eq!(state_of(&q, a), JobState::Running);
+    gate.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    wait_until("both done", || {
+        state_of(&q, a) == JobState::Done && state_of(&q, b) == JobState::Done
+    });
+}
+
+#[test]
+fn panicking_listener_does_not_kill_workers() {
+    let rec = Arc::new(Recorder(Mutex::default()));
+    let first = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let f = first.clone();
+    let q = JobQueue::new(
+        rec,
+        Arc::new(move |_s| {
+            if f.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                panic!("listener bug");
+            }
+        }),
+    );
+    // Single pool: if the worker died, the later jobs would never run.
+    let ids = q.submit(convert(&["a.mp4", "b.mp4", "c.mp4"], "webm"));
+    wait_until("all done", || {
+        ids.iter().all(|i| state_of(&q, *i) == JobState::Done)
+    });
+    let late = q.submit(convert(&["d.mp4"], "webm"))[0];
+    wait_until("late job", || state_of(&q, late) == JobState::Done);
 }

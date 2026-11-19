@@ -27,14 +27,13 @@ enum Pool {
     Single = 1,
 }
 
-/// Which pool a request's jobs run in, from the first input's format and the operation.
-fn pool_for(req: &JobRequest) -> Pool {
-    let kind = req
-        .inputs
+/// Which pool a job runs in, from its first input's format and the operation.
+fn pool_for(inputs: &[PathBuf], op: &Operation) -> Pool {
+    let kind = inputs
         .first()
         .and_then(|p| formats::detect_path(p))
         .map(|f| (f.id, f.kind));
-    match (&req.op, kind) {
+    match (op, kind) {
         (Operation::Convert { to }, Some((from, _))) => {
             match planner::plan(from, to).and_then(|r| r.steps.first().map(|s| s.engine)) {
                 Some(EngineId::Ffmpeg | EngineId::Pdfium) => Pool::Single,
@@ -86,8 +85,9 @@ impl Inner {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// A panicking listener must not take a worker (and its slot accounting) down with it.
     fn emit(&self, snap: &JobSnapshot) {
-        (self.listener)(snap);
+        let _ = catch_unwind(AssertUnwindSafe(|| (self.listener)(snap)));
     }
 }
 
@@ -119,7 +119,6 @@ impl JobQueue {
         if req.inputs.is_empty() {
             return Vec::new();
         }
-        let pool = pool_for(&req);
         let groups: Vec<Vec<PathBuf>> = if req.op == Operation::MergePdf {
             vec![req.inputs.clone()]
         } else {
@@ -134,6 +133,7 @@ impl JobQueue {
             for inputs in groups {
                 st.next_id += 1;
                 let id = st.next_id;
+                let inputs_for_pool = inputs.clone();
                 let snap = JobSnapshot {
                     id,
                     inputs,
@@ -153,7 +153,7 @@ impl JobQueue {
                         snap,
                         options: req.options.clone(),
                         cancel: CancelToken::new(),
-                        pool,
+                        pool: pool_for(&inputs_for_pool, &req.op),
                         last_emit: Instant::now(),
                     },
                 );
@@ -169,23 +169,28 @@ impl JobQueue {
             let mut st = self.inner.lock();
             for id in &ids {
                 // Cancelled in between? Then it is no longer Queued.
-                if st
-                    .jobs
-                    .get(id)
-                    .is_some_and(|e| e.snap.state == JobState::Queued)
+                if let Some(e) = st.jobs.get(id)
+                    && e.snap.state == JobState::Queued
                 {
-                    st.waiting[pool as usize].push_back(*id);
+                    let p = e.pool as usize;
+                    st.waiting[p].push_back(*id);
                 }
             }
-            let want = st.waiting[pool as usize]
-                .len()
-                .min(self.inner.limits[pool as usize]);
-            let missing = want.saturating_sub(st.workers[pool as usize]);
-            st.workers[pool as usize] += missing;
-            missing
+            // Busy workers count in `workers`, so only add as many as there are waiting
+            // jobs and free slots.
+            let mut spawn = [0usize; 2];
+            for p in 0..2 {
+                let free = self.inner.limits[p].saturating_sub(st.workers[p]);
+                spawn[p] = st.waiting[p].len().min(free);
+                st.workers[p] += spawn[p];
+            }
+            spawn
         };
-        for _ in 0..to_spawn {
-            spawn_worker(&self.inner, pool);
+        for (p, n) in to_spawn.into_iter().enumerate() {
+            let pool = if p == 0 { Pool::Cpu } else { Pool::Single };
+            for _ in 0..n {
+                spawn_worker(&self.inner, pool);
+            }
         }
         ids
     }
