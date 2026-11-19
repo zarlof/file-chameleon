@@ -112,8 +112,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("s/settings.json");
         assert_eq!(Settings::load(&p), Settings::default());
-        let mut s = Settings::default();
-        s.language = "tr".into();
+        let s = Settings { language: "tr".into(), ..Settings::default() };
         s.save(&p).unwrap();
         assert_eq!(Settings::load(&p).language, "tr");
         std::fs::write(&p, br#"{"theme":"dark"}"#).unwrap();
