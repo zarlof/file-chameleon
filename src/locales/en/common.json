@@ -1,0 +1,33 @@
+{
+  "appName": "File Chameleon",
+  "nav": {
+    "convert": "Convert",
+    "download": "Download",
+    "clipboard": "Clipboard",
+    "recent": "Recent",
+    "settings": "Settings"
+  },
+  "window": {
+    "close": "Close",
+    "minimize": "Minimize",
+    "zoom": "Zoom"
+  },
+  "actions": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "close": "Close",
+    "remove": "Remove",
+    "clear": "Clear",
+    "copy": "Copy",
+    "retry": "Try again",
+    "search": "Search"
+  },
+  "dropOverlay": "Drop files to convert",
+  "files": {
+    "one": "{count} file",
+    "other": "{count} files"
+  },
+  "error": {
+    "generic": "Something went wrong."
+  }
+}

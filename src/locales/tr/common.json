@@ -1,0 +1,33 @@
+{
+  "appName": "File Chameleon",
+  "nav": {
+    "convert": "Dönüştür",
+    "download": "İndir",
+    "clipboard": "Pano",
+    "recent": "Son işlemler",
+    "settings": "Ayarlar"
+  },
+  "window": {
+    "close": "Kapat",
+    "minimize": "Küçült",
+    "zoom": "Yakınlaştır"
+  },
+  "actions": {
+    "ok": "Tamam",
+    "cancel": "Vazgeç",
+    "close": "Kapat",
+    "remove": "Kaldır",
+    "clear": "Temizle",
+    "copy": "Kopyala",
+    "retry": "Tekrar dene",
+    "search": "Ara"
+  },
+  "dropOverlay": "Dönüştürmek için dosyaları bırak",
+  "files": {
+    "one": "{count} dosya",
+    "other": "{count} dosya"
+  },
+  "error": {
+    "generic": "Bir şeyler ters gitti."
+  }
+}
