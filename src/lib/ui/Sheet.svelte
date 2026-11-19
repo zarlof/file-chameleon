@@ -3,17 +3,16 @@
   Props: open (bindable), title?, width = 420 (px), onclose?(), children: Snippet, footer?: Snippet (button row).
 -->
 <script lang="ts">
-  import type { Snippet } from 'svelte';
-  import { modal } from './modal.svelte';
+  import { untrack, type Snippet } from 'svelte';
+  import { modalClosed, modalOpened } from './modal.svelte';
   interface Props { open: boolean; title?: string; width?: number; onclose?: () => void; children?: Snippet; footer?: Snippet }
   let { open = $bindable(), title, width = 420, onclose, children, footer }: Props = $props();
 
   $effect(() => {
     if (!open) return;
-    modal.open++;
-    return () => {
-      modal.open--;
-    };
+    // untrack: the effect must depend only on `open`, not on the shared counter it mutates.
+    untrack(modalOpened);
+    return () => untrack(modalClosed);
   });
 
   function close() {
