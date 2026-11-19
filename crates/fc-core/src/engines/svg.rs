@@ -73,6 +73,11 @@ pub fn rasterize(
     let data = std::fs::read(input)?;
     let opt = usvg::Options {
         fontdb: fontdb(),
+        // Never read local files referenced from an untrusted SVG; data: URLs still work.
+        image_href_resolver: usvg::ImageHrefResolver {
+            resolve_data: usvg::ImageHrefResolver::default_data_resolver(),
+            resolve_string: Box::new(|_, _| None),
+        },
         ..usvg::Options::default()
     };
     let tree = usvg::Tree::from_data(&data, &opt)
@@ -94,13 +99,9 @@ pub fn rasterize(
     resvg::render(&tree, transform, &mut pixmap.as_mut());
     drop(tree);
 
-    // tiny-skia is premultiplied; `image` wants straight alpha.
-    let mut raw = Vec::with_capacity(pixmap.pixels().len() * 4);
-    for p in pixmap.pixels() {
-        let c = p.demultiply();
-        raw.extend_from_slice(&[c.red(), c.green(), c.blue(), c.alpha()]);
-    }
-    drop(pixmap);
+    // tiny-skia is premultiplied; `image` wants straight alpha. Converts in place and
+    // hands over the pixmap's own buffer (no second full-size copy).
+    let raw = pixmap.take_demultiplied();
     let rgba = ::image::RgbaImage::from_raw(w, h, raw)
         .ok_or_else(|| Error::Failed("render buffer size mismatch".into()))?;
     if cancel.is_cancelled() {

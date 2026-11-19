@@ -562,3 +562,151 @@ fn render_pages_reports_missing_pdfium_and_renders_when_available() {
         assert!(d.width() > 60 && d.height() > 40, "{:?}", d.dimensions());
     }
 }
+
+// ------------------------------------------------ nested page tree fixture
+
+/// Page tree: Catalog -> Pages(root: MediaBox + Resources) -> [Pages(mid) -> [p1, p2], p3].
+/// MediaBox and Resources exist only on the root node and are inherited by all three pages.
+fn nested_pdf(path: &Path) {
+    use lopdf::{Dictionary, Document, Object, Stream};
+    let mut doc = Document::with_version("1.5");
+    let root = doc.new_object_id();
+    let mid = doc.new_object_id();
+    let font = doc.add_object(Object::Dictionary({
+        let mut d = Dictionary::new();
+        d.set("Type", "Font");
+        d.set("Subtype", "Type1");
+        d.set("BaseFont", "Courier");
+        d
+    }));
+    let mut fonts = Dictionary::new();
+    fonts.set("F1", Object::Reference(font));
+    let mut resources = Dictionary::new();
+    resources.set("Font", Object::Dictionary(fonts));
+
+    let mut page_ids = Vec::new();
+    for (i, parent) in [mid, mid, root].into_iter().enumerate() {
+        let content = format!("BT /F1 12 Tf 10 10 Td (page {}) Tj ET", i + 1);
+        let c = doc.add_object(Stream::new(Dictionary::new(), content.into_bytes()));
+        let mut p = Dictionary::new();
+        p.set("Type", "Page");
+        p.set("Parent", Object::Reference(parent));
+        p.set("Contents", Object::Reference(c));
+        page_ids.push(doc.add_object(Object::Dictionary(p)));
+    }
+    let mut mid_d = Dictionary::new();
+    mid_d.set("Type", "Pages");
+    mid_d.set("Parent", Object::Reference(root));
+    mid_d.set(
+        "Kids",
+        Object::Array(vec![
+            Object::Reference(page_ids[0]),
+            Object::Reference(page_ids[1]),
+        ]),
+    );
+    mid_d.set("Count", 2);
+    doc.objects.insert(mid, Object::Dictionary(mid_d));
+    let mut root_d = Dictionary::new();
+    root_d.set("Type", "Pages");
+    root_d.set(
+        "Kids",
+        Object::Array(vec![Object::Reference(mid), Object::Reference(page_ids[2])]),
+    );
+    root_d.set("Count", 3);
+    root_d.set(
+        "MediaBox",
+        Object::Array(vec![0.into(), 0.into(), 300.into(), 400.into()]),
+    );
+    root_d.set("Resources", Object::Dictionary(resources));
+    doc.objects.insert(root, Object::Dictionary(root_d));
+    let mut cat = Dictionary::new();
+    cat.set("Type", "Catalog");
+    cat.set("Pages", Object::Reference(root));
+    let cat_id = doc.add_object(Object::Dictionary(cat));
+    doc.trailer.set("Root", Object::Reference(cat_id));
+    doc.save(path).unwrap();
+}
+
+/// The first `fixture_pages` pages resolve MediaBox, a Resources dict holding the font,
+/// and non-empty content directly on the page (no reliance on a parent node).
+fn assert_pages_self_contained(path: &Path, expect_pages: usize, fixture_pages: usize) {
+    let doc = lopdf::Document::load(path).unwrap();
+    let pages = doc.get_pages();
+    assert_eq!(pages.len(), expect_pages);
+    for (n, id) in pages.iter().take(fixture_pages) {
+        let d = doc.get_dictionary(*id).unwrap();
+        let mb = d.get(b"MediaBox").unwrap().as_array().unwrap();
+        assert_eq!(mb[2].as_i64().unwrap(), 300, "page {n} MediaBox");
+        assert_eq!(mb[3].as_i64().unwrap(), 400, "page {n} MediaBox");
+        let res = doc
+            .dereference(d.get(b"Resources").unwrap())
+            .unwrap()
+            .1
+            .as_dict()
+            .unwrap();
+        assert!(res.has(b"Font"), "page {n} Resources");
+        let content = doc.get_page_content(*id);
+        assert!(!content.is_empty(), "page {n} content");
+    }
+}
+
+#[test]
+fn merge_keeps_inherited_page_attributes() {
+    let dir = tempfile::tempdir().unwrap();
+    let nested = dir.path().join("nested.pdf");
+    nested_pdf(&nested);
+    assert_eq!(pdf::page_count(&nested).unwrap(), 3);
+    let flat = make_pdf(dir.path(), "flat.pdf", 2);
+    let out = dir.path().join("m.pdf");
+    pdf::merge(&[nested, flat], &out, &tok(), &|_| {}).unwrap();
+    assert_pages_self_contained(&out, 5, 3);
+}
+
+#[test]
+fn split_keeps_inherited_page_attributes() {
+    let dir = tempfile::tempdir().unwrap();
+    let nested = dir.path().join("nested.pdf");
+    nested_pdf(&nested);
+    let out_dir = dir.path().join("parts");
+    std::fs::create_dir(&out_dir).unwrap();
+    let files = pdf::split(&nested, &out_dir, &tok(), &|_| {}).unwrap();
+    assert_eq!(files.len(), 3);
+    for f in &files {
+        assert_pages_self_contained(f, 1, 1);
+    }
+    // Each part holds only its own page's text.
+    for (i, f) in files.iter().enumerate() {
+        let d = lopdf::Document::load(f).unwrap();
+        let id = *d.get_pages().values().next().unwrap();
+        let c = String::from_utf8_lossy(&d.get_page_content(id)).into_owned();
+        assert!(c.contains(&format!("page {}", i + 1)), "{c}");
+        assert!(!c.contains(&format!("page {}", (i + 1) % 3 + 1)), "{c}");
+    }
+}
+
+#[test]
+fn csv_rejects_duplicate_headers_and_huge_tables() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("d.csv");
+    std::fs::write(&input, "a,b,a\n1,2,3\n").unwrap();
+    let err = data::convert(&input, "csv", "json", &dir.path().join("o.json")).unwrap_err();
+    assert!(
+        matches!(&err, Error::Failed(m) if m == "duplicate CSV column: a"),
+        "{err:?}"
+    );
+
+    // 1000 columns x 1001 rows > 1,000,000 cells
+    let header: Vec<String> = (0..1000).map(|i| format!("c{i}")).collect();
+    let mut text = header.join(",");
+    text.push('\n');
+    let row = vec!["x"; 1000].join(",");
+    for _ in 0..1001 {
+        text.push_str(&row);
+        text.push('\n');
+    }
+    let big = dir.path().join("big.csv");
+    std::fs::write(&big, text).unwrap();
+    let err = data::convert(&big, "csv", "json", &dir.path().join("big.json")).unwrap_err();
+    assert!(matches!(err, Error::TooLarge(_)), "{err:?}");
+    assert!(!dir.path().join("big.json").exists());
+}

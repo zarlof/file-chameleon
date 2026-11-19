@@ -254,9 +254,85 @@ fn image_dict(w: u32, h: u32, space: &str, bpc: i64) -> Dictionary {
     d
 }
 
+/// Object ids referenced from `obj` (recursing through arrays, dictionaries, stream dicts).
+fn collect_refs(obj: &Object, skip_parent: bool, out: &mut Vec<ObjectId>) {
+    match obj {
+        Object::Reference(id) => out.push(*id),
+        Object::Array(a) => a.iter().for_each(|o| collect_refs(o, false, out)),
+        Object::Dictionary(d) => {
+            for (k, v) in d.iter() {
+                if !(skip_parent && k.as_slice() == b"Parent") {
+                    collect_refs(v, false, out);
+                }
+            }
+        }
+        Object::Stream(s) => {
+            for (_, v) in s.dict.iter() {
+                collect_refs(v, false, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// A new document holding only `page` and the objects reachable from it (its page-tree
+/// `Parent` link is not followed; attributes were materialized onto the page beforehand).
+fn single_page_doc(src: &Document, page: ObjectId) -> Document {
+    let mut objects: std::collections::BTreeMap<ObjectId, Object> = Default::default();
+    let mut stack = vec![page];
+    while let Some(id) = stack.pop() {
+        if objects.contains_key(&id) {
+            continue;
+        }
+        let Some(obj) = src.objects.get(&id) else {
+            continue;
+        };
+        let mut refs = Vec::new();
+        collect_refs(obj, id == page, &mut refs);
+        stack.extend(refs);
+        objects.insert(id, obj.clone());
+    }
+    let mut doc = Document::with_version("1.5");
+    doc.max_id = src.max_id;
+    doc.objects = objects;
+    let pages_id = doc.new_object_id();
+    if let Some(Object::Dictionary(d)) = doc.objects.get_mut(&page) {
+        d.set("Parent", Object::Reference(pages_id));
+    }
+    let mut pages = Dictionary::new();
+    pages.set("Type", "Pages");
+    pages.set("Kids", Object::Array(vec![Object::Reference(page)]));
+    pages.set("Count", Object::Integer(1));
+    doc.objects.insert(pages_id, Object::Dictionary(pages));
+    let mut catalog = Dictionary::new();
+    catalog.set("Type", "Catalog");
+    catalog.set("Pages", Object::Reference(pages_id));
+    let catalog_id = doc.add_object(Object::Dictionary(catalog));
+    doc.trailer.set("Root", Object::Reference(catalog_id));
+    doc
+}
+
+const MAX_TOTAL_INPUT_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// lopdf keeps every page's bytes in memory until the file is written, so refuse inputs
+/// that total more than 1 GB.
+fn check_total_size(inputs: &[PathBuf]) -> Result<()> {
+    let mut total = 0u64;
+    for p in inputs {
+        total = total.saturating_add(std::fs::metadata(p).map(|m| m.len()).unwrap_or(0));
+    }
+    if total > MAX_TOTAL_INPUT_BYTES {
+        return Err(Error::TooLarge("inputs total more than 1 GB".into()));
+    }
+    Ok(())
+}
+
 /// Raster images -> one PDF, one image per page, page size = image size at 72 dpi
 /// (so 1 px = 1 pt), in input order. JPEG embedded as-is (DCTDecode); everything else
 /// decoded and embedded as Flate RGB (alpha flattened onto white).
+///
+/// Known limit: lopdf holds every page's (compressed) bytes in memory until the file is
+/// written, so the inputs may total at most 1 GB (`Error::TooLarge` beyond that).
 pub fn images_to_pdf(
     inputs: &[PathBuf],
     output: &Path,
@@ -266,6 +342,7 @@ pub fn images_to_pdf(
     if inputs.is_empty() {
         return Err(Error::Failed("no input images".into()));
     }
+    check_total_size(inputs)?;
     let mut b = Builder::new();
     for (i, p) in inputs.iter().enumerate() {
         check_cancel(cancel)?;
@@ -279,6 +356,9 @@ pub fn images_to_pdf(
 }
 
 /// PDFs and/or raster images (in order) -> one PDF.
+///
+/// Known limit: all merged objects stay in memory until the output is written (lopdf), so
+/// the inputs may total at most 1 GB (`Error::TooLarge` beyond that).
 pub fn merge(
     inputs: &[PathBuf],
     output: &Path,
@@ -288,6 +368,7 @@ pub fn merge(
     if inputs.is_empty() {
         return Err(Error::Failed("no inputs to merge".into()));
     }
+    check_total_size(inputs)?;
     let mut b = Builder::new();
     for (i, p) in inputs.iter().enumerate() {
         check_cancel(cancel)?;
@@ -317,9 +398,9 @@ pub fn split(
     if pages.is_empty() {
         return Err(Error::Failed("PDF has no pages".into()));
     }
-    let ids: Vec<ObjectId> = src.get_pages().into_values().collect();
-    for id in ids {
-        materialize_page(&mut src, id);
+    let page_ids: Vec<ObjectId> = src.get_pages().into_values().collect();
+    for id in &page_ids {
+        materialize_page(&mut src, *id);
     }
     let stem = input
         .file_stem()
@@ -327,13 +408,9 @@ pub fn split(
         .unwrap_or_else(|| "page".into());
     let mut written: Vec<PathBuf> = Vec::with_capacity(pages.len());
     let r = (|| -> Result<()> {
-        for (i, n) in pages.iter().enumerate() {
+        for i in 0..pages.len() {
             check_cancel(cancel)?;
-            let mut one = src.clone();
-            let others: Vec<u32> = pages.iter().copied().filter(|p| p != n).collect();
-            one.delete_pages(&others);
-            one.prune_objects();
-            one.compress();
+            let mut one = single_page_doc(&src, page_ids[i]);
             let path = out_dir.join(format!("{stem}-{}.pdf", i + 1));
             written.push(path.clone());
             save_plain(&mut one, &path)?;

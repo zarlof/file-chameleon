@@ -18,6 +18,8 @@ use serde_json::{Map, Value};
 use std::path::Path;
 
 pub const MAX_BYTES: u64 = 64 * 1024 * 1024;
+/// Rows x columns allowed when a CSV is expanded into a JSON-style tree.
+const MAX_CSV_CELLS: usize = 1_000_000;
 
 const PAGE_CSS: &str = "\
 :root{color-scheme:light dark}\
@@ -88,9 +90,19 @@ fn csv_to_value(text: &str) -> Result<Value> {
         .iter()
         .map(str::to_owned)
         .collect();
+    for (i, h) in headers.iter().enumerate() {
+        if headers[..i].contains(h) {
+            return Err(Error::Failed(format!("duplicate CSV column: {h}")));
+        }
+    }
     let mut rows = Vec::new();
+    let mut cells = 0usize;
     for rec in rdr.records() {
         let rec = rec.map_err(|e| Error::Failed(format!("invalid CSV: {e}")))?;
+        cells += rec.len().max(headers.len());
+        if cells > MAX_CSV_CELLS {
+            return Err(Error::TooLarge("CSV has more than 1,000,000 cells".into()));
+        }
         let mut obj = Map::new();
         for (i, field) in rec.iter().enumerate() {
             let key = headers

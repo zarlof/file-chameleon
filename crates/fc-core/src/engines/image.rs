@@ -328,7 +328,9 @@ pub fn compress(
         return Err(Error::Cancelled);
     }
     if format == "png" {
-        write_png(&img, output, CompressionType::Best)?;
+        write_png(&img, output, CompressionType::Best).inspect_err(|_| {
+            let _ = std::fs::remove_file(output);
+        })?;
     } else {
         write_as(&img, format, output, &options)?;
     }
