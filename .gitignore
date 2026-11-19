@@ -8,3 +8,4 @@ Thumbs.db
 /src-tauri/gen/
 /assets/*.png
 !/assets/icon-source.png
+target-agents/
