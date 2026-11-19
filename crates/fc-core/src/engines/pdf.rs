@@ -408,9 +408,9 @@ pub fn split(
         .unwrap_or_else(|| "page".into());
     let mut written: Vec<PathBuf> = Vec::with_capacity(pages.len());
     let r = (|| -> Result<()> {
-        for i in 0..pages.len() {
+        for (i, page_id) in page_ids.iter().enumerate() {
             check_cancel(cancel)?;
-            let mut one = single_page_doc(&src, page_ids[i]);
+            let mut one = single_page_doc(&src, *page_id);
             let path = out_dir.join(format!("{stem}-{}.pdf", i + 1));
             written.push(path.clone());
             save_plain(&mut one, &path)?;
