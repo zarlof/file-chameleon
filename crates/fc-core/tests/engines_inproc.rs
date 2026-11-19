@@ -594,6 +594,22 @@ fn nested_pdf(path: &Path) {
         p.set("Contents", Object::Reference(c));
         page_ids.push(doc.add_object(Object::Dictionary(p)));
     }
+    // Page 1 carries a Link annotation whose destination is page 3.
+    let mut annot = Dictionary::new();
+    annot.set("Type", "Annot");
+    annot.set("Subtype", "Link");
+    annot.set(
+        "Rect",
+        Object::Array(vec![0.into(), 0.into(), 10.into(), 10.into()]),
+    );
+    annot.set(
+        "Dest",
+        Object::Array(vec![Object::Reference(page_ids[2]), "Fit".into()]),
+    );
+    let annot_id = doc.add_object(Object::Dictionary(annot));
+    if let Some(Object::Dictionary(p)) = doc.objects.get_mut(&page_ids[0]) {
+        p.set("Annots", Object::Array(vec![Object::Reference(annot_id)]));
+    }
     let mut mid_d = Dictionary::new();
     mid_d.set("Type", "Pages");
     mid_d.set("Parent", Object::Reference(root));
@@ -644,7 +660,23 @@ fn assert_pages_self_contained(path: &Path, expect_pages: usize, fixture_pages: 
             .1
             .as_dict()
             .unwrap();
-        assert!(res.has(b"Font"), "page {n} Resources");
+        let fonts = doc
+            .dereference(res.get(b"Font").unwrap())
+            .unwrap()
+            .1
+            .as_dict()
+            .unwrap();
+        let (_, font) = doc.dereference(fonts.get(b"F1").unwrap()).unwrap();
+        assert_eq!(
+            font.as_dict()
+                .unwrap()
+                .get(b"BaseFont")
+                .unwrap()
+                .as_name()
+                .unwrap(),
+            b"Courier",
+            "page {n} font resolves"
+        );
         let content = doc.get_page_content(*id);
         assert!(!content.is_empty(), "page {n} content");
     }
@@ -709,4 +741,31 @@ fn csv_rejects_duplicate_headers_and_huge_tables() {
     let err = data::convert(&big, "csv", "json", &dir.path().join("big.json")).unwrap_err();
     assert!(matches!(err, Error::TooLarge(_)), "{err:?}");
     assert!(!dir.path().join("big.json").exists());
+}
+
+#[test]
+fn split_does_not_drag_in_pages_reached_by_links() {
+    let dir = tempfile::tempdir().unwrap();
+    let nested = dir.path().join("nested.pdf");
+    nested_pdf(&nested);
+    let out_dir = dir.path().join("parts");
+    std::fs::create_dir(&out_dir).unwrap();
+    let files = pdf::split(&nested, &out_dir, &tok(), &|_| {}).unwrap();
+    let part = lopdf::Document::load(&files[0]).unwrap();
+    let page_objects = part
+        .objects
+        .values()
+        .filter(|o| o.type_name().ok() == Some(b"Page".as_slice()))
+        .count();
+    assert_eq!(page_objects, 1);
+    assert!(
+        !part
+            .objects
+            .values()
+            .any(|o| o.type_name().ok() == Some(b"Pages".as_slice())
+                && o.as_dict().unwrap().has(b"MediaBox")),
+        "original page tree must not be copied"
+    );
+    let src_len = std::fs::metadata(&nested).unwrap().len();
+    assert!(std::fs::metadata(&files[0]).unwrap().len() < src_len);
 }

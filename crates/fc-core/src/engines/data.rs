@@ -90,8 +90,9 @@ fn csv_to_value(text: &str) -> Result<Value> {
         .iter()
         .map(str::to_owned)
         .collect();
-    for (i, h) in headers.iter().enumerate() {
-        if headers[..i].contains(h) {
+    let mut seen = std::collections::HashSet::with_capacity(headers.len());
+    for h in &headers {
+        if !seen.insert(h.as_str()) {
             return Err(Error::Failed(format!("duplicate CSV column: {h}")));
         }
     }

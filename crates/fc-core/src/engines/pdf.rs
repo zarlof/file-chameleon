@@ -275,9 +275,35 @@ fn collect_refs(obj: &Object, skip_parent: bool, out: &mut Vec<ObjectId>) {
     }
 }
 
+/// Replace references to pages other than `keep` with null.
+fn null_other_pages(
+    obj: &mut Object,
+    keep: ObjectId,
+    all_pages: &std::collections::HashSet<ObjectId>,
+) {
+    match obj {
+        Object::Reference(id) if *id != keep && all_pages.contains(id) => *obj = Object::Null,
+        Object::Array(a) => a
+            .iter_mut()
+            .for_each(|o| null_other_pages(o, keep, all_pages)),
+        Object::Dictionary(d) => d
+            .iter_mut()
+            .for_each(|(_, v)| null_other_pages(v, keep, all_pages)),
+        Object::Stream(s) => s
+            .dict
+            .iter_mut()
+            .for_each(|(_, v)| null_other_pages(v, keep, all_pages)),
+        _ => {}
+    }
+}
+
 /// A new document holding only `page` and the objects reachable from it (its page-tree
 /// `Parent` link is not followed; attributes were materialized onto the page beforehand).
-fn single_page_doc(src: &Document, page: ObjectId) -> Document {
+fn single_page_doc(
+    src: &Document,
+    page: ObjectId,
+    all_pages: &std::collections::HashSet<ObjectId>,
+) -> Document {
     let mut objects: std::collections::BTreeMap<ObjectId, Object> = Default::default();
     let mut stack = vec![page];
     while let Some(id) = stack.pop() {
@@ -289,8 +315,12 @@ fn single_page_doc(src: &Document, page: ObjectId) -> Document {
         };
         let mut refs = Vec::new();
         collect_refs(obj, id == page, &mut refs);
-        stack.extend(refs);
+        // Never pull in another page (links, GoTo actions): that would drag in the page tree.
+        stack.extend(refs.into_iter().filter(|r| !all_pages.contains(r)));
         objects.insert(id, obj.clone());
+    }
+    for obj in objects.values_mut() {
+        null_other_pages(obj, page, all_pages);
     }
     let mut doc = Document::with_version("1.5");
     doc.max_id = src.max_id;
@@ -402,6 +432,7 @@ pub fn split(
     for id in &page_ids {
         materialize_page(&mut src, *id);
     }
+    let all_pages: std::collections::HashSet<ObjectId> = page_ids.iter().copied().collect();
     let stem = input
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
@@ -410,7 +441,7 @@ pub fn split(
     let r = (|| -> Result<()> {
         for (i, page_id) in page_ids.iter().enumerate() {
             check_cancel(cancel)?;
-            let mut one = single_page_doc(&src, *page_id);
+            let mut one = single_page_doc(&src, *page_id, &all_pages);
             let path = out_dir.join(format!("{stem}-{}.pdf", i + 1));
             written.push(path.clone());
             save_plain(&mut one, &path)?;
