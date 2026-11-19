@@ -4,8 +4,17 @@
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { modal } from './modal.svelte';
   interface Props { open: boolean; title?: string; width?: number; onclose?: () => void; children?: Snippet; footer?: Snippet }
   let { open = $bindable(), title, width = 420, onclose, children, footer }: Props = $props();
+
+  $effect(() => {
+    if (!open) return;
+    modal.open++;
+    return () => {
+      modal.open--;
+    };
+  });
 
   function close() {
     open = false;

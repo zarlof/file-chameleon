@@ -13,7 +13,7 @@
   import { settings } from '../lib/stores/settings.svelte';
   import { applyTheme, watchSystemTheme } from '../lib/stores/theme';
   import { tools } from '../lib/stores/tools.svelte';
-  import { Toast } from '../lib/ui';
+  import { modal, Toast } from '../lib/ui';
   import Sidebar from './Sidebar.svelte';
   import TitleBar from './TitleBar.svelte';
   import Clipboard from './views/clipboard/index.svelte';
@@ -62,9 +62,16 @@
     // Safety net: never leave the window hidden if the backend is slow.
     const failsafe = setTimeout(() => getCurrentWindow().show().catch(() => {}), 2500);
 
+    // CONTRACT: this is the ONLY onDragDropEvent listener in the main window. Views must not register
+    // their own; they react to `nav.pending` via $effect (see nav.svelte.ts). Drops are ignored while
+    // a modal Sheet is open.
     getCurrentWebview()
       .onDragDropEvent((e) => {
         const p = e.payload;
+        if (modal.open > 0) {
+          dragging = false;
+          return;
+        }
         if (p.type === 'enter') dragging = true;
         else if (p.type === 'leave') dragging = false;
         else if (p.type === 'drop') {

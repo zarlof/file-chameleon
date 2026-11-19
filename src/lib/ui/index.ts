@@ -19,4 +19,5 @@ export { default as TextField } from './TextField.svelte';
 export { default as Toast } from './Toast.svelte';
 export { default as Toggle } from './Toggle.svelte';
 export { toast, type ToastKind } from './toaster.svelte';
+export { modal } from './modal.svelte';
 export { formatBytes } from './format';

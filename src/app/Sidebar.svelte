@@ -3,7 +3,8 @@
   The header (below the traffic lights) is a drag region; nav buttons are not.
 -->
 <script lang="ts">
-  import { Clipboard, Clock, Download, RefreshCw, Settings, Shapes } from '@lucide/svelte';
+  import { Clipboard, Clock, Download, RefreshCw, Settings } from '@lucide/svelte';
+  import appIcon from '../../src-tauri/icons/128x128.png';
   import type { Component } from 'svelte';
   import { t } from '../lib/i18n';
   import { jobs } from '../lib/stores/jobs.svelte';
@@ -24,7 +25,7 @@
 
 <aside class="sidebar" class:collapsed>
   <div class="head" data-tauri-drag-region>
-    <span class="logo"><Shapes size={14} strokeWidth={2.25} /></span>
+    <img class="logo" src={appIcon} alt="" width="28" height="28" draggable="false" />
     {#if !collapsed}<span class="name">{t('common.appName')}</span>{/if}
   </div>
 
@@ -53,11 +54,7 @@
   .head { display: flex; align-items: center; gap: 9px; height: 36px; margin: 0 12px 4px; padding: 0 8px; }
   .collapsed .head { justify-content: center; padding: 0; }
   .head > * { pointer-events: none; }
-  .logo {
-    display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: var(--on-accent);
-    background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 70%, white), var(--accent));
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), inset 0 0.5px 0 rgba(255, 255, 255, 0.4);
-  }
+  .logo { width: 28px; height: 28px; flex: none; object-fit: contain; }
   .name { font: var(--text-headline); letter-spacing: var(--tracking-tight); white-space: nowrap; }
   nav { display: flex; flex-direction: column; gap: 2px; padding: 4px 10px; }
   .item {

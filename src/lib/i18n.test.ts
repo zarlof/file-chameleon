@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { currentLang, setLanguage, t, translate } from './i18n';
+import { currentLang, setLanguage, t, translate, translateIn } from './i18n';
+
+describe('i18n flat keys and suffix plurals', () => {
+  const dict = {
+    en: { ov: { 'toast.jobDone.title': 'Done', files_one: '{count} file', files_other: '{count} files', nest: { a: 'A' } } },
+    tr: { ov: { files_other: '{count} dosya' } },
+  };
+  it('resolves a flat dotted key inside a namespace', () => {
+    expect(translateIn(dict, 'en', 'ov.toast.jobDone.title')).toBe('Done');
+    expect(translateIn(dict, 'en', 'ov.nest.a')).toBe('A');
+  });
+  it('resolves _one/_other suffix plurals by count', () => {
+    expect(translateIn(dict, 'en', 'ov.files', { count: 1 })).toBe('1 file');
+    expect(translateIn(dict, 'en', 'ov.files', { count: 4 })).toBe('4 files');
+    expect(translateIn(dict, 'tr', 'ov.files', { count: 1 })).toBe('1 dosya');
+  });
+});
 
 describe('i18n', () => {
   it('translates by namespace.path in both languages', () => {

@@ -1,6 +1,20 @@
 import { api, on } from '../ipc';
 import type { NavPayload, View } from '../types';
 
+/*
+ * Navigation + hand-off of payloads (dropped files, urls) to views.
+ *
+ * CONTRACT: the Shell owns the single window-wide drag-drop listener. Views must NOT register their
+ * own onDragDropEvent. A drop (or nav://goto) sets `nav.pending` and switches `nav.view`. Because
+ * `{#key nav.view}` does not remount a view that is already active, views must consume reactively:
+ *
+ *   $effect(() => {
+ *     const p = nav.pending && nav.consume('convert');   // reads nav.pending => re-runs on change
+ *     if (p) addFiles(p.paths);
+ *   });
+ *
+ * `consume(view)` returns the payload only if it is addressed to `view`, and clears it.
+ */
 export const VIEWS: View[] = ['convert', 'download', 'clipboard', 'recent', 'settings'];
 
 export class NavStore {

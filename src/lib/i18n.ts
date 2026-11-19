@@ -1,37 +1,62 @@
 // Tiny i18n: src/locales/<lang>/<namespace>.json, keys are "<namespace>.<path>".
-// Values may contain {name} placeholders, or be { one, other } plural objects chosen by params.count.
+// Supported value shapes: nested objects, flat dotted keys inside a namespace file
+// ("toast.jobDone.title"), {name} placeholders, { one, other } plural objects, and
+// suffix plurals ("files_one" / "files_other"), all chosen by params.count.
 import { langState, type Lang } from './lang.svelte';
 
 export type { Lang };
 export type Params = Record<string, string | number>;
-type Tree = { [k: string]: string | Tree };
+export type Tree = { [k: string]: string | Tree };
+export type Dict = Record<string, Tree>;
 
 const modules = import.meta.glob('../locales/*/*.json', { eager: true, import: 'default' }) as Record<string, Tree>;
 
-const dicts: Record<string, Tree> = {};
+const dicts: Dict = {};
 for (const [path, tree] of Object.entries(modules)) {
   const m = /locales\/([^/]+)\/([^/]+)\.json$/.exec(path);
   if (!m) continue;
   (dicts[m[1]] ??= {})[m[2]] = tree;
 }
 
-function lookup(lang: string, key: string): string | Tree | undefined {
-  let node: string | Tree | undefined = dicts[lang];
-  for (const part of key.split('.')) {
+function walk(root: Tree | undefined, path: string): string | Tree | undefined {
+  let node: string | Tree | undefined = root;
+  for (const part of path.split('.')) {
     if (node === undefined || typeof node === 'string') return undefined;
     node = node[part];
   }
   return node;
 }
 
-function pick(value: string | Tree | undefined, params?: Params): string | undefined {
-  if (value === undefined) return undefined;
+/** Nested walk first, then a flat dotted key inside the namespace. */
+function find(dict: Dict, lang: string, key: string): string | Tree | undefined {
+  const dot = key.indexOf('.');
+  if (dot < 0) return undefined;
+  const ns = dict[lang]?.[key.slice(0, dot)];
+  if (!ns || typeof ns === 'string') return undefined;
+  const rest = key.slice(dot + 1);
+  return walk(ns, rest) ?? ns[rest];
+}
+
+function pluralForm(lang: string, count: number): 'one' | 'other' {
+  if (count === 1) return 'one';
+  try {
+    return new Intl.PluralRules(lang).select(count) === 'one' ? 'one' : 'other';
+  } catch {
+    return 'other';
+  }
+}
+
+function resolve(dict: Dict, lang: string, key: string, params?: Params): string | undefined {
+  const value = find(dict, lang, key);
   if (typeof value === 'string') return value;
-  // Plural object.
-  const count = Number(params?.count);
-  const form = count === 1 ? 'one' : 'other';
-  const chosen = value[form] ?? value.other;
-  return typeof chosen === 'string' ? chosen : undefined;
+  const form = pluralForm(lang, Number(params?.count));
+  if (value) {
+    const chosen = value[form] ?? value.other;
+    return typeof chosen === 'string' ? chosen : undefined;
+  }
+  if (params?.count === undefined) return undefined;
+  const suffixed = find(dict, lang, `${key}_${form}`) ?? find(dict, lang, `${key}_other`);
+  return typeof suffixed === 'string' ? suffixed : undefined;
 }
 
 function interpolate(s: string, params?: Params): string {
@@ -39,10 +64,15 @@ function interpolate(s: string, params?: Params): string {
   return s.replace(/\{(\w+)\}/g, (whole, name: string) => (name in params ? String(params[name]) : whole));
 }
 
+/** Translate against an explicit dictionary (exported for tests). */
+export function translateIn(dict: Dict, lang: string, key: string, params?: Params): string {
+  const raw = resolve(dict, lang, key, params) ?? resolve(dict, 'en', key, params);
+  return raw === undefined ? key : interpolate(raw, params);
+}
+
 /** Translate `key` in `lang` (pure; falls back to en, then the key itself). */
 export function translate(lang: string, key: string, params?: Params): string {
-  const raw = pick(lookup(lang, key), params) ?? pick(lookup('en', key), params);
-  return raw === undefined ? key : interpolate(raw, params);
+  return translateIn(dicts, lang, key, params);
 }
 
 /** Reactive translate: reads the language state, so templates/derived re-run on language change. */
