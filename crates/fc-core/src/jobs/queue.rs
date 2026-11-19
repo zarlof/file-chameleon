@@ -179,10 +179,10 @@ impl JobQueue {
             // Busy workers count in `workers`, so only add as many as there are waiting
             // jobs and free slots.
             let mut spawn = [0usize; 2];
-            for p in 0..2 {
+            for (p, slot) in spawn.iter_mut().enumerate() {
                 let free = self.inner.limits[p].saturating_sub(st.workers[p]);
-                spawn[p] = st.waiting[p].len().min(free);
-                st.workers[p] += spawn[p];
+                *slot = st.waiting[p].len().min(free);
+                st.workers[p] += *slot;
             }
             spawn
         };
