@@ -9,3 +9,4 @@ Thumbs.db
 /assets/*.png
 !/assets/icon-source.png
 target-agents/
+.claude/
