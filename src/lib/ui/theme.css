@@ -1,0 +1,171 @@
+/* File Chameleon design tokens — macOS-inspired (HIG proportions, system colours,
+   translucent "glass" materials over Windows 11 Mica). Shared by the main window and
+   the overlay. Components must use these variables, never raw colours. */
+
+@import '@fontsource-variable/inter/wght.css';
+
+:root {
+  color-scheme: light dark;
+
+  /* Typography: Inter stands in for SF Pro (not redistributable). Slight negative
+     tracking at display sizes mimics SF's optical sizing. */
+  --font: 'Inter Variable', 'SF Pro Text', -apple-system, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  --text-large-title: 600 26px/32px var(--font);
+  --text-title: 600 20px/26px var(--font);
+  --text-headline: 600 13px/18px var(--font);
+  --text-body: 400 13px/18px var(--font);
+  --text-callout: 400 12px/16px var(--font);
+  --text-caption: 500 11px/14px var(--font);
+  --tracking-tight: -0.015em;
+
+  /* Geometry (macOS: 6px controls, 10px cards, 12–14px windows/sheets, continuous corners). */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --control-h: 28px;
+  --control-h-lg: 34px;
+  --sidebar-w: 220px;
+  --titlebar-h: 52px;
+
+  /* Motion: Apple-like springs approximated with cubic-beziers. */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+
+  /* Accent (overridden by [data-accent]). */
+  --accent: #007aff;
+  --accent-hover: #0068d9;
+  --accent-soft: rgba(0, 122, 255, 0.14);
+  --on-accent: #ffffff;
+
+  /* System colours (light). */
+  --red: #ff3b30;
+  --orange: #ff9500;
+  --yellow: #ffcc00;
+  --green: #34c759;
+  --teal: #30b0c7;
+  --blue: #007aff;
+  --indigo: #5856d6;
+  --purple: #af52de;
+  --pink: #ff2d55;
+  --graphite: #8e8e93;
+
+  /* Surfaces & text (light). The window background is transparent so Mica shows through;
+     content areas sit on translucent layers. */
+  --window-bg: rgba(246, 246, 248, 0.62);
+  --sidebar-bg: rgba(236, 236, 240, 0.55);
+  --content-bg: rgba(255, 255, 255, 0.72);
+  --card-bg: rgba(255, 255, 255, 0.86);
+  --card-bg-hover: rgba(255, 255, 255, 0.96);
+  --elevated-bg: rgba(255, 255, 255, 0.94);
+  --control-bg: rgba(0, 0, 0, 0.05);
+  --control-bg-hover: rgba(0, 0, 0, 0.08);
+  --control-bg-active: rgba(0, 0, 0, 0.12);
+  --field-bg: rgba(255, 255, 255, 0.9);
+  --separator: rgba(0, 0, 0, 0.09);
+  --hairline: rgba(0, 0, 0, 0.12);
+  --text: rgba(0, 0, 0, 0.88);
+  --text-secondary: rgba(0, 0, 0, 0.56);
+  --text-tertiary: rgba(0, 0, 0, 0.32);
+  --selection: rgba(0, 122, 255, 0.18);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.08), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.1);
+  /* Glass: inner top highlight that sells the "liquid glass" edge. */
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.7), inset 0 0 0 0.5px rgba(255, 255, 255, 0.4);
+}
+
+:root[data-theme='dark'] {
+  --red: #ff453a;
+  --orange: #ff9f0a;
+  --yellow: #ffd60a;
+  --green: #30d158;
+  --teal: #40c8e0;
+  --blue: #0a84ff;
+  --indigo: #5e5ce6;
+  --purple: #bf5af2;
+  --pink: #ff375f;
+  --graphite: #98989d;
+
+  --window-bg: rgba(30, 30, 32, 0.55);
+  --sidebar-bg: rgba(40, 40, 44, 0.45);
+  --content-bg: rgba(28, 28, 30, 0.7);
+  --card-bg: rgba(255, 255, 255, 0.06);
+  --card-bg-hover: rgba(255, 255, 255, 0.09);
+  --elevated-bg: rgba(44, 44, 46, 0.96);
+  --control-bg: rgba(255, 255, 255, 0.08);
+  --control-bg-hover: rgba(255, 255, 255, 0.12);
+  --control-bg-active: rgba(255, 255, 255, 0.16);
+  --field-bg: rgba(255, 255, 255, 0.06);
+  --separator: rgba(255, 255, 255, 0.08);
+  --hairline: rgba(255, 255, 255, 0.12);
+  --text: rgba(255, 255, 255, 0.9);
+  --text-secondary: rgba(255, 255, 255, 0.58);
+  --text-tertiary: rgba(255, 255, 255, 0.3);
+  --selection: rgba(10, 132, 255, 0.3);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+  --shadow-lg: 0 22px 60px rgba(0, 0, 0, 0.55), 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+}
+
+/* Accents (macOS accent colour choices). */
+:root[data-accent='blue'] { --accent: var(--blue); --accent-soft: color-mix(in srgb, var(--blue) 16%, transparent); }
+:root[data-accent='purple'] { --accent: var(--purple); --accent-soft: color-mix(in srgb, var(--purple) 16%, transparent); }
+:root[data-accent='pink'] { --accent: var(--pink); --accent-soft: color-mix(in srgb, var(--pink) 16%, transparent); }
+:root[data-accent='red'] { --accent: var(--red); --accent-soft: color-mix(in srgb, var(--red) 16%, transparent); }
+:root[data-accent='orange'] { --accent: var(--orange); --accent-soft: color-mix(in srgb, var(--orange) 16%, transparent); }
+:root[data-accent='yellow'] { --accent: var(--yellow); --accent-soft: color-mix(in srgb, var(--yellow) 18%, transparent); --on-accent: #1c1c1e; }
+:root[data-accent='green'] { --accent: var(--green); --accent-soft: color-mix(in srgb, var(--green) 16%, transparent); }
+:root[data-accent='graphite'] { --accent: var(--graphite); --accent-soft: color-mix(in srgb, var(--graphite) 18%, transparent); }
+:root { --accent-hover: color-mix(in srgb, var(--accent) 86%, black); }
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font: var(--text-body);
+  color: var(--text);
+  background: transparent;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss01', 'ss03'; /* Inter: SF-like single-storey a, open digits */
+  user-select: none;
+  cursor: default;
+  overflow: hidden;
+}
+
+::selection { background: var(--selection); }
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+/* macOS-style overlay scrollbars. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text) 22%, transparent);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--text) 38%, transparent); }
+::-webkit-scrollbar-track { background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
+}

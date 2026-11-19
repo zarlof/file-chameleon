@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "engines": [
+    {
+      "id": "ffmpeg",
+      "name": "FFmpeg",
+      "version": "9.0.2",
+      "purpose": "video, audio, gif",
+      "license": "GPL-3.0 (gyan.dev essentials build)",
+      "homepage": "https://www.gyan.dev/ffmpeg/builds/",
+      "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
+      "sha256": "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba",
+      "size": 114768076,
+      "archive": "zip",
+      "files": [
+        { "from": "bin/ffmpeg.exe", "to": "ffmpeg.exe" },
+        { "from": "bin/ffprobe.exe", "to": "ffprobe.exe" }
+      ],
+      "system": ["ffmpeg.exe", "ffprobe.exe"]
+    },
+    {
+      "id": "yt-dlp",
+      "name": "yt-dlp",
+      "version": "latest",
+      "minVersion": "2026.10.26",
+      "purpose": "media downloads",
+      "license": "Unlicense",
+      "homepage": "https://github.com/yt-dlp/yt-dlp",
+      "url": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe",
+      "sha256Url": "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS",
+      "size": 23575744,
+      "archive": "none",
+      "files": [{ "from": "yt-dlp.exe", "to": "yt-dlp.exe" }],
+      "system": ["yt-dlp.exe"]
+    },
+    {
+      "id": "deno",
+      "name": "Deno",
+      "version": "2.9.8",
+      "purpose": "JavaScript runtime yt-dlp needs for YouTube (only if Node.js 20+ is not installed)",
+      "license": "MIT",
+      "homepage": "https://deno.com",
+      "url": "https://github.com/denoland/deno/releases/download/v2.9.8/deno-x86_64-pc-windows-msvc.zip",
+      "sha256": "cba84b26e0df5ae7f74fc66b86a95b866872a86292ebd84fa1e959927edd93bf",
+      "size": 42917472,
+      "archive": "zip",
+      "files": [{ "from": "deno.exe", "to": "deno.exe" }],
+      "system": ["deno.exe"]
+    },
+    {
+      "id": "pdfium",
+      "name": "PDFium",
+      "version": "chromium/8165",
+      "purpose": "PDF to image",
+      "license": "BSD-3-Clause / Apache-2.0",
+      "homepage": "https://github.com/bblanchon/pdfium-binaries",
+      "url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/8165/pdfium-win-x64.tgz",
+      "sha256": "ca7338ae7779b8b1b82f4580305c4d762d214f8df1d54b47647fe3cc75989ded",
+      "size": 4043420,
+      "archive": "tar.gz",
+      "files": [{ "from": "bin/pdfium.dll", "to": "pdfium.dll" }],
+      "system": []
+    }
+  ]
+}
