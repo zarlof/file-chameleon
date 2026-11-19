@@ -3,9 +3,14 @@
 //! progress parsed from `out_time_us=` against the duration from ffprobe
 //! (fall back to parsing `Duration:` from `ffmpeg -i` stderr when ffprobe is missing).
 //! Cancel kills the process tree; the caller deletes the partial output.
+//!
+//! The muxer is always passed explicitly (`-f`), so the output file name/extension (the executor
+//! hands in a temp path) never influences format selection.
 
 use crate::jobs::{CompressLevel, ConvertOptions};
-use crate::{CancelToken, Result};
+use crate::proc;
+use crate::{CancelToken, Error, Result};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 pub struct Ffmpeg {
@@ -14,16 +19,455 @@ pub struct Ffmpeg {
 }
 
 /// Parsed `-progress` key/value block. Returns `Some(out_time_seconds)` when the block has it.
+/// `out_time_us` and `out_time_ms` are both microseconds in current ffmpeg.
 pub fn parse_progress_line(line: &str) -> Option<f64> {
-    let _ = line;
-    todo!("Task C")
+    let (key, value) = line.trim().split_once('=')?;
+    if key != "out_time_us" && key != "out_time_ms" {
+        return None;
+    }
+    let micros: i64 = value.trim().parse().ok()?;
+    (micros >= 0).then(|| micros as f64 / 1_000_000.0)
+}
+
+/// Format id (`mp4`, `mp3`, ...) for a file extension, when ffmpeg can write it.
+fn container_of(path: &Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "mp4" | "m4v" => "mp4",
+        "mov" | "qt" => "mov",
+        "mkv" => "mkv",
+        "webm" => "webm",
+        "avi" => "avi",
+        "mp3" => "mp3",
+        "m4a" | "aac" => "m4a",
+        "opus" => "opus",
+        "ogg" | "oga" => "ogg",
+        "flac" => "flac",
+        "wav" => "wav",
+        _ => return None,
+    })
+}
+
+fn is_video_container(id: &str) -> bool {
+    matches!(id, "mp4" | "mov" | "mkv" | "webm" | "avi")
+}
+
+fn muxer(id: &str) -> &'static str {
+    match id {
+        "mp4" => "mp4",
+        "mov" => "mov",
+        "mkv" => "matroska",
+        "webm" => "webm",
+        "avi" => "avi",
+        "gif" => "gif",
+        "mp3" => "mp3",
+        "m4a" => "ipod",
+        "opus" => "opus",
+        "ogg" => "ogg",
+        "flac" => "flac",
+        _ => "wav",
+    }
+}
+
+fn strs(items: &[&str]) -> Vec<String> {
+    items.iter().map(|s| (*s).to_string()).collect()
+}
+
+/// x264 CRF for a 1..=100 quality (75 == the default 23, higher quality = lower CRF).
+fn x264_crf(quality: Option<u8>) -> u32 {
+    match quality {
+        None => 23,
+        Some(q) => 18 + u32::from(100 - q.clamp(1, 100)) / 5,
+    }
+}
+
+/// Video encoder arguments for a container. `crf` overrides the quality mapping.
+fn video_codec_args(id: &str, quality: Option<u8>, crf: Option<u32>) -> Vec<String> {
+    match id {
+        "webm" => {
+            let c = crf.unwrap_or_else(|| x264_crf(quality) + 9).to_string();
+            let mut v = strs(&["-c:v", "libvpx-vp9", "-crf"]);
+            v.push(c);
+            v.extend(strs(&[
+                "-b:v",
+                "0",
+                "-row-mt",
+                "1",
+                "-deadline",
+                "good",
+                "-cpu-used",
+                "5",
+                "-pix_fmt",
+                "yuv420p",
+            ]));
+            v
+        }
+        "avi" => {
+            let q = crf.map_or_else(
+                || 2 + u32::from(100 - quality.unwrap_or(75).clamp(1, 100)) / 10,
+                |c| c.saturating_sub(19).clamp(2, 31),
+            );
+            let mut v = strs(&["-c:v", "mpeg4", "-q:v"]);
+            v.push(q.to_string());
+            v.extend(strs(&["-pix_fmt", "yuv420p"]));
+            v
+        }
+        _ => {
+            let c = crf.unwrap_or_else(|| x264_crf(quality)).to_string();
+            let mut v = strs(&["-c:v", "libx264", "-crf"]);
+            v.push(c);
+            v.extend(strs(&["-preset", "veryfast", "-pix_fmt", "yuv420p"]));
+            if matches!(id, "mp4" | "mov") {
+                v.extend(strs(&["-movflags", "+faststart"]));
+            }
+            v
+        }
+    }
+}
+
+/// Audio encoder arguments for a container. `bitrate_k` overrides the default bitrate.
+fn audio_codec_args(id: &str, bitrate_k: Option<u32>) -> Vec<String> {
+    let br = |default: u32| format!("{}k", bitrate_k.unwrap_or(default));
+    match id {
+        "mp4" | "mov" | "mkv" => vec!["-c:a".into(), "aac".into(), "-b:a".into(), br(160)],
+        "m4a" => vec!["-c:a".into(), "aac".into(), "-b:a".into(), br(192)],
+        "webm" | "opus" | "ogg" => {
+            vec!["-c:a".into(), "libopus".into(), "-b:a".into(), br(128)]
+        }
+        "avi" => vec!["-c:a".into(), "libmp3lame".into(), "-b:a".into(), br(160)],
+        "mp3" => match bitrate_k {
+            Some(k) => vec![
+                "-c:a".into(),
+                "libmp3lame".into(),
+                "-b:a".into(),
+                format!("{k}k"),
+            ],
+            None => strs(&["-c:a", "libmp3lame", "-q:a", "2"]),
+        },
+        "flac" => strs(&["-c:a", "flac"]),
+        _ => strs(&["-c:a", "pcm_s16le"]),
+    }
+}
+
+/// Scale filter: even dimensions, optionally limited to `max_width` x `max_height`, never upscaling.
+fn scale_filter(options: &ConvertOptions) -> String {
+    let w = options
+        .max_width
+        .map_or("iw".to_string(), |w| format!("min(iw,{w})"));
+    let h = options
+        .max_height
+        .map_or("ih".to_string(), |h| format!("min(ih,{h})"));
+    format!("scale=w='{w}':h='{h}':force_original_aspect_ratio=decrease:force_divisible_by=2")
+}
+
+/// `atempo` chain for 0.25..=4.0 (each stage within 0.5..=2.0).
+fn atempo_chain(factor: f32) -> String {
+    let mut f = f64::from(factor);
+    let mut stages: Vec<f64> = Vec::new();
+    while f > 2.0 {
+        stages.push(2.0);
+        f /= 2.0;
+    }
+    while f < 0.5 {
+        stages.push(0.5);
+        f /= 0.5;
+    }
+    stages.push(f);
+    stages
+        .iter()
+        .map(|s| format!("atempo={}", trim_float(*s)))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn trim_float(v: f64) -> String {
+    let s = format!("{v:.5}");
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+fn secs(ms: u64) -> String {
+    format!("{:.3}", ms as f64 / 1000.0)
+}
+
+fn os(items: Vec<String>) -> Vec<OsString> {
+    items.into_iter().map(OsString::from).collect()
+}
+
+/// `[pre] -i input [body] -f muxer output`
+fn assemble(
+    pre: Vec<String>,
+    input: &Path,
+    body: Vec<String>,
+    mux: &str,
+    output: &Path,
+) -> Vec<OsString> {
+    let mut args = os(pre);
+    args.push("-i".into());
+    args.push(input.into());
+    args.extend(os(body));
+    args.push("-f".into());
+    args.push(mux.into());
+    args.push(output.into());
+    args
+}
+
+const MAP_AV: [&str; 4] = ["-map", "0:v:0", "-map", "0:a:0?"];
+
+/// Arguments for a re-encoding format conversion to `to`.
+fn convert_args(input: &Path, to: &str, output: &Path, options: &ConvertOptions) -> Vec<OsString> {
+    let mut body = Vec::new();
+    if is_video_container(to) {
+        body.extend(strs(&MAP_AV));
+        body.extend(strs(&["-vf"]));
+        body.push(scale_filter(options));
+        body.extend(video_codec_args(to, options.quality, None));
+        body.extend(audio_codec_args(to, None));
+    } else {
+        body.extend(strs(&["-vn", "-map", "0:a:0"]));
+        body.extend(audio_codec_args(to, None));
+    }
+    assemble(Vec::new(), input, body, muxer(to), output)
+}
+
+/// Stream copy into mp4/mov/mkv (no re-encode).
+fn copy_args(input: &Path, to: &str, output: &Path) -> Vec<OsString> {
+    let mut body = strs(&MAP_AV);
+    body.extend(strs(&["-c", "copy"]));
+    if matches!(to, "mp4" | "mov") {
+        body.extend(strs(&["-movflags", "+faststart"]));
+    }
+    assemble(Vec::new(), input, body, muxer(to), output)
+}
+
+fn gif_args(
+    input: &Path,
+    output: &Path,
+    max_width: u32,
+    fps: u32,
+    max_seconds: u32,
+) -> Vec<OsString> {
+    let graph = format!(
+        "[0:v]fps={fps},scale=w='min(iw,{max_width})':h=-2:flags=lanczos,split[a][b];\
+         [a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5"
+    );
+    let body = vec![
+        "-t".to_string(),
+        max_seconds.to_string(),
+        "-filter_complex".into(),
+        graph,
+        "-an".into(),
+        "-loop".into(),
+        "0".into(),
+    ];
+    assemble(Vec::new(), input, body, "gif", output)
+}
+
+fn compress_args(input: &Path, id: &str, output: &Path, level: CompressLevel) -> Vec<OsString> {
+    let (crf, kbps) = match level {
+        CompressLevel::Light => (26, 160),
+        CompressLevel::Balanced => (29, 128),
+        CompressLevel::Strong => (33, 96),
+    };
+    let mut body = Vec::new();
+    if is_video_container(id) {
+        let crf = if id == "webm" { crf + 8 } else { crf };
+        body.extend(strs(&MAP_AV));
+        body.extend(video_codec_args(id, None, Some(crf)));
+        body.extend(audio_codec_args(id, Some(kbps)));
+    } else {
+        body.extend(strs(&["-vn", "-map", "0:a:0"]));
+        match id {
+            "flac" => body.extend(strs(&["-c:a", "flac", "-compression_level", "12"])),
+            "wav" => {
+                let rate = match level {
+                    CompressLevel::Light => "44100",
+                    CompressLevel::Balanced => "32000",
+                    CompressLevel::Strong => "22050",
+                };
+                body.extend(strs(&["-c:a", "pcm_s16le", "-ar", rate]));
+            }
+            _ => body.extend(audio_codec_args(id, Some(kbps))),
+        }
+    }
+    assemble(Vec::new(), input, body, muxer(id), output)
+}
+
+fn trim_args(input: &Path, id: &str, output: &Path, start_ms: u64, end_ms: u64) -> Vec<OsString> {
+    let pre = vec!["-ss".to_string(), secs(start_ms)];
+    let mut body = vec!["-t".to_string(), secs(end_ms - start_ms)];
+    if is_video_container(id) {
+        body.extend(strs(&MAP_AV));
+        body.extend(video_codec_args(id, None, None));
+    } else {
+        body.extend(strs(&["-vn", "-map", "0:a:0"]));
+    }
+    body.extend(audio_codec_args(id, None));
+    assemble(pre, input, body, muxer(id), output)
+}
+
+fn mute_args(input: &Path, id: &str, output: &Path) -> Vec<OsString> {
+    let body = strs(&["-map", "0:v:0", "-an", "-c:v", "copy"]);
+    assemble(Vec::new(), input, body, muxer(id), output)
+}
+
+fn speed_args(input: &Path, id: &str, output: &Path, factor: f32) -> Vec<OsString> {
+    let mut body = Vec::new();
+    if is_video_container(id) {
+        body.extend(strs(&MAP_AV));
+        body.push("-vf".into());
+        body.push(format!("setpts=PTS/{}", trim_float(f64::from(factor))));
+        // Keep every frame at its new timestamp instead of resampling to the source frame rate
+        // (cfr resampling pads the tail and distorts the duration).
+        body.extend(strs(&["-fps_mode", "passthrough"]));
+        body.extend(video_codec_args(id, None, None));
+    } else {
+        body.extend(strs(&["-vn", "-map", "0:a:0"]));
+    }
+    body.push("-af".into());
+    body.push(atempo_chain(factor));
+    body.extend(audio_codec_args(id, None));
+    assemble(Vec::new(), input, body, muxer(id), output)
+}
+
+fn crop_args(
+    input: &Path,
+    id: &str,
+    output: &Path,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+) -> Vec<OsString> {
+    let mut body = strs(&MAP_AV);
+    body.push("-vf".into());
+    body.push(format!("crop={}:{}:{}:{}", w & !1, h & !1, x & !1, y & !1));
+    body.extend(video_codec_args(id, None, None));
+    body.extend(strs(&["-c:a", "copy"]));
+    assemble(Vec::new(), input, body, muxer(id), output)
+}
+
+/// What ffprobe told us about a file.
+#[derive(Debug, Default)]
+struct Probe {
+    duration: Option<f64>,
+    video_codec: Option<String>,
+    audio_codec: Option<String>,
+}
+
+fn parse_probe_json(text: &str) -> Option<Probe> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    let mut probe = Probe {
+        duration: v["format"]["duration"]
+            .as_str()
+            .and_then(|d| d.parse::<f64>().ok())
+            .filter(|d| d.is_finite() && *d > 0.0),
+        ..Probe::default()
+    };
+    for s in v["streams"].as_array().into_iter().flatten() {
+        let name = s["codec_name"].as_str().map(str::to_string);
+        match s["codec_type"].as_str() {
+            Some("video") if probe.video_codec.is_none() => probe.video_codec = name,
+            Some("audio") if probe.audio_codec.is_none() => probe.audio_codec = name,
+            _ => {}
+        }
+    }
+    Some(probe)
+}
+
+/// `Duration: 00:00:02.00,` from `ffmpeg -i` stderr.
+fn parse_duration_stderr(text: &str) -> Option<f64> {
+    let rest = text.split("Duration:").nth(1)?.trim_start();
+    let stamp = rest.split(',').next()?.trim();
+    let mut parts = stamp.split(':');
+    let h: f64 = parts.next()?.parse().ok()?;
+    let m: f64 = parts.next()?.parse().ok()?;
+    let s: f64 = parts.next()?.parse().ok()?;
+    let total = h * 3600.0 + m * 60.0 + s;
+    (total > 0.0).then_some(total)
+}
+
+fn tail(text: &str) -> String {
+    let t = text.trim();
+    let start = t.char_indices().rev().nth(599).map_or(0, |(i, _)| i);
+    t[start..].to_string()
 }
 
 impl Ffmpeg {
+    fn probe(&self, input: &Path) -> Option<Probe> {
+        let ffprobe = self.ffprobe.as_ref()?;
+        let mut cmd = proc::command(ffprobe);
+        cmd.args([
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration:stream=codec_type,codec_name",
+            "-of",
+            "json",
+        ])
+        .arg(input);
+        let out = proc::run(cmd, &CancelToken::new()).ok()?;
+        out.status
+            .success()
+            .then(|| parse_probe_json(&out.stdout))?
+    }
+
     /// Media duration in seconds (None if unknown, e.g. still image).
     pub fn duration(&self, input: &Path) -> Option<f64> {
-        let _ = input;
-        todo!("Task C")
+        if self.ffprobe.is_some() {
+            return self.probe(input).and_then(|p| p.duration);
+        }
+        let mut cmd = proc::command(&self.ffmpeg);
+        cmd.args(["-hide_banner", "-nostdin", "-i"]).arg(input);
+        let out = proc::run(cmd, &CancelToken::new()).ok()?;
+        parse_duration_stderr(&out.stderr)
+    }
+
+    fn run(
+        &self,
+        args: Vec<OsString>,
+        total: Option<f64>,
+        cancel: &CancelToken,
+        progress: &dyn Fn(f32),
+    ) -> Result<()> {
+        let mut cmd = proc::command(&self.ffmpeg);
+        cmd.args([
+            "-hide_banner",
+            "-nostdin",
+            "-y",
+            "-loglevel",
+            "error",
+            "-progress",
+            "pipe:1",
+            "-nostats",
+        ])
+        .args(args);
+        let out = proc::run_streaming(
+            cmd,
+            cancel,
+            &mut |line| {
+                if let (Some(t), Some(total)) = (parse_progress_line(line), total) {
+                    progress(((t / total) as f32).clamp(0.0, 1.0));
+                }
+            },
+            &mut |_| {},
+        )?;
+        if !out.status.success() {
+            return Err(Error::ToolFailed(tail(&out.stderr)));
+        }
+        progress(1.0);
+        Ok(())
+    }
+
+    fn require_input(input: &Path) -> Result<()> {
+        if input.is_file() {
+            Ok(())
+        } else {
+            Err(Error::NotFound(input.to_path_buf()))
+        }
+    }
+
+    fn container_for(input: &Path) -> Result<&'static str> {
+        container_of(input).ok_or_else(|| Error::Unsupported(format!("{}", input.display())))
     }
 
     /// Format conversion. Codec choices:
@@ -33,6 +477,9 @@ impl Ffmpeg {
     /// audio: mp3 libmp3lame q:a 2, m4a aac 192k, opus/ogg libopus 128k, flac, wav pcm_s16le; video->audio drops video (-vn).
     /// Try stream copy first when the target container accepts the source codecs (mp4<->mov<->mkv with h264/aac).
     /// Honors `max_width`/`max_height` with scale filter (even dimensions).
+    ///
+    /// The GIF palette is generated and applied in one filter graph (`split` + `palettegen` +
+    /// `paletteuse`), so no temporary palette file is needed.
     pub fn convert(
         &self,
         input: &Path,
@@ -42,8 +489,59 @@ impl Ffmpeg {
         cancel: &CancelToken,
         progress: &dyn Fn(f32),
     ) -> Result<()> {
-        let _ = (input, to, output, options, cancel, progress);
-        todo!("Task C")
+        Self::require_input(input)?;
+        let probe = self.probe(input);
+        let duration = probe
+            .as_ref()
+            .and_then(|p| p.duration)
+            .or_else(|| self.duration(input));
+        if to == "gif" {
+            let width = options.max_width.map_or(480, |w| w.min(480));
+            let total = duration.map(|d| d.min(60.0));
+            return self.run(
+                gif_args(input, output, width, 15, 60),
+                total,
+                cancel,
+                progress,
+            );
+        }
+        if !matches!(
+            to,
+            "mp4"
+                | "mov"
+                | "mkv"
+                | "webm"
+                | "avi"
+                | "mp3"
+                | "m4a"
+                | "opus"
+                | "ogg"
+                | "flac"
+                | "wav"
+        ) {
+            return Err(Error::Unsupported(format!("ffmpeg target {to}")));
+        }
+        if let (Some(p), Some(src)) = (&probe, container_of(input))
+            && matches!(to, "mp4" | "mov" | "mkv")
+            && matches!(src, "mp4" | "mov" | "mkv")
+            && p.video_codec.as_deref() == Some("h264")
+            && p.audio_codec.as_deref().is_none_or(|a| a == "aac")
+            && options.quality.is_none()
+            && options.max_width.is_none()
+            && options.max_height.is_none()
+        {
+            match self.run(copy_args(input, to, output), duration, cancel, progress) {
+                Ok(()) => return Ok(()),
+                Err(Error::Cancelled) => return Err(Error::Cancelled),
+                Err(_) => {} // fall back to a full encode
+            }
+        }
+        self.run(
+            convert_args(input, to, output, options),
+            duration,
+            cancel,
+            progress,
+        )
     }
 
     /// Same container, smaller: video CRF Light 26 / Balanced 29 / Strong 33 (x264 for mp4/mov/mkv/avi,
@@ -56,8 +554,15 @@ impl Ffmpeg {
         cancel: &CancelToken,
         progress: &dyn Fn(f32),
     ) -> Result<()> {
-        let _ = (input, output, level, cancel, progress);
-        todo!("Task C")
+        Self::require_input(input)?;
+        let id = Self::container_for(input)?;
+        let total = self.duration(input);
+        self.run(
+            compress_args(input, id, output, level),
+            total,
+            cancel,
+            progress,
+        )
     }
 
     /// Keep `[start_ms, end_ms)`; accurate seek (re-encode) so cuts are frame-exact.
@@ -70,8 +575,18 @@ impl Ffmpeg {
         cancel: &CancelToken,
         progress: &dyn Fn(f32),
     ) -> Result<()> {
-        let _ = (input, output, start_ms, end_ms, cancel, progress);
-        todo!("Task C")
+        Self::require_input(input)?;
+        if end_ms <= start_ms {
+            return Err(Error::Unsupported("empty trim range".into()));
+        }
+        let id = Self::container_for(input)?;
+        let total = (end_ms - start_ms) as f64 / 1000.0;
+        self.run(
+            trim_args(input, id, output, start_ms, end_ms),
+            Some(total),
+            cancel,
+            progress,
+        )
     }
 
     /// Remove audio (`-an -c:v copy`).
@@ -82,8 +597,13 @@ impl Ffmpeg {
         cancel: &CancelToken,
         progress: &dyn Fn(f32),
     ) -> Result<()> {
-        let _ = (input, output, cancel, progress);
-        todo!("Task C")
+        Self::require_input(input)?;
+        let id = Self::container_for(input)?;
+        if !is_video_container(id) {
+            return Err(Error::Unsupported("mute needs a video file".into()));
+        }
+        let total = self.duration(input);
+        self.run(mute_args(input, id, output), total, cancel, progress)
     }
 
     /// setpts + chained atempo (each 0.5..=2.0) for 0.25..=4.0.
@@ -95,11 +615,22 @@ impl Ffmpeg {
         cancel: &CancelToken,
         progress: &dyn Fn(f32),
     ) -> Result<()> {
-        let _ = (input, output, factor, cancel, progress);
-        todo!("Task C")
+        Self::require_input(input)?;
+        if !(0.25..=4.0).contains(&factor) {
+            return Err(Error::Unsupported(format!("speed factor {factor}")));
+        }
+        let id = Self::container_for(input)?;
+        let total = self.duration(input).map(|d| d / f64::from(factor));
+        self.run(
+            speed_args(input, id, output, factor),
+            total,
+            cancel,
+            progress,
+        )
     }
 
     /// crop=w:h:x:y (even values), audio copied.
+    #[allow(clippy::too_many_arguments)]
     pub fn crop(
         &self,
         input: &Path,
@@ -111,11 +642,25 @@ impl Ffmpeg {
         cancel: &CancelToken,
         progress: &dyn Fn(f32),
     ) -> Result<()> {
-        let _ = (input, output, x, y, width, height, cancel, progress);
-        todo!("Task C")
+        Self::require_input(input)?;
+        let id = Self::container_for(input)?;
+        if !is_video_container(id) {
+            return Err(Error::Unsupported("crop needs a video file".into()));
+        }
+        if width < 2 || height < 2 {
+            return Err(Error::Unsupported("crop size too small".into()));
+        }
+        let total = self.duration(input);
+        self.run(
+            crop_args(input, id, output, x, y, width, height),
+            total,
+            cancel,
+            progress,
+        )
     }
 
     /// Video -> GIF for the downloader's GIF mode (same palette pipeline as `convert` to gif).
+    #[allow(clippy::too_many_arguments)]
     pub fn to_gif(
         &self,
         input: &Path,
@@ -126,7 +671,240 @@ impl Ffmpeg {
         cancel: &CancelToken,
         progress: &dyn Fn(f32),
     ) -> Result<()> {
-        let _ = (input, output, max_width, fps, max_seconds, cancel, progress);
-        todo!("Task C")
+        Self::require_input(input)?;
+        let total = self.duration(input).map(|d| d.min(f64::from(max_seconds)));
+        self.run(
+            gif_args(
+                input,
+                output,
+                max_width.max(16),
+                fps.clamp(1, 60),
+                max_seconds.max(1),
+            ),
+            total,
+            cancel,
+            progress,
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line(args: &[OsString]) -> String {
+        args.iter()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[test]
+    fn progress_lines() {
+        assert_eq!(parse_progress_line("out_time_us=1500000"), Some(1.5));
+        assert_eq!(parse_progress_line("out_time_ms=2000000"), Some(2.0));
+        assert_eq!(parse_progress_line("out_time_us=N/A"), None);
+        assert_eq!(
+            parse_progress_line("out_time_us=-9223372036854775807"),
+            None
+        );
+        assert_eq!(parse_progress_line("progress=end"), None);
+        assert_eq!(parse_progress_line("frame=12"), None);
+    }
+
+    #[test]
+    fn mp4_convert_args() {
+        let a = line(&convert_args(
+            Path::new("in.mkv"),
+            "mp4",
+            Path::new("out.tmp"),
+            &ConvertOptions::default(),
+        ));
+        assert!(a.contains(
+            "-c:v libx264 -crf 23 -preset veryfast -pix_fmt yuv420p -movflags +faststart"
+        ));
+        assert!(a.contains("-c:a aac -b:a 160k"));
+        assert!(a.contains("force_divisible_by=2"));
+        assert!(a.ends_with("-f mp4 out.tmp"));
+    }
+
+    #[test]
+    fn quality_and_scale() {
+        let o = ConvertOptions {
+            quality: Some(50),
+            max_width: Some(640),
+            max_height: Some(360),
+            ..ConvertOptions::default()
+        };
+        let a = line(&convert_args(
+            Path::new("a.mp4"),
+            "webm",
+            Path::new("o"),
+            &o,
+        ));
+        assert!(a.contains("-crf 37"), "{a}");
+        assert!(a.contains("min(iw,640)") && a.contains("min(ih,360)"));
+        assert!(a.contains("libvpx-vp9") && a.contains("libopus"));
+        assert_eq!(x264_crf(Some(75)), 23);
+        assert_eq!(x264_crf(None), 23);
+    }
+
+    #[test]
+    fn audio_targets_drop_video() {
+        let a = line(&convert_args(
+            Path::new("a.mp4"),
+            "mp3",
+            Path::new("o"),
+            &ConvertOptions::default(),
+        ));
+        assert!(a.contains("-vn -map 0:a:0 -c:a libmp3lame -q:a 2"));
+        assert!(a.ends_with("-f mp3 o"));
+        let w = line(&convert_args(
+            Path::new("a.flac"),
+            "wav",
+            Path::new("o"),
+            &ConvertOptions::default(),
+        ));
+        assert!(w.contains("pcm_s16le"));
+        let m = line(&convert_args(
+            Path::new("a.wav"),
+            "m4a",
+            Path::new("o"),
+            &ConvertOptions::default(),
+        ));
+        assert!(m.contains("aac -b:a 192k") && m.ends_with("-f ipod o"));
+    }
+
+    #[test]
+    fn gif_pipeline() {
+        let a = line(&gif_args(
+            Path::new("a.mp4"),
+            Path::new("o.gif"),
+            480,
+            15,
+            60,
+        ));
+        assert!(
+            a.contains("fps=15")
+                && a.contains("min(iw,480)")
+                && a.contains("palettegen")
+                && a.contains("paletteuse")
+        );
+        assert!(a.contains("-t 60") && a.contains("lanczos"));
+    }
+
+    #[test]
+    fn compress_levels() {
+        let l = line(&compress_args(
+            Path::new("a.mp4"),
+            "mp4",
+            Path::new("o"),
+            CompressLevel::Light,
+        ));
+        assert!(l.contains("-crf 26") && l.contains("-b:a 160k"));
+        let s = line(&compress_args(
+            Path::new("a.mp4"),
+            "mp4",
+            Path::new("o"),
+            CompressLevel::Strong,
+        ));
+        assert!(s.contains("-crf 33") && s.contains("-b:a 96k"));
+        let w = line(&compress_args(
+            Path::new("a.webm"),
+            "webm",
+            Path::new("o"),
+            CompressLevel::Balanced,
+        ));
+        assert!(w.contains("-crf 37") && w.contains("-b:a 128k"));
+        let au = line(&compress_args(
+            Path::new("a.mp3"),
+            "mp3",
+            Path::new("o"),
+            CompressLevel::Strong,
+        ));
+        assert!(au.contains("-b:a 96k") && !au.contains("libx264"));
+    }
+
+    #[test]
+    fn trim_uses_accurate_seek_args() {
+        let a = line(&trim_args(
+            Path::new("a.mp4"),
+            "mp4",
+            Path::new("o"),
+            1500,
+            4000,
+        ));
+        assert!(a.starts_with("-ss 1.500 -i a.mp4 -t 2.500"));
+        assert!(a.contains("libx264"));
+    }
+
+    #[test]
+    fn mute_copies_video_only() {
+        let a = line(&mute_args(Path::new("a.mp4"), "mp4", Path::new("o")));
+        assert!(a.contains("-map 0:v:0 -an -c:v copy"));
+        assert!(!a.contains("0:a"));
+    }
+
+    #[test]
+    fn atempo_chains() {
+        assert_eq!(atempo_chain(2.0), "atempo=2");
+        assert_eq!(atempo_chain(1.5), "atempo=1.5");
+        assert_eq!(atempo_chain(4.0), "atempo=2,atempo=2");
+        assert_eq!(atempo_chain(0.25), "atempo=0.5,atempo=0.5");
+        assert_eq!(atempo_chain(3.0), "atempo=2,atempo=1.5");
+        let a = line(&speed_args(Path::new("a.mp4"), "mp4", Path::new("o"), 2.0));
+        assert!(a.contains("setpts=PTS/2"));
+    }
+
+    #[test]
+    fn crop_is_even() {
+        let a = line(&crop_args(
+            Path::new("a.mp4"),
+            "mp4",
+            Path::new("o"),
+            3,
+            5,
+            101,
+            51,
+        ));
+        assert!(a.contains("crop=100:50:2:4"));
+        assert!(a.contains("-c:a copy"));
+    }
+
+    #[test]
+    fn copy_args_have_no_encoder() {
+        let a = line(&copy_args(Path::new("a.mkv"), "mp4", Path::new("o")));
+        assert!(a.contains("-c copy") && a.contains("+faststart"));
+    }
+
+    #[test]
+    fn probe_json() {
+        let p = parse_probe_json(
+            r#"{"streams":[{"codec_name":"h264","codec_type":"video"},{"codec_name":"aac","codec_type":"audio"}],"format":{"duration":"2.000000"}}"#,
+        )
+        .unwrap();
+        assert_eq!(p.duration, Some(2.0));
+        assert_eq!(p.video_codec.as_deref(), Some("h264"));
+        assert_eq!(p.audio_codec.as_deref(), Some("aac"));
+        let none = parse_probe_json(r#"{"streams":[],"format":{"duration":"N/A"}}"#).unwrap();
+        assert_eq!(none.duration, None);
+    }
+
+    #[test]
+    fn duration_from_stderr() {
+        let t = "Input #0, mov\n  Duration: 00:01:02.50, start: 0.000000, bitrate: 1 kb/s";
+        assert_eq!(parse_duration_stderr(t), Some(62.5));
+        assert_eq!(parse_duration_stderr("Duration: N/A, bitrate: N/A"), None);
+    }
+
+    #[test]
+    fn invalid_requests_are_rejected_without_ffmpeg() {
+        let f = Ffmpeg {
+            ffmpeg: PathBuf::from("nonexistent-ffmpeg"),
+            ffprobe: None,
+        };
+        let c = CancelToken::new();
+        let missing = f.mute(Path::new("nope.mp4"), Path::new("o"), &c, &|_| {});
+        assert!(matches!(missing, Err(Error::NotFound(_))));
     }
 }
