@@ -65,8 +65,7 @@
         waiting = false;
         paths = w.paths;
         slices = orderSlices(w.targets, w.recent);
-        // Targets are valid for the dropped files, so the first target's kind stands in for them.
-        firstKind = w.targets[0]?.kind ?? null;
+        firstKind = w.firstKind ?? w.targets[0]?.kind ?? null;
       }),
       on.overlayToast((p) => {
         clear();
@@ -91,7 +90,10 @@
         }
       }),
     ];
-    api.overlayReady().catch(console.error);
+    // Tell Rust we're ready only once every listener is registered (no missed first event).
+    Promise.all(unlisten)
+      .then(() => api.overlayReady())
+      .catch(console.error);
     return () => unlisten.forEach((u) => u.then((f) => f()));
   });
 </script>

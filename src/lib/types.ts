@@ -210,6 +210,8 @@ export interface WheelPayload {
 
 export interface WheelTargets {
   paths: string[];
+  /** Kind of the first dragged file (centre icon). */
+  firstKind: Kind | null;
   targets: TargetOption[];
   recent: string[];
 }

@@ -57,6 +57,8 @@ pub struct WheelPayload {
 #[serde(rename_all = "camelCase")]
 pub struct WheelTargets {
     pub paths: Vec<String>,
+    /// Kind of the first dragged file (centre icon), None if unknown.
+    pub first_kind: Option<fc_core::formats::Kind>,
     pub targets: Vec<fc_core::formats::planner::TargetOption>,
     /// Recently used target ids that are valid here, newest first (max 7).
     pub recent: Vec<String>,

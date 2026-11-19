@@ -411,7 +411,8 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
                     .iter()
                     .map(|p| p.to_string_lossy().into_owned())
                     .collect();
-                let (_, targets) = crate::ipc::targets_for_paths(&paths);
+                let (inputs, targets) = crate::ipc::targets_for_paths(&paths);
+                let first_kind = inputs.first().and_then(|i| i.kind);
                 let recent_all = app.state::<AppState>().settings().recent_targets;
                 let recent = recent_all
                     .into_iter()
@@ -421,6 +422,7 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
                     events::OVERLAY_WHEEL_TARGETS,
                     WheelTargets {
                         paths,
+                        first_kind,
                         targets,
                         recent,
                     },

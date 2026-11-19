@@ -29,7 +29,7 @@ describe('toastView', () => {
   it('shows a reason for failures and falls back for unknown codes', () => {
     setLang('en', 'en');
     expect(toastView(p('jobFailed', { inputName: 'a.png', errorCode: 'unsupported' }), t).body).toBe('a.png · Unsupported format');
-    expect(toastView(p('jobFailed', { inputName: 'a.png', errorCode: 'weird' }), t).body).toContain('error.weird');
+    expect(toastView(p('jobFailed', { inputName: 'a.png', errorCode: 'weird' }), t).body).toBe(`a.png · ${t('error.failed')}`);
   });
   it('formats tool size and clip image dimensions', () => {
     setLang('en', 'en');

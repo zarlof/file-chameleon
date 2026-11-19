@@ -39,7 +39,9 @@ export function toastView(p: ToastPayload, t: T): ToastView {
     }
     case 'jobFailed': {
       const code = String(d.errorCode ?? 'failed');
-      const reason = t(`error.${code}`);
+      const key = `error.${code}`;
+      const translated = t(key);
+      const reason = translated === key ? t('error.failed') : translated;
       const name = String(d.inputName ?? '');
       return {
         title: t('toast.jobFailed.title'),
