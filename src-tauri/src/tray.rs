@@ -75,7 +75,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             "pause" => {
                 let state = app.state::<AppState>();
                 let now = !state.clip_paused.load(Ordering::SeqCst);
-                state.clip_paused.store(now, Ordering::SeqCst);
+                crate::ipc::clipboard::set_paused(app, now);
             }
             "quit" => app.exit(0),
             _ => {}

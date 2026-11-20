@@ -36,7 +36,6 @@
   "copied": "Copied to the clipboard",
   "saved": "Saved to Downloads: {name}",
   "imageSize": "{width} × {height}",
-  "showMore": "Show more",
   "ago": {
     "now": "just now"
   }

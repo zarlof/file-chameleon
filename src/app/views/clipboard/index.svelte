@@ -3,7 +3,7 @@
   Renders at most `limit` rows (PAGE at a time, more on scroll) so very long histories stay cheap.
 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { Clipboard as ClipboardIcon, Search, ShieldCheck, Trash2 } from '@lucide/svelte';
   import { currentLang, t } from '../../../lib/i18n';
   import { api, errorOf, on } from '../../../lib/ipc';
@@ -11,7 +11,7 @@
   import type { ClipItem } from '../../../lib/types';
   import { Button, EmptyState, Sheet, SegmentedControl, TextField, Toggle, toast } from '../../../lib/ui';
   import ClipRow from './ClipRow.svelte';
-  import { baseName, type ClipFilter, ordered, PAGE, relativeTime, withAdded } from './clips';
+  import { baseName, type ClipFilter, ordered, relativeTime, ROW_H, rowWindow, scrollToReveal, withAdded } from './clips';
 
   let items = $state<ClipItem[]>([]);
   let loaded = $state(false);
@@ -19,11 +19,14 @@
   let filter = $state<ClipFilter>('all');
   let paused = $state(false);
   let confirmClear = $state(false);
-  let limit = $state(PAGE);
   let now = $state(Date.now());
+  let list: HTMLElement | undefined = $state();
+  let scrollTop = $state(0);
+  let viewport = $state(600);
 
   const shown = $derived(ordered(items, filter));
-  const visible = $derived(shown.slice(0, limit));
+  const win = $derived(rowWindow(scrollTop, viewport, shown.length));
+  const visible = $derived(shown.slice(win.start, win.end));
   const options = $derived([
     { value: 'all' as const, label: t('clipboard.filter.all') },
     { value: 'links' as const, label: t('clipboard.filter.links') },
@@ -49,27 +52,33 @@
   function onSearch() {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
-      limit = PAGE;
+      resetScroll();
       void load();
     }, 150);
   }
 
+  function resetScroll() {
+    scrollTop = 0;
+    if (list) list.scrollTop = 0;
+  }
+
   onMount(() => {
     void load();
-    const tick = setInterval(() => (now = Date.now()), 60_000);
-    let unlisten: (() => void) | undefined;
+    api.clipGetPaused().then((p) => (paused = p)).catch(() => {});
+    const clock = setInterval(() => (now = Date.now()), 60_000);
+    const unlisten: (() => void)[] = [];
     let disposed = false;
-    on.clipAdded((c) => {
+    const keep = (p: Promise<() => void>) => p.then((u) => (disposed ? u() : unlisten.push(u))).catch(() => {});
+    keep(on.clipAdded((c) => {
       if (query.trim()) void load();
       else items = withAdded(items, c);
-    })
-      .then((u) => (disposed ? u() : (unlisten = u)))
-      .catch(() => {});
+    }));
+    keep(on.clipPaused((p) => (paused = p)));
     return () => {
       disposed = true;
-      clearInterval(tick);
+      clearInterval(clock);
       clearTimeout(searchTimer);
-      unlisten?.();
+      unlisten.forEach((u) => u());
     };
   });
 
@@ -119,13 +128,25 @@
     });
   }
 
-  function togglePause(value: boolean) {
-    void guarded(() => api.clipSetPaused(value));
+  async function togglePause(value: boolean) {
+    try {
+      await api.clipSetPaused(value);
+    } catch (e) {
+      paused = !value; // roll the switch back: the backend state did not change
+      toast.show(errorOf(e).message, 'error');
+    }
   }
 
-  function onScroll(e: Event) {
-    const el = e.currentTarget as HTMLElement;
-    if (limit < shown.length && el.scrollTop + el.clientHeight > el.scrollHeight - 240) limit += PAGE;
+  /** Arrow keys move focus between rows; the target row is scrolled in and mounted first. */
+  async function onListKey(e: KeyboardEvent) {
+    const delta = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+    const row = (e.target as HTMLElement).closest<HTMLElement>('[data-index]');
+    if (!delta || !list || !row) return;
+    e.preventDefault();
+    const index = Math.min(shown.length - 1, Math.max(0, Number(row.dataset.index) + delta));
+    list.scrollTop = scrollTop = scrollToReveal(scrollTop, viewport, index);
+    await tick();
+    list.querySelector<HTMLElement>(`[data-index="${index}"] .row`)?.focus({ preventScroll: true });
   }
 </script>
 
@@ -150,10 +171,12 @@
         {#snippet leading()}<Search size={14} />{/snippet}
       </TextField>
     </div>
-    <SegmentedControl {options} bind:value={filter} size="sm" onchange={() => (limit = PAGE)} />
+    <SegmentedControl {options} bind:value={filter} size="sm" onchange={resetScroll} />
   </div>
 
-  <div class="list" onscroll={onScroll}>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="list" bind:this={list} bind:clientHeight={viewport} onscroll={(e) => (scrollTop = e.currentTarget.scrollTop)}
+    onkeydown={onListKey}>
     {#if !loaded}
       <!-- first load: keep the space, avoid flashing the empty state -->
     {:else if items.length === 0 && !query.trim()}
@@ -168,14 +191,15 @@
         {#snippet icon()}<Search />{/snippet}
       </EmptyState>
     {:else}
-      {#each visible as item (item.id)}
-        <ClipRow {item} when={relativeTime(item.createdAt, now, currentLang(), t('clipboard.ago.now'))}
-          oncopy={() => copy(item)} onpin={() => pin(item)} ondelete={() => remove(item)}
-          ondownload={() => download(item)} onconvert={() => convert(item)} onsave={(f) => save(item, f)} />
+      <div style:height="{win.top}px" aria-hidden="true"></div>
+      {#each visible as item, k (item.id)}
+        <div class="slot" style:height="{ROW_H}px" data-index={win.start + k}>
+          <ClipRow {item} when={relativeTime(item.createdAt, now, currentLang(), t('clipboard.ago.now'))}
+            oncopy={() => copy(item)} onpin={() => pin(item)} ondelete={() => remove(item)}
+            ondownload={() => download(item)} onconvert={() => convert(item)} onsave={(f) => save(item, f)} />
+        </div>
       {/each}
-      {#if shown.length > visible.length}
-        <div class="more"><Button size="sm" variant="plain" onclick={() => (limit += PAGE)}>{t('clipboard.showMore')}</Button></div>
-      {/if}
+      <div style:height="{win.bottom}px" aria-hidden="true"></div>
     {/if}
   </div>
 </section>
@@ -197,7 +221,7 @@
   .tools { display: flex; align-items: center; gap: var(--space-3); flex: none; padding: var(--space-3) 0; }
   .search { flex: 1; min-width: 0; }
   .list { flex: 1; min-height: 0; overflow: auto; margin: 0 calc(-1 * var(--space-3)); padding: 0 var(--space-3) var(--space-6); }
-  .more { display: flex; justify-content: center; padding: var(--space-3) 0; }
+  .slot { box-sizing: border-box; padding-bottom: 4px; }
   .privacy { display: inline-flex; align-items: center; gap: 6px; font: var(--text-callout); color: var(--text-secondary); }
   .confirm { margin: 0; color: var(--text-secondary); }
 </style>

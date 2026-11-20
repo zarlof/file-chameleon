@@ -7,7 +7,7 @@ use fc_core::clip::{ClipItem, ClipKind, ClipStore};
 use std::path::{Path, PathBuf};
 use std::sync::MutexGuard;
 use std::sync::atomic::Ordering;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 fn store(state: &AppState) -> MutexGuard<'_, ClipStore> {
     state.clips().lock().unwrap_or_else(|e| e.into_inner())
@@ -47,8 +47,6 @@ pub fn clip_clear(state: State<'_, AppState>) -> CmdResult<()> {
 pub fn clip_copy(app: AppHandle, state: State<'_, AppState>, id: u64) -> CmdResult<()> {
     let _ = app;
     let item = find(&state, id)?;
-    // Mark first: the listener skips the change our own write causes.
-    state.clip_self_write.store(true, Ordering::SeqCst);
     let written = match item.kind {
         ClipKind::Image => item
             .image
@@ -61,9 +59,9 @@ pub fn clip_copy(app: AppHandle, state: State<'_, AppState>, id: u64) -> CmdResu
             None => Err("item has no text".to_string()),
         },
     };
-    if let Err(e) = written {
-        state.clip_self_write.store(false, Ordering::SeqCst);
-        return Err(CmdError::new("clipboard", e));
+    match written {
+        Ok(seq) => state.clip_self_write.store(seq, Ordering::SeqCst),
+        Err(e) => return Err(CmdError::new("clipboard", e)),
     }
     Ok(())
 }
@@ -140,9 +138,26 @@ fn local_stamp() -> String {
     (fc_core::now_ms() / 1000).to_string()
 }
 
-#[tauri::command]
-pub fn clip_set_paused(state: State<'_, AppState>, paused: bool) {
+/// Event (bool payload) emitted whenever the pause state changes, from any source.
+pub const CLIP_PAUSED: &str = "clip://paused";
+
+/// Change the pause state and tell the webviews. Shared by the command and the tray.
+pub fn set_paused(app: &AppHandle, paused: bool) {
+    let state = app.state::<AppState>();
     state.clip_paused.store(paused, Ordering::SeqCst);
+    let _ = app.emit(CLIP_PAUSED, paused);
+}
+
+#[tauri::command]
+pub fn clip_set_paused(app: AppHandle, paused: bool) {
+    set_paused(&app, paused);
+    // Keep the tray's check mark in sync.
+    crate::tray::refresh(&app);
+}
+
+#[tauri::command]
+pub fn clip_get_paused(state: State<'_, AppState>) -> bool {
+    state.clip_paused.load(Ordering::SeqCst)
 }
 
 #[cfg(all(test, windows))]

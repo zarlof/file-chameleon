@@ -142,11 +142,11 @@ impl ClipStore {
             return Ok(Some(item));
         }
         let (kind, site) = if may_be_url(text) {
-            let kind = super::classify_text(text);
+            let kind = super::classify_text(text.trim());
             let site = if kind == ClipKind::Text {
                 None
             } else {
-                crate::download::classify_url(text).map(|i| {
+                crate::download::classify_url(text.trim()).map(|i| {
                     i.site
                         .map(String::from)
                         .unwrap_or_else(|| i.host.trim_start_matches("www.").to_string())

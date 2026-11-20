@@ -32,23 +32,23 @@ pub fn set_enabled(app: &AppHandle, enabled: bool) {
 
 /// Put text on the clipboard (used by `clip_copy`).
 #[cfg(windows)]
-pub fn write_text(text: &str) -> Result<(), String> {
+pub fn write_text(text: &str) -> Result<u32, String> {
     imp::write_text(text)
 }
 
 /// Put an image on the clipboard as `CF_DIB` + the registered "PNG" format (used by `clip_copy`).
 #[cfg(windows)]
-pub fn write_image(png: &[u8]) -> Result<(), String> {
+pub fn write_image(png: &[u8]) -> Result<u32, String> {
     imp::write_image(png)
 }
 
 #[cfg(not(windows))]
-pub fn write_text(_text: &str) -> Result<(), String> {
+pub fn write_text(_text: &str) -> Result<u32, String> {
     Err("clipboard is only supported on Windows".into())
 }
 
 #[cfg(not(windows))]
-pub fn write_image(_png: &[u8]) -> Result<(), String> {
+pub fn write_image(_png: &[u8]) -> Result<u32, String> {
     Err("clipboard is only supported on Windows".into())
 }
 
@@ -119,14 +119,17 @@ mod imp {
         };
         while let Ok(true) = monitor.recv() {
             let state = app.state::<AppState>();
-            // Our own write: skip exactly one change (flag is cleared by the swap).
-            let own = state.clip_self_write.swap(false, Ordering::SeqCst);
-            if own || !ENABLED.load(Ordering::SeqCst) || state.clip_paused.load(Ordering::SeqCst) {
+            if !ENABLED.load(Ordering::SeqCst) || state.clip_paused.load(Ordering::SeqCst) {
                 continue;
             }
             // Debounce: many apps publish several updates for one copy.
             std::thread::sleep(DEBOUNCE);
             while let Ok(true) = monitor.try_recv() {}
+            // Our own write (any number of updates it caused) ends at the stored sequence number.
+            let own = state.clip_self_write.load(Ordering::SeqCst);
+            if own != 0 && seq() == own {
+                continue;
+            }
             // A panic must never kill capture for the rest of the session.
             let _ = catch_unwind(AssertUnwindSafe(|| handle(app, &state)));
         }
@@ -231,6 +234,7 @@ mod imp {
         let now = fc_core::now_ms();
         let item = {
             let mut store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
+            let first_before = store.items().first().map(|i| i.id);
             let added = match &captured {
                 Captured::Text(t) => store.add_text(t, now),
                 Captured::Image { png, w, h } => store.add_image_png(png, *w, *h, now),
@@ -241,6 +245,10 @@ mod imp {
                 settings.clipboard_retention_days,
                 settings.clipboard_max_items as usize,
             );
+            // The same content copied again while it is already on top: nothing new to announce.
+            if first_before == Some(item.id) {
+                return;
+            }
             item
         };
         let _ = app.emit(events::CLIP_ADDED, &item);
@@ -277,19 +285,30 @@ mod imp {
         });
     }
 
-    pub fn write_text(text: &str) -> Result<(), String> {
-        let _guard = Clipboard::new_attempts(10).map_err(|e| e.to_string())?;
-        raw::set_string(text).map_err(|e| e.to_string())
+    /// Clipboard sequence number (0 if unavailable).
+    pub fn seq() -> u32 {
+        raw::seq_num().map_or(0, |n| n.get())
     }
 
-    pub fn write_image(png: &[u8]) -> Result<(), String> {
-        let dib = history::png_to_dib(png).map_err(|e| e.to_string())?;
-        let _guard = Clipboard::new_attempts(10).map_err(|e| e.to_string())?;
-        raw::set(CF_DIB, &dib).map_err(|e| e.to_string())?;
-        let f = formats();
-        if f.png != 0 {
-            raw::set_without_clear(f.png, png).map_err(|e| e.to_string())?;
+    /// Both writers return the sequence number after the write completed (clipboard closed).
+    pub fn write_text(text: &str) -> Result<u32, String> {
+        {
+            let _guard = Clipboard::new_attempts(10).map_err(|e| e.to_string())?;
+            raw::set_string(text).map_err(|e| e.to_string())?;
         }
-        Ok(())
+        Ok(seq())
+    }
+
+    pub fn write_image(png: &[u8]) -> Result<u32, String> {
+        let dib = history::png_to_dib(png).map_err(|e| e.to_string())?;
+        {
+            let _guard = Clipboard::new_attempts(10).map_err(|e| e.to_string())?;
+            raw::set(CF_DIB, &dib).map_err(|e| e.to_string())?;
+            let f = formats();
+            if f.png != 0 {
+                raw::set_without_clear(f.png, png).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(seq())
     }
 }

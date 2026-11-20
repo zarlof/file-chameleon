@@ -36,7 +36,6 @@
   "copied": "Panoya kopyalandı",
   "saved": "İndirilenler'e kaydedildi: {name}",
   "imageSize": "{width} × {height}",
-  "showMore": "Daha fazla göster",
   "ago": {
     "now": "az önce"
   }

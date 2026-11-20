@@ -2,8 +2,36 @@ import type { ClipItem } from '../../../lib/types';
 
 export type ClipFilter = 'all' | 'links' | 'text' | 'images';
 
-/** Rows rendered at once; more are revealed on scroll / "show more". */
-export const PAGE = 60;
+/** Every row slot has this height (px), so the visible slice is plain arithmetic. */
+export const ROW_H = 92;
+export const OVERSCAN = 10;
+
+export interface RowWindow {
+  /** First rendered index. */
+  start: number;
+  /** One past the last rendered index. */
+  end: number;
+  /** Spacer heights (px) standing in for the rows that are not rendered. */
+  top: number;
+  bottom: number;
+}
+
+/** Slice of `total` fixed-height rows to render for a viewport at `scrollTop`, plus `overscan` rows each side. */
+export function rowWindow(scrollTop: number, viewport: number, total: number, rowH = ROW_H, overscan = OVERSCAN): RowWindow {
+  const first = Math.floor(Math.max(0, scrollTop) / rowH);
+  const last = Math.ceil((Math.max(0, scrollTop) + Math.max(0, viewport)) / rowH);
+  const start = Math.min(Math.max(0, first - overscan), total);
+  const end = Math.min(total, Math.max(start, last + overscan));
+  return { start, end, top: start * rowH, bottom: (total - end) * rowH };
+}
+
+/** New scrollTop that brings row `index` fully into view (unchanged if it already is). */
+export function scrollToReveal(scrollTop: number, viewport: number, index: number, rowH = ROW_H): number {
+  const top = index * rowH;
+  if (top < scrollTop) return top;
+  if (top + rowH > scrollTop + viewport) return top + rowH - viewport;
+  return scrollTop;
+}
 
 export function matchesFilter(item: ClipItem, filter: ClipFilter): boolean {
   switch (filter) {

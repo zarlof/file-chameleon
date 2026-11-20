@@ -96,7 +96,9 @@
 
 <style>
   .row {
-    display: flex; align-items: flex-start; gap: var(--space-3); padding: 10px var(--space-3); border-radius: var(--radius-md);
+    /* Fixed height (slot is ROW_H = 92): the list is windowed by arithmetic. */
+    display: flex; align-items: center; gap: var(--space-3); height: 88px; box-sizing: border-box; overflow: hidden;
+    padding: 6px var(--space-3); border-radius: var(--radius-md);
     outline: 0; transition: background var(--dur-fast) var(--ease-out);
   }
   .row:hover, .row:focus-visible { background: var(--control-bg); }
