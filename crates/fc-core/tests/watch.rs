@@ -4,7 +4,7 @@ use fc_core::watch::{Scanner, WatchSpec, is_temp_name};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-const SETTLE: Duration = Duration::from_secs(5);
+const SETTLE: Duration = Duration::from_secs(2);
 
 fn spec(dir: &Path) -> WatchSpec {
     WatchSpec {
@@ -42,16 +42,35 @@ fn waits_until_file_is_stable() {
     assert!(fired(&mut sc, t0).is_empty());
     std::fs::write(&f, "one two").unwrap();
     assert!(fired(&mut sc, t0 + Duration::from_secs(3)).is_empty());
-    assert!(fired(&mut sc, t0 + Duration::from_secs(6)).is_empty());
     assert_eq!(
-        fired(&mut sc, t0 + Duration::from_secs(9)),
+        fired(&mut sc, t0 + Duration::from_secs(6)),
         std::slice::from_ref(&f)
     );
-    assert!(fired(&mut sc, t0 + Duration::from_secs(12)).is_empty());
-    // A later change fires again.
+    assert!(fired(&mut sc, t0 + Duration::from_secs(9)).is_empty());
+    // A later change fires again, once it settles.
     std::fs::write(&f, "one two three").unwrap();
-    assert!(fired(&mut sc, t0 + Duration::from_secs(15)).is_empty());
-    assert_eq!(fired(&mut sc, t0 + Duration::from_secs(21)), [f]);
+    assert!(fired(&mut sc, t0 + Duration::from_secs(12)).is_empty());
+    assert_eq!(fired(&mut sc, t0 + Duration::from_secs(15)), [f]);
+}
+
+#[test]
+fn ignored_set_evicts_oldest_instead_of_forgetting_everything() {
+    let d = tempfile::tempdir().unwrap();
+    let t0 = Instant::now();
+    let mut sc = Scanner::new(SETTLE);
+    sc.set_specs(vec![spec(d.path())], t0);
+    let mine = d.path().join("mine.png");
+    std::fs::write(&mine, "1").unwrap();
+    for n in 0..10_001 {
+        sc.ignore(d.path().join(format!("other-{n}.png")));
+    }
+    sc.ignore(mine.clone());
+    for n in 0..9_000 {
+        sc.ignore(d.path().join(format!("later-{n}.png")));
+    }
+    // `mine` is still among the 10 000 newest entries.
+    fired(&mut sc, t0);
+    assert!(fired(&mut sc, t0 + Duration::from_secs(10)).is_empty());
 }
 
 #[test]

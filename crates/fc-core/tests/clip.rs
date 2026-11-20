@@ -75,6 +75,34 @@ fn v1_index_migrates() {
 }
 
 #[test]
+fn serialized_keys_match_the_typescript_clip_item() {
+    let src = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../src/lib/types.ts"
+    ))
+    .unwrap();
+    let body = src
+        .split("export interface ClipItem {")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}").next())
+        .unwrap();
+    let mut ts: Vec<String> = body
+        .lines()
+        .filter(|l| l.starts_with("  ") && !l.trim_start().starts_with(['/', '*']))
+        .filter_map(|l| l.trim().split([':', '?']).next().map(str::to_string))
+        .collect();
+    ts.sort();
+    assert_eq!(ts.len(), 23, "{ts:?}");
+
+    let (_d, mut s) = store();
+    let item = s.add_text("x", 1).unwrap().unwrap();
+    let json = serde_json::to_value(&item).unwrap();
+    let mut rust: Vec<String> = json.as_object().unwrap().keys().cloned().collect();
+    rust.sort();
+    assert_eq!(rust, ts);
+}
+
+#[test]
 fn blank_and_oversized_text_are_skipped() {
     let (_d, mut s) = store();
     assert!(s.add_text("  \n\t", 1).unwrap().is_none());

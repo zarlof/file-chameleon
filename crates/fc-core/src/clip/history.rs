@@ -212,16 +212,24 @@ fn write_png_pair(png: &[u8], image_path: &Path, thumb_path: &Path) -> Result<()
     let img = image::load_from_memory_with_format(png, image::ImageFormat::Png)
         .map_err(|e| Error::Failed(e.to_string()))?;
     let thumb = thumbnail(img);
-    let written = std::fs::write(image_path, png)
+    // Write next to the targets and rename into place, so a failure never touches existing files.
+    let tmp_image = image_path.with_extension("tmp");
+    let tmp_thumb = thumb_path.with_extension("tmp");
+    let written = std::fs::write(&tmp_image, png)
         .map_err(Error::from)
         .and_then(|()| {
             thumb
-                .save_with_format(thumb_path, image::ImageFormat::Png)
+                .save_with_format(&tmp_thumb, image::ImageFormat::Png)
                 .map_err(|e| Error::Failed(e.to_string()))
+        })
+        .and_then(|()| {
+            std::fs::rename(&tmp_image, image_path)?;
+            std::fs::rename(&tmp_thumb, thumb_path)?;
+            Ok(())
         });
     if written.is_err() {
-        let _ = std::fs::remove_file(image_path);
-        let _ = std::fs::remove_file(thumb_path);
+        let _ = std::fs::remove_file(&tmp_image);
+        let _ = std::fs::remove_file(&tmp_thumb);
     }
     written
 }
@@ -945,6 +953,27 @@ mod tests {
         assert_eq!(s.items().len(), 1);
         assert!(s.add_image_png(b"not a png", 1, 1, 1).is_err());
         assert_eq!(s.items().len(), 1);
+    }
+
+    #[test]
+    fn failed_edit_save_keeps_the_previous_edit() {
+        let (_d, mut s) = store();
+        let it = s
+            .add_image_png(&png(20, 20, 1), 20, 20, 1)
+            .unwrap()
+            .unwrap();
+        let good = s.save_edited(it.id, &png(10, 10, 2)).unwrap();
+        let path = good.edited.clone().unwrap();
+        let before = std::fs::read(&path).unwrap();
+        // A directory squats on the thumbnail's temp name, so the second save fails mid-way.
+        std::fs::create_dir(s.img_dir().join(format!("{}.edit.thumb.tmp", it.id))).unwrap();
+        assert!(s.save_edited(it.id, &png(12, 12, 3)).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(
+            s.get(it.id).unwrap().edited.as_deref(),
+            Some(path.as_path())
+        );
+        assert!(!s.img_dir().join(format!("{}.edit.tmp", it.id)).exists());
     }
 
     #[test]

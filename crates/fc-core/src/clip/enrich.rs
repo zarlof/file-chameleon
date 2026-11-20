@@ -73,8 +73,16 @@ pub fn is_private_or_secret(url: &str) -> bool {
     {
         return true;
     }
-    if host.chars().all(|c| c.is_ascii_digit() || c == '.') {
-        // A dotted quad, or an odd numeric form we refuse to guess about.
+    let numeric_label = |l: &str| {
+        let hex = l
+            .strip_prefix("0x")
+            .or_else(|| l.strip_prefix("0X"))
+            .is_some_and(|h| h.chars().all(|c| c.is_ascii_hexdigit()));
+        hex || (!l.is_empty() && l.chars().all(|c| c.is_ascii_digit()))
+    };
+    if host.split('.').all(numeric_label) {
+        // A strict dotted quad, or an inet_aton-style form (hex, octal, short) that some resolvers
+        // accept: those we refuse to guess about.
         let public = host
             .parse::<IpAddr>()
             .is_ok_and(|ip| matches!(ip, IpAddr::V4(v4) if !private_v4(v4)));
@@ -292,6 +300,10 @@ mod tests {
             "http://printer.local/",
             "http://nas/",
             "http://2130706433/",
+            "http://0x7f.0.0.1/",
+            "http://0xC0A80001/",
+            "http://0x7f.1/",
+            "http://017700000001.1/",
             "ftp://example.com/",
             "https://user:pw@example.com/",
             "not a url",

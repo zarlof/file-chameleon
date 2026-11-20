@@ -4,7 +4,7 @@
 //! A file fires once its size and modified time have not changed for `settle` and it can be
 //! opened for reading; folders already holding files when watching starts never fire for those.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -60,6 +60,8 @@ pub struct Scanner {
     settle: Duration,
     specs: Vec<SpecState>,
     ignored: HashSet<PathBuf>,
+    /// Insertion order of `ignored`, oldest first.
+    ignored_order: VecDeque<PathBuf>,
 }
 
 impl Scanner {
@@ -68,6 +70,7 @@ impl Scanner {
             settle,
             specs: Vec::new(),
             ignored: HashSet::new(),
+            ignored_order: VecDeque::new(),
         }
     }
 
@@ -93,10 +96,17 @@ impl Scanner {
 
     /// Never fire for this path (an output the app wrote itself).
     pub fn ignore(&mut self, path: PathBuf) {
-        if self.ignored.len() >= MAX_IGNORED {
-            self.ignored.clear();
+        let key = norm(&path);
+        if self.ignored.insert(key.clone()) {
+            self.ignored_order.push_back(key);
         }
-        self.ignored.insert(norm(&path));
+        // Evict the oldest entries one by one: clearing everything would make self-written
+        // outputs look new again.
+        while self.ignored_order.len() > MAX_IGNORED {
+            if let Some(old) = self.ignored_order.pop_front() {
+                self.ignored.remove(&old);
+            }
+        }
     }
 
     /// Scan every folder; returns `(spec id, path)` of files that settled since the last tick.
