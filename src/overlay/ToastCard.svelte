@@ -39,10 +39,11 @@
 </div>
 
 <style>
+  /* The window sits at the bottom right of the work area: the card hugs its bottom edge. */
   .card {
     position: absolute;
     left: 12px;
-    top: 12px;
+    bottom: 12px;
     width: 380px;
     box-sizing: border-box;
     min-height: 84px;

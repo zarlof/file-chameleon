@@ -40,10 +40,12 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Passed as data, never pasted into the script (a tag name could carry code).
+          TAG: ${{ github.ref_name }}
         run: |
           $files = Get-ChildItem -Recurse target/release/bundle/nsis -Filter *.exe
           foreach ($f in $files) {
             $hash = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower()
             "$hash  $($f.Name)" | Out-File -Encoding ascii "$($f.FullName).sha256"
-            gh release upload "${{ github.ref_name }}" "$($f.FullName).sha256" --clobber
+            gh release upload "$env:TAG" "$($f.FullName).sha256" --clobber
           }

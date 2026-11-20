@@ -312,7 +312,8 @@ language from `api.getSettings()` + `api.appInfo()`; do not import `src/app/**`)
 - Look: frosted dark/light glass disc (no `backdrop-filter` — use translucent fill
   `color-mix(in srgb, var(--elevated-bg) 92%, transparent)`, hairline border, `--shadow-lg`,
   `--glass-edge`), appear animation scale 0.85→1 + fade in 180 ms spring.
-- Toasts (macOS notification banner look, top-right): 380×~110 card, radius 18, app icon
+- Toasts (macOS notification banner look, bottom-right of the work area, so they never cover
+  the caption buttons of maximized windows): 380×~110 card, radius 18, app icon
   (`/src-tauri/icons/64x64.png` copied into `public/`? — no: use an inline SVG chameleon mark
   or the Lucide `Sparkles` icon), title + body localized per `kind` (see `ToastPayload` docs in
   `src-tauri/src/events.rs` for kinds, data and actions), up to 2 action buttons + close (×) on

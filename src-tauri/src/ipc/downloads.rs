@@ -9,7 +9,7 @@ use fc_core::download::{
 };
 use fc_core::{CancelToken, Error};
 use serde_json::json;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -115,6 +115,46 @@ impl Downloads {
         let g = self.inner.lock().unwrap();
         g.items.iter().map(|e| e.snap.clone()).collect()
     }
+
+    /// Cancel every download still running (used on quit).
+    pub fn cancel_all(&self) {
+        let g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        for e in g.items.iter().filter(|e| !finished(e.snap.state)) {
+            e.cancel.cancel();
+        }
+    }
+
+    /// True while any download has not reached a final state (its cleanup is not done yet).
+    pub fn any_active(&self) -> bool {
+        let g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        g.items.iter().any(|e| !finished(e.snap.state))
+    }
+}
+
+/// Remove entries of the download staging folder older than `max_age`: partial files left by a
+/// crash, or by a cancel whose cleanup failed. Run once, shortly after startup.
+pub fn sweep_staging(dir: &Path, max_age: Duration) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let now = std::time::SystemTime::now();
+    for entry in entries.flatten() {
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| now.duration_since(t).ok())
+            .is_some_and(|age| age >= max_age);
+        if !old {
+            continue;
+        }
+        let path = entry.path();
+        let _ = if path.is_dir() {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
+    }
 }
 
 /// UI error code and short message. A missing tool carries its manifest id as the message.
@@ -153,12 +193,14 @@ pub async fn probe_url(app: AppHandle, url: String) -> CmdResult<MediaInfo> {
     .map_err(cmd_error)
 }
 
+/// Async: finding yt-dlp may run it (`--version`, for the minimum version check).
 #[tauri::command]
-pub fn start_download(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    req: DownloadRequest,
-) -> CmdResult<u64> {
+pub async fn start_download(app: AppHandle, req: DownloadRequest) -> CmdResult<u64> {
+    super::blocking(move || start(app, req)).await?
+}
+
+fn start(app: AppHandle, req: DownloadRequest) -> CmdResult<u64> {
+    let state = app.state::<AppState>();
     let link = download::classify_url(&req.url)
         .ok_or_else(|| CmdError::new("unsupported", "not a web link"))?;
     let mut req = req;
@@ -190,7 +232,8 @@ pub fn start_download(
     let id = snap.id;
     let _ = app.emit(events::DOWNLOAD_UPDATE, snap);
 
-    std::thread::spawn(move || run(app, id, req, uses_ytdlp, cancel));
+    let app2 = app.clone();
+    std::thread::spawn(move || run(app2, id, req, uses_ytdlp, cancel));
     Ok(id)
 }
 
@@ -207,7 +250,11 @@ fn run(app: AppHandle, id: u64, req: DownloadRequest, uses_ytdlp: bool, cancel: 
             .downloads
             .update(&app, id, false, |s| s.state = DlState::Downloading);
     }
-    let staging = state.paths.staging_dir().join(format!("dl-{id}"));
+    // Ids restart at 1 every run: the time keeps a leftover folder from an earlier run apart.
+    let staging = state
+        .paths
+        .staging_dir()
+        .join(format!("dl-{}-{id}", fc_core::now_ms()));
     let cookies = state.settings().cookies_browser;
     let engines = state.engines().clone();
     let downloads = &state.downloads;
@@ -245,6 +292,7 @@ fn run(app: AppHandle, id: u64, req: DownloadRequest, uses_ytdlp: bool, cancel: 
                 s.output = Some(path.clone());
             });
             if !windows::main_is_active(&app) {
+                // Runs on the main thread (show_toast dispatches there itself).
                 windows::show_toast(
                     &app,
                     "downloadDone",
@@ -325,5 +373,44 @@ mod tests {
         assert!(d.cancel(a.id));
         assert!(token.is_cancelled());
         assert!(!d.cancel(999));
+    }
+
+    #[test]
+    fn cancel_all_stops_running_downloads() {
+        let d = Downloads::default();
+        let (_, a) = d.add("https://x.com/a.mp4", "a".into());
+        let (_, b) = d.add("https://x.com/b.mp4", "b".into());
+        assert!(d.any_active());
+        d.cancel_all();
+        assert!(a.is_cancelled() && b.is_cancelled());
+        // Still active until the download threads report their final state.
+        assert!(d.any_active());
+        for e in d.inner.lock().unwrap().items.iter_mut() {
+            e.snap.state = DlState::Cancelled;
+        }
+        assert!(!d.any_active());
+    }
+
+    #[test]
+    fn sweep_removes_only_old_leftovers() {
+        // No tempfile crate in this package: a unique folder under the temp dir.
+        let dir = std::env::temp_dir().join(format!(
+            "fc-sweep-test-{}-{}",
+            std::process::id(),
+            fc_core::now_ms()
+        ));
+        let part = dir.join("dl-1-3");
+        std::fs::create_dir_all(part.join("part")).unwrap();
+        std::fs::write(part.join("part").join("a.mp4.part"), b"x").unwrap();
+        std::fs::write(dir.join("stray.tmp"), b"x").unwrap();
+        // Fresh entries survive a sweep with a long age limit...
+        sweep_staging(&dir, Duration::from_secs(300));
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2);
+        // ...and old ones (age >= 0 here) are removed, folders included.
+        sweep_staging(&dir, Duration::ZERO);
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
+        // A missing folder is fine.
+        sweep_staging(&dir.join("nope"), Duration::ZERO);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -12,12 +12,14 @@
   type Mode = 'none' | 'wheel' | 'toast';
   let mode = $state<Mode>('none');
 
-  // wheel
+  // wheel: nothing is drawn until the dragged files are known (`waiting`), so Ctrl+drags of
+  // text or a marquee selection leave no trace while the (needed) window is up.
   let waiting = $state(true);
   let slices = $state<TargetOption[]>([]);
   let paths = $state<string[]>([]);
   let hovered = $state(-1);
   let firstKind = $state<Kind | null>(null);
+  let missingTools = $state<string[]>([]);
   let wheelKey = $state(0);
 
   // toast
@@ -31,6 +33,7 @@
     paths = [];
     hovered = -1;
     firstKind = null;
+    missingTools = [];
     toast = null;
     clearTimeout(toastTimer);
   }
@@ -48,8 +51,14 @@
   function toastAction(id: string) {
     if (!toast) return;
     const { kind, data } = toast;
-    if (id !== 'dismiss') api.overlayToastAction(kind, id, data).catch(console.error);
-    closeToast();
+    if (id === 'dismiss') {
+      closeToast();
+      return;
+    }
+    // Rust hides the overlay itself before acting, so a follow-up toast (e.g. "Image saved")
+    // is not hidden by a late overlay_hide from here.
+    clear();
+    api.overlayToastAction(kind, id, data).catch(console.error);
   }
 
   onMount(() => {
@@ -66,6 +75,7 @@
         paths = w.paths;
         slices = orderSlices(w.targets, w.recent);
         firstKind = w.firstKind ?? w.targets[0]?.kind ?? null;
+        missingTools = w.missingTools ?? [];
       }),
       on.overlayToast((p) => {
         clear();
@@ -75,7 +85,7 @@
       }),
       on.overlayHide(clear),
       getCurrentWebview().onDragDropEvent((e) => {
-        if (mode !== 'wheel') return;
+        if (mode !== 'wheel' || waiting) return;
         const p = e.payload;
         if (p.type === 'enter' || p.type === 'over') {
           hovered = hit(p.position);
@@ -98,9 +108,9 @@
   });
 </script>
 
-{#if mode === 'wheel'}
+{#if mode === 'wheel' && !waiting}
   {#key wheelKey}
-    <Wheel {slices} {hovered} {waiting} fileCount={paths.length} {firstKind} />
+    <Wheel {slices} {hovered} fileCount={paths.length} {firstKind} {missingTools} />
   {/key}
 {:else if mode === 'toast' && toast && view}
   {#key toast.id}

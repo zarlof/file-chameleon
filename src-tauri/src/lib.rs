@@ -15,8 +15,11 @@ pub fn run() {
     let background = std::env::args().any(|a| a == "--background");
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            windows::show_main(app, None);
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // A second autostart launch (--background) must not pop the window up.
+            if !args.iter().any(|a| a == "--background") {
+                windows::show_main(app, None);
+            }
         }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -35,7 +38,8 @@ pub fn run() {
             }
             platform::start(&handle);
             // Apply clipboard retention shortly after start (opening the store prunes it), so
-            // expired items are removed even if nothing is copied. Delayed to keep startup light.
+            // expired items are removed even if nothing is copied, and remove download leftovers
+            // of earlier runs (crash, failed cleanup). Delayed to keep startup light.
             let h = handle.clone();
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(10));
@@ -43,6 +47,11 @@ pub fn run() {
                 if state.settings().clipboard_enabled {
                     let _ = state.clips();
                 }
+                // This run's downloads are at most ~10 s old here.
+                ipc::downloads::sweep_staging(
+                    &state.paths.staging_dir(),
+                    std::time::Duration::from_secs(5 * 60),
+                );
             });
             Ok(())
         })
@@ -58,6 +67,8 @@ pub fn run() {
             ipc::clear_jobs,
             ipc::tools_status,
             ipc::install_tool,
+            ipc::install_and_submit,
+            ipc::update_ytdlp,
             ipc::uninstall_tool,
             ipc::downloads::probe_url,
             ipc::downloads::start_download,

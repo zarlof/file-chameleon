@@ -70,6 +70,23 @@ export function toastView(p: ToastPayload, t: T): ToastView {
         thumb: null,
       };
     }
+    case 'toolInstalling':
+      return {
+        title: t('toast.toolInstalling.title', { name: String(d.name ?? d.tool ?? '') }),
+        body: t('toast.toolInstalling.body'),
+        actions: [],
+        thumb: null,
+      };
+    case 'toolFailed': {
+      const code = String(d.errorCode ?? 'failed');
+      const translated = t(`error.${code}`);
+      return {
+        title: t('toast.toolFailed.title', { name: String(d.name ?? d.tool ?? '') }),
+        body: translated === `error.${code}` ? t('error.failed') : translated,
+        actions: [],
+        thumb: null,
+      };
+    }
     case 'clipLink': {
       const site = String(d.site ?? '');
       return {
@@ -85,6 +102,13 @@ export function toastView(p: ToastPayload, t: T): ToastView {
         body: `${d.width ?? '?'}×${d.height ?? '?'}`,
         actions: [a('savePng'), a('convert')],
         thumb: typeof d.thumb === 'string' ? d.thumb : null,
+      };
+    case 'imageSaved':
+      return {
+        title: t('toast.imageSaved.title'),
+        body: baseName(d.output),
+        actions: [a('reveal'), a('open')],
+        thumb: null,
       };
     case 'downloadDone':
       return {

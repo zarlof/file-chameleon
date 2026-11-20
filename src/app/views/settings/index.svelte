@@ -7,10 +7,11 @@
   import { open } from '@tauri-apps/plugin-dialog';
   import { onDestroy } from 'svelte';
   import { t } from '../../../lib/i18n';
+  import { errorOf } from '../../../lib/ipc';
   import { settings } from '../../../lib/stores/settings.svelte';
   import { tools } from '../../../lib/stores/tools.svelte';
   import type { Accent, Settings, ToolStatus } from '../../../lib/types';
-  import { Badge, Button, Card, ListRow, ProgressBar, SectionHeader, SegmentedControl, Select, Slider, Toggle, formatBytes } from '../../../lib/ui';
+  import { Badge, Button, Card, ListRow, ProgressBar, SectionHeader, SegmentedControl, Select, Slider, Toggle, formatBytes, toast } from '../../../lib/ui';
 
   type Section = 'general' | 'wheel' | 'clipboard' | 'output' | 'engines' | 'about';
   const sections: { id: Section; icon: typeof Gear }[] = [
@@ -84,6 +85,20 @@
     return text === key ? tool.purpose : text;
   }
   const badgeTone = { managed: 'accent', system: 'green', missing: 'orange' } as const;
+
+  // yt-dlp breaks when sites change: let the user fetch the newest build right away.
+  let updating = $state(false);
+  async function updateYtdlp() {
+    updating = true;
+    try {
+      const updated = await tools.updateYtdlp();
+      toast.show(t(updated ? 'settings.engines.updated' : 'settings.engines.upToDate', { name: 'yt-dlp' }), 'success');
+    } catch (e) {
+      toast.show(t('settings.engines.updateFailed', { message: errorOf(e).message }), 'error', 6000);
+    } finally {
+      updating = false;
+    }
+  }
 </script>
 
 <section>
@@ -207,8 +222,18 @@
                       <Button size="sm" variant="primary" loading={installing} disabled={installing} onclick={() => tools.install(tool.id)}>
                         {installing ? t('settings.engines.installing') : `${t('settings.engines.install')} (${formatBytes(tool.size)})`}
                       </Button>
+                    {:else if tool.source === 'system'}
+                      <!-- A managed copy replaces a broken or outdated one on PATH (managed is used first). -->
+                      <Button size="sm" loading={installing} disabled={installing} onclick={() => tools.install(tool.id)}>
+                        {installing ? t('settings.engines.installing') : `${t('settings.engines.installManaged')} (${formatBytes(tool.size)})`}
+                      </Button>
                     {:else if tool.source === 'managed'}
-                      <Button size="sm" disabled={installing} onclick={() => tools.uninstall(tool.id)}>{t('settings.engines.remove')}</Button>
+                      {#if tool.id === 'yt-dlp'}
+                        <Button size="sm" loading={updating} disabled={updating || installing} onclick={updateYtdlp}>
+                          {updating ? t('settings.engines.updating') : t('settings.engines.update')}
+                        </Button>
+                      {/if}
+                      <Button size="sm" disabled={installing || (tool.id === 'yt-dlp' && updating)} onclick={() => tools.uninstall(tool.id)}>{t('settings.engines.remove')}</Button>
                     {/if}
                   {/snippet}
                   <span class="meta">

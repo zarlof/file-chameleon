@@ -58,6 +58,9 @@ pub struct ConvertOptions {
     pub max_height: Option<u32>,
     /// `None` = next to the source file.
     pub output_dir: Option<PathBuf>,
+    /// Base name (no extension, no folders) for outputs instead of the input's stem. The shell
+    /// sets it for clipboard images, whose stored file names mean nothing to the user.
+    pub output_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

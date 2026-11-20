@@ -147,6 +147,7 @@ pub fn probe_any(
 
 /// Download any link into `req.out_dir` (routing as in [`probe_any`]). `staging` is a scratch
 /// folder owned by this download; it is removed afterwards. Direct links ignore the mode.
+/// The finished file carries the Mark of the Web (see [`mark_of_the_web`]).
 pub fn download_any(
     tools: &dyn ToolLocator,
     req: &DownloadRequest,
@@ -158,14 +159,63 @@ pub fn download_any(
     let link = link_of(&req.url)?;
     let mut req = req.clone();
     req.url = link.url.clone();
-    if matches!(link.kind, LinkKind::DirectImage | LinkKind::DirectMedia) {
-        return direct::download_direct(&req.url, &req.out_dir, progress, cancel);
+    let result = if matches!(link.kind, LinkKind::DirectImage | LinkKind::DirectMedia) {
+        direct::download_direct(&req.url, &req.out_dir, progress, cancel)
+    } else {
+        match ytdlp::download(tools, &req, staging, cookies_browser, progress, cancel) {
+            Err(e) if ytdlp::is_no_video(&e) => match direct::og_image(&req.url) {
+                Some(image) => direct::download_direct(&image, &req.out_dir, progress, cancel),
+                None => Err(e),
+            },
+            other => other,
+        }
+    };
+    if let Ok(path) = &result {
+        // Best effort: FAT/exFAT volumes have no alternate data streams.
+        let _ = mark_of_the_web(path, &req.url);
     }
-    match ytdlp::download(tools, &req, staging, cookies_browser, progress, cancel) {
-        Err(e) if ytdlp::is_no_video(&e) => match direct::og_image(&req.url) {
-            Some(image) => direct::download_direct(&image, &req.out_dir, progress, cancel),
-            None => Err(e),
-        },
-        other => other,
+    result
+}
+
+/// Mark a downloaded file as coming from the internet, like browsers do: an NTFS alternate data
+/// stream `<file>:Zone.Identifier` with `ZoneId=3`, so Windows (SmartScreen, Office protected
+/// view) treats it with care. No-op on other systems.
+pub fn mark_of_the_web(path: &Path, url: &str) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        let host_url: String = url.chars().filter(|c| !c.is_control()).collect();
+        let mut stream = path.as_os_str().to_owned();
+        stream.push(":Zone.Identifier");
+        std::fs::write(
+            PathBuf::from(stream),
+            format!("[ZoneTransfer]\r\nZoneId=3\r\nHostUrl={host_url}\r\n"),
+        )
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (path, url);
+        Ok(())
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mark_of_the_web_writes_the_zone_stream() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("clip.mp4");
+        std::fs::write(&file, b"data").unwrap();
+        mark_of_the_web(&file, "https://example.com/a.mp4?x=1\r\nZoneId=0").unwrap();
+        let mut stream = file.as_os_str().to_owned();
+        stream.push(":Zone.Identifier");
+        assert_eq!(
+            std::fs::read_to_string(PathBuf::from(stream)).unwrap(),
+            "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://example.com/a.mp4?x=1ZoneId=0\r\n"
+        );
+        // The file itself is untouched and no extra directory entry appears.
+        assert_eq!(std::fs::read(&file).unwrap(), b"data");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 }

@@ -211,6 +211,28 @@ mod run {
     }
 
     impl Job<'_> {
+        /// The path outputs are named after: `input`, or `<output_name>.<input ext>` beside it.
+        fn naming_input(&self, input: &Path) -> PathBuf {
+            let name = self
+                .options
+                .output_name
+                .as_deref()
+                .map(str::trim)
+                .and_then(|n| Path::new(n).file_name())
+                .filter(|n| !n.is_empty());
+            match name {
+                Some(n) => {
+                    let mut file = n.to_os_string();
+                    if let Some(ext) = input.extension() {
+                        file.push(".");
+                        file.push(ext);
+                    }
+                    input.with_file_name(file)
+                }
+                None => input.to_path_buf(),
+            }
+        }
+
         fn check_cancel(&self) -> Result<()> {
             if self.cancel.is_cancelled() {
                 Err(Error::Cancelled)
@@ -279,7 +301,8 @@ mod run {
             }
             if let Operation::MergePdf = op {
                 let out_dir = self.options.output_dir.as_deref();
-                let out = naming::output_path(&inputs[0], "pdf", out_dir, Some(" (merged)"));
+                let base = self.naming_input(&inputs[0]);
+                let out = naming::output_path(&base, "pdf", out_dir, Some(" (merged)"));
                 let cancel = self.cancel;
                 let done =
                     self.produce(g, &out, |tmp| pdf::merge(inputs, tmp, cancel, progress))?;
@@ -308,11 +331,12 @@ mod run {
             g: &mut Guard,
         ) -> Result<Vec<PathBuf>> {
             let out_dir = self.options.output_dir.as_deref();
+            let base = self.naming_input(input);
             if n == 1 {
-                return Ok(vec![naming::output_path(input, ext, out_dir, None)]);
+                return Ok(vec![naming::output_path(&base, ext, out_dir, None)]);
             }
-            let stem = stem_of(input);
-            let dir = naming::unique_dir(&naming::dir_for(input, out_dir), &stem)?;
+            let stem = stem_of(&base);
+            let dir = naming::unique_dir(&naming::dir_for(&base, out_dir), &stem)?;
             g.dirs.push(dir.clone());
             Ok((1..=n)
                 .map(|k| dir.join(format!("{stem}-{k}.{ext}")))
@@ -463,7 +487,8 @@ mod run {
             }
             self.check_cancel()?;
             let out_dir = self.options.output_dir.as_deref();
-            let dir = naming::unique_dir(&naming::dir_for(input, out_dir), &stem_of(input))?;
+            let base = self.naming_input(input);
+            let dir = naming::unique_dir(&naming::dir_for(&base, out_dir), &stem_of(&base))?;
             g.dirs.push(dir.clone());
             let files = guarded(|| pdf::split(input, &dir, self.cancel, progress))?;
             self.check_cancel()?;
@@ -505,7 +530,7 @@ mod run {
             let cancel = self.cancel;
             let out_dir = self.options.output_dir.as_deref();
             let ext = formats::output_ext(fmt.id).unwrap_or(fmt.id);
-            let out = naming::output_path(input, ext, out_dir, Some(suffix));
+            let out = naming::output_path(&self.naming_input(input), ext, out_dir, Some(suffix));
             self.produce(g, &out, |tmp| match (op, fmt.kind) {
                 (Operation::Compress { level }, Kind::Image) => {
                     image::compress(input, tmp, *level, cancel)

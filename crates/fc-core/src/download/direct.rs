@@ -233,8 +233,45 @@ fn ext_for_content_type(ct: &str) -> Option<&'static str> {
     })
 }
 
+/// Extensions a direct download may end with (images and media only). Anything else —
+/// executables, scripts, shortcuts, installers — is replaced, so opening the finished file
+/// can never run code.
+const SAFE_EXT: &[&str] = &[
+    "jpg", "jpeg", "png", "webp", "gif", "bmp", "avif", "heic", "heif", "tif", "tiff", "mp4",
+    "m4v", "webm", "mov", "mkv", "avi", "mp3", "m4a", "aac", "ogg", "oga", "opus", "wav", "flac",
+];
+
+fn safe_ext(ext: &str) -> Option<&'static str> {
+    let ext = ext.to_ascii_lowercase();
+    SAFE_EXT.iter().copied().find(|e| *e == ext)
+}
+
+/// Force the extension of `name` into [`SAFE_EXT`]: kept when allowed, else taken from the URL
+/// path, else from the Content-Type, else `bin`. `cat.gif.scr` from an image/gif response
+/// becomes `cat.gif`; `setup.exe` with nothing to go on becomes `setup.bin`.
+pub fn safe_media_name(name: &str, url: &str, content_type: Option<&str>) -> String {
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() => (stem, Some(ext)),
+        _ => (name, None),
+    };
+    if ext.and_then(safe_ext).is_some() {
+        return name.to_string();
+    }
+    let chosen = url_name(url)
+        .and_then(|n| n.rsplit_once('.').and_then(|(_, e)| safe_ext(e)))
+        .or_else(|| content_type.and_then(ext_for_content_type))
+        .unwrap_or("bin");
+    if stem
+        .rsplit_once('.')
+        .is_some_and(|(s, e)| !s.is_empty() && e.eq_ignore_ascii_case(chosen))
+    {
+        return stem.to_string();
+    }
+    format!("{stem}.{chosen}")
+}
+
 /// File name for a download: `Content-Disposition` first, then the last URL path segment,
-/// then "download" plus an extension guessed from the Content-Type. Always safe on Windows.
+/// then "download"; the extension always comes from [`safe_media_name`]. Always safe on Windows.
 pub fn file_name_for(url: &str, disposition: Option<&str>, content_type: Option<&str>) -> String {
     let raw = disposition
         .and_then(disposition_name)
@@ -244,13 +281,7 @@ pub fn file_name_for(url: &str, disposition: Option<&str>, content_type: Option<
     if name.is_empty() {
         name = "download".into();
     }
-    if !name.contains('.')
-        && let Some(ext) = content_type.and_then(ext_for_content_type)
-    {
-        name.push('.');
-        name.push_str(ext);
-    }
-    name
+    safe_media_name(&name, url, content_type)
 }
 
 fn url_name(url: &str) -> Option<String> {
@@ -451,24 +482,92 @@ mod tests {
             file_name_for("https://x.com/get", None, Some("video/mp4; charset=x")),
             "get.mp4"
         );
-        assert_eq!(file_name_for("https://x.com", None, None), "download");
+        assert_eq!(file_name_for("https://x.com", None, None), "download.bin");
     }
 
     #[test]
     fn name_from_disposition() {
         let n = |cd| file_name_for("https://x.com/zzz", Some(cd), None);
-        assert_eq!(n("attachment; filename=\"report.pdf\""), "report.pdf");
+        assert_eq!(n("attachment; filename=\"report.webm\""), "report.webm");
         assert_eq!(n("attachment; filename=plain.mp3"), "plain.mp3");
         assert_eq!(
-            n("attachment; filename=\"fallback.txt\"; filename*=UTF-8''%E2%82%AC%20rates.txt"),
-            "€ rates.txt"
+            n("attachment; filename=\"fallback.png\"; filename*=UTF-8''%E2%82%AC%20rates.png"),
+            "€ rates.png"
         );
-        // path tricks and reserved characters are removed
+        // path tricks and reserved characters are removed, and so is the executable extension
         assert_eq!(
             n("attachment; filename=\"..\\\\..\\\\evil?.exe\""),
-            "evil.exe"
+            "evil.bin"
         );
-        assert_eq!(n("inline"), "zzz");
+        assert_eq!(n("inline"), "zzz.bin");
+    }
+
+    #[test]
+    fn executable_and_script_extensions_never_survive() {
+        let dangerous = [
+            "exe", "scr", "com", "bat", "cmd", "ps1", "vbs", "vbe", "js", "jse", "wsf", "wsh",
+            "msi", "msix", "lnk", "url", "hta", "cpl", "dll", "pif", "reg", "jar", "appx", "html",
+            "svg", "pdf", "zip", "EXE", "Scr",
+        ];
+        for ext in dangerous {
+            for (url, ct) in [
+                ("https://x.com/get", None),
+                ("https://x.com/a.gif", None),
+                ("https://x.com/get", Some("video/mp4")),
+                (
+                    &*format!("https://x.com/a.{ext}"),
+                    Some("application/x-msdownload"),
+                ),
+            ] {
+                let cd = format!("attachment; filename=\"cat.gif.{ext}\"");
+                let name = file_name_for(url, Some(&cd), ct);
+                let got = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase());
+                assert!(
+                    got.as_deref()
+                        .is_some_and(|e| SAFE_EXT.contains(&e) || e == "bin"),
+                    "{ext} via {url} {ct:?} -> {name}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn safe_name_prefers_url_then_content_type() {
+        // Allowed extensions are kept as they are.
+        assert_eq!(
+            safe_media_name("Photo.JPG", "https://x.com/a", None),
+            "Photo.JPG"
+        );
+        // The stem already carries the chosen extension: just drop the bad one.
+        assert_eq!(
+            safe_media_name("cat.gif.scr", "https://x.com/cat.gif", None),
+            "cat.gif"
+        );
+        assert_eq!(
+            safe_media_name("cat.gif.scr", "https://x.com/dl?id=1", Some("image/gif")),
+            "cat.gif"
+        );
+        // URL path first, then Content-Type, then bin.
+        assert_eq!(
+            safe_media_name(
+                "run.bat",
+                "https://x.com/v/clip.webm?x=1",
+                Some("video/mp4")
+            ),
+            "run.webm"
+        );
+        assert_eq!(
+            safe_media_name("run.bat", "https://x.com/get", Some("video/mp4")),
+            "run.mp4"
+        );
+        assert_eq!(
+            safe_media_name("invoice.pdf.exe", "https://x.com/get", None),
+            "invoice.pdf.bin"
+        );
+        assert_eq!(
+            safe_media_name("clip", "https://x.com/", Some("audio/mpeg")),
+            "clip.mp3"
+        );
     }
 
     #[test]
@@ -572,7 +671,7 @@ mod tests {
         let info = probe_direct(&url).unwrap();
         assert_eq!(info.size_bytes, Some(10));
         assert_eq!(info.kind, "image");
-        assert_eq!(info.title, "clip 1.bin");
+        assert_eq!(info.title, "clip 1.png");
         assert!(info.direct);
     }
 
@@ -583,15 +682,24 @@ mod tests {
         let mut last = DlProgress::default();
         let out =
             download_direct(&url, dir.path(), &mut |p| last = p, &CancelToken::new()).unwrap();
-        assert_eq!(out.file_name().unwrap(), "clip 1.bin");
+        // The served name ends in ".bin": the Content-Type decides the extension.
+        assert_eq!(out.file_name().unwrap(), "clip 1.mp4");
         assert_eq!(std::fs::read(&out).unwrap(), b"hello world");
         assert_eq!(last.fraction, Some(1.0));
         // no temp leftovers
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
 
-        let url = serve_once(b"second", "");
+        let url = serve_once(b"second", "Content-Type: video/mp4\r\n");
         let out2 = download_direct(&url, dir.path(), &mut |_| {}, &CancelToken::new()).unwrap();
-        assert_eq!(out2.file_name().unwrap(), "clip 1 (1).bin");
+        assert_eq!(out2.file_name().unwrap(), "clip 1 (1).mp4");
+
+        // A server-chosen executable name never keeps its extension.
+        let url = serve_once(
+            b"MZ",
+            "Content-Disposition: attachment; filename=\"cat.gif.scr\"\r\n",
+        );
+        let out3 = download_direct(&url, dir.path(), &mut |_| {}, &CancelToken::new()).unwrap();
+        assert_eq!(out3.file_name().unwrap(), "cat.gif.bin");
     }
 
     #[test]

@@ -10,18 +10,20 @@
   import Ellipsis from '@lucide/svelte/icons/ellipsis';
   import Ban from '@lucide/svelte/icons/ban';
   import type { Kind, TargetOption } from '../lib/types';
-  import { INNER_R, MORE_ID, OUTER_R, WHEEL_SIZE, polar, sliceCenterAngle, slicePath } from '../lib/wheel/geometry';
+  import { INNER_R, MORE_ID, OUTER_R, WHEEL_SIZE, needsDownload, polar, sliceCenterAngle, slicePath } from '../lib/wheel/geometry';
   import { t } from './i18n';
 
+  // Mounted only once the dragged files are known (see Overlay.svelte), so non-file drags never
+  // show anything.
   interface Props {
     slices: TargetOption[];
     hovered: number;
-    /** No targets received yet: show the subtle pulsing ring. */
-    waiting: boolean;
     fileCount: number;
     firstKind: Kind | null;
+    /** Tools that are not installed: their slices show a small download glyph. */
+    missingTools: string[];
   }
-  let { slices, hovered, waiting, fileCount, firstKind }: Props = $props();
+  let { slices, hovered, fileCount, firstKind, missingTools }: Props = $props();
 
   const icons: Record<Kind, Component<{ size?: number; strokeWidth?: number }>> = {
     image: ImageIcon,
@@ -39,9 +41,6 @@
 
 <div class="wheel" style:width="{WHEEL_SIZE}px" style:height="{WHEEL_SIZE}px">
   <div class="disc"></div>
-  {#if waiting}
-    <div class="pulse"></div>
-  {/if}
 
   <svg width={WHEEL_SIZE} height={WHEEL_SIZE} viewBox="0 0 {WHEEL_SIZE} {WHEEL_SIZE}" aria-hidden="true">
     {#each slices as _, i (i)}
@@ -55,16 +54,14 @@
     <div class="label" class:hot={i === hovered} style:left="{pos.x}px" style:top="{pos.y}px">
       <Icon size={18} strokeWidth={1.8} />
       <span class="fmt">{s.id === MORE_ID ? t('more') : s.label}</span>
-      {#if s.needsTools.length > 0}
+      {#if needsDownload(s, missingTools)}
         <span class="tool"><Download size={10} strokeWidth={2.4} /></span>
       {/if}
     </div>
   {/each}
 
-  <div class="center" class:empty={!waiting && n === 0}>
-    {#if waiting}
-      <span class="dots">…</span>
-    {:else if n === 0}
+  <div class="center" class:empty={n === 0}>
+    {#if n === 0}
       <Ban size={22} strokeWidth={1.6} />
       <span class="count">{t('notSupported')}</span>
     {:else}
@@ -91,17 +88,6 @@
     background: color-mix(in srgb, var(--elevated-bg) 92%, transparent);
     border: 0.5px solid var(--hairline);
     box-shadow: var(--shadow-lg), var(--glass-edge);
-  }
-  .pulse {
-    position: absolute;
-    left: calc(50% - 130px);
-    top: calc(50% - 130px);
-    width: 260px;
-    height: 260px;
-    border-radius: 50%;
-    border: 2px solid var(--accent);
-    opacity: 0.35;
-    animation: pulse 1.4s ease-in-out infinite;
   }
   svg {
     position: absolute;
@@ -181,10 +167,6 @@
   .empty .count {
     color: var(--text-secondary);
   }
-  .dots {
-    font: var(--text-title);
-    color: var(--text-tertiary);
-  }
   @keyframes appear {
     from {
       opacity: 0;
@@ -193,17 +175,6 @@
     to {
       opacity: 1;
       transform: scale(1);
-    }
-  }
-  @keyframes pulse {
-    0%,
-    100% {
-      transform: scale(0.96);
-      opacity: 0.18;
-    }
-    50% {
-      transform: scale(1.04);
-      opacity: 0.45;
     }
   }
 </style>

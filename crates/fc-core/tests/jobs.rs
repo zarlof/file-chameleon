@@ -553,6 +553,44 @@ fn cancelled_token_stops_before_any_work() {
     assert_eq!(dir_entries(dir.path()), 1);
 }
 
+#[test]
+fn output_name_replaces_the_input_stem_and_never_adds_folders() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("clipboard").join("img");
+    let out_dir = dir.path().join("Downloads");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::create_dir_all(&out_dir).unwrap();
+    let input = src_dir.join("17.png");
+    image::RgbaImage::from_pixel(4, 3, image::Rgba([10, 20, 30, 255]))
+        .save(&input)
+        .unwrap();
+    let ex = DefaultExecutor {
+        tools: Arc::new(NoTools),
+    };
+    let run = |name: &str| {
+        let options = ConvertOptions {
+            output_dir: Some(out_dir.clone()),
+            output_name: Some(name.into()),
+            ..ConvertOptions::default()
+        };
+        ex.run(
+            std::slice::from_ref(&input),
+            &Operation::Convert { to: "jpg".into() },
+            &options,
+            &CancelToken::new(),
+            &|_| {},
+        )
+        .unwrap()
+    };
+    let stamp = "Clipboard 2026-11-20 10.11.12";
+    assert_eq!(run(stamp), vec![out_dir.join(format!("{stamp}.jpg"))]);
+    assert_eq!(run(stamp), vec![out_dir.join(format!("{stamp} (1).jpg"))]);
+    // Folder parts in the name are ignored.
+    assert_eq!(run("../../evil"), vec![out_dir.join("evil.jpg")]);
+    // The source folder is left alone.
+    assert_eq!(dir_entries(&src_dir), 1);
+}
+
 // ---------- fix round 1 ----------
 
 #[test]

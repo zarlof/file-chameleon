@@ -41,8 +41,13 @@ class JobsStore {
   /** Submit a request and remember it for each created job. */
   async submit(req: JobRequest): Promise<number[]> {
     const ids = await api.submitJob(req);
-    for (const id of ids) this.requests.set(id, req);
+    this.remember(ids, req);
     return ids;
+  }
+
+  /** Remember the request for jobs submitted another way (e.g. after a tool install). */
+  remember(ids: number[], req: JobRequest): void {
+    for (const id of ids) this.requests.set(id, req);
   }
 
   /** Resubmit the same request a job was created with. */

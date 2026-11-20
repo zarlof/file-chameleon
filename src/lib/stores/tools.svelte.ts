@@ -1,5 +1,5 @@
 import { api, errorOf, on } from '../ipc';
-import type { ToolStatus } from '../types';
+import type { JobRequest, ToolStatus } from '../types';
 
 function without<T>(rec: Record<string, T>, id: string): Record<string, T> {
   const next = { ...rec };
@@ -62,6 +62,33 @@ class ToolsStore {
     } catch (e) {
       this.progress = without(this.progress, id);
       this.errors = { ...this.errors, [id]: errorOf(e).message };
+    }
+  }
+
+  /**
+   * Download the missing `ids`, then submit `req`, all in the backend (so it still happens if the
+   * window closes). Progress shows through `tool://progress`; rejects with the backend error.
+   */
+  async installAndSubmit(ids: string[], req: JobRequest): Promise<number[]> {
+    for (const id of ids) {
+      this.progress = { ...this.progress, [id]: this.progress[id] ?? 0 };
+      this.errors = without(this.errors, id);
+    }
+    try {
+      return await api.installAndSubmit(ids, req);
+    } finally {
+      // Already-installed tools send no `tool://done`: clear what is left.
+      for (const id of ids) this.progress = without(this.progress, id);
+      void this.refresh();
+    }
+  }
+
+  /** Check for a newer yt-dlp now. Resolves to true when it was updated. */
+  async updateYtdlp(): Promise<boolean> {
+    try {
+      return await api.updateYtdlp();
+    } finally {
+      void this.refresh();
     }
   }
 

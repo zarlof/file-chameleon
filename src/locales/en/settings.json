@@ -70,8 +70,14 @@
   "engines": {
     "note": "FFmpeg found on your PATH is used automatically. Download it here only if you do not have it.",
     "install": "Download",
+    "installManaged": "Download managed copy",
     "remove": "Remove",
     "installing": "Downloading…",
+    "update": "Check for update",
+    "updating": "Checking…",
+    "updated": "{name} was updated to the latest version",
+    "upToDate": "{name} is already up to date",
+    "updateFailed": "Update failed: {message}",
     "source": {
       "managed": "Managed",
       "system": "System",

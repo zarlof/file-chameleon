@@ -1,7 +1,8 @@
 //! System tray icon and menu (the app's home while no window is open).
 
 use crate::state::AppState;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
@@ -77,7 +78,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 let now = !state.clip_paused.load(Ordering::SeqCst);
                 crate::ipc::clipboard::set_paused(app, now);
             }
-            "quit" => app.exit(0),
+            "quit" => quit(app),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -92,6 +93,34 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
     Ok(())
+}
+
+/// Quit: cancel running conversions and downloads, give them up to 2 s to remove their partial
+/// files (`*.fcpart.*`, staging folders), then exit. Runs off the main thread so the wait
+/// never freezes the UI.
+pub fn quit(app: &AppHandle) {
+    static QUITTING: AtomicBool = AtomicBool::new(false);
+    if QUITTING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let state = app.state::<AppState>();
+        let jobs = state.jobs_if_started();
+        let jobs_busy =
+            || jobs.is_some_and(|q| q.snapshot().iter().any(|s| !s.state.is_finished()));
+        if let Some(q) = jobs {
+            for s in q.snapshot().iter().filter(|s| !s.state.is_finished()) {
+                q.cancel(s.id);
+            }
+        }
+        state.downloads.cancel_all();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while (jobs_busy() || state.downloads.any_active()) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        app.exit(0);
+    });
 }
 
 /// Rebuild the menu (language or pause state changed).

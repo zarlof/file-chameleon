@@ -48,19 +48,24 @@ fn configure_wheel(app: &AppHandle, s: &Settings) {
     let _ = (app, s);
 }
 
-/// Apply settings that have side effects outside the webview.
-pub fn apply_settings(app: &AppHandle, old: &Settings, new: &Settings) {
+/// Apply settings that have side effects outside the webview. Returns the settings to store:
+/// `new`, except that a failed autostart change keeps the old value.
+pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Settings {
     if old.launch_at_login != new.launch_at_login {
         use tauri_plugin_autostart::ManagerExt;
         let al = app.autolaunch();
-        let _ = if new.launch_at_login {
+        let result = if new.launch_at_login {
             al.enable()
         } else {
             al.disable()
         };
+        if let Err(e) = result {
+            eprintln!("autostart: {e}");
+            new.launch_at_login = old.launch_at_login;
+        }
     }
     if old.wheel_enabled != new.wheel_enabled || old.wheel_any_app != new.wheel_any_app {
-        configure_wheel(app, new);
+        configure_wheel(app, &new);
     }
     if old.clipboard_enabled != new.clipboard_enabled {
         if new.clipboard_enabled {
@@ -68,9 +73,22 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, new: &Settings) {
         }
         clipboard::set_enabled(app, new.clipboard_enabled);
     }
+    if old.clipboard_retention_days != new.clipboard_retention_days
+        || old.clipboard_max_items != new.clipboard_max_items
+    {
+        // Apply the new limits now, not on the next copy.
+        let state = app.state::<AppState>();
+        let mut store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
+        let _ = store.prune(
+            fc_core::now_ms(),
+            new.clipboard_retention_days,
+            new.clipboard_max_items as usize,
+        );
+    }
     if old.language != new.language {
         crate::tray::refresh(app);
     }
+    new
 }
 
 pub fn system_language() -> String {

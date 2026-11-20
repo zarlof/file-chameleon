@@ -78,3 +78,8 @@ export function slicePath(i: number, count: number, gap = 0.035, inner = INNER_R
   const f = (n: number) => n.toFixed(2);
   return `M${f(o0.x)} ${f(o0.y)}A${outer} ${outer} 0 ${large} 1 ${f(o1.x)} ${f(o1.y)}L${f(i1.x)} ${f(i1.y)}A${inner} ${inner} 0 ${large} 0 ${f(i0.x)} ${f(i0.y)}Z`;
 }
+
+/** True when a slice needs a tool that is not installed yet (it shows the download glyph). */
+export function needsDownload(slice: TargetOption, missingTools: readonly string[]): boolean {
+  return slice.needsTools.some((t) => missingTools.includes(t));
+}

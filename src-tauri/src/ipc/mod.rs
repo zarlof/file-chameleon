@@ -1,5 +1,11 @@
 //! Tauri commands (the IPC surface). Mirrored by `src/lib/ipc.ts` and `src/lib/types.ts`.
 //! Errors cross IPC as `CmdError { code, message }`.
+//!
+//! Threading rule: a plain `#[tauri::command] fn` runs on the main thread, inside a WebView2
+//! callback. Any command that may create a window (building a webview there deadlocks: wry waits
+//! for the controller with a nested message pump that cannot complete), start processes, or do
+//! image/file I/O is async: `#[tauri::command(async)]` for light work, `async fn` plus
+//! [`blocking`] for heavy work.
 
 pub mod clipboard;
 pub mod downloads;
@@ -10,11 +16,12 @@ use crate::windows;
 use fc_core::CancelToken;
 use fc_core::formats;
 use fc_core::formats::planner::{self, TargetOption};
-use fc_core::jobs::{JobId, JobRequest, JobSnapshot, Operation};
+use fc_core::jobs::{ConvertOptions, JobId, JobRequest, JobSnapshot, Operation};
 use fc_core::settings::Settings;
 use serde::Serialize;
-use std::path::PathBuf;
-use tauri::{AppHandle, Emitter, State};
+use serde_json::json;
+use std::path::{Path, PathBuf};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,6 +50,13 @@ impl CmdError {
 
 pub type CmdResult<T> = Result<T, CmdError>;
 
+/// Run `f` on the blocking thread pool (never on the main thread) and wait for it.
+pub async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> CmdResult<T> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| CmdError::new("failed", e.to_string()))
+}
+
 // ---------------------------------------------------------------- app & settings
 
 #[derive(Serialize)]
@@ -68,13 +82,23 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
     state.settings()
 }
 
-/// Saves and applies side effects (autostart, wheel hook, clipboard listener).
+/// Saves and applies side effects (autostart, wheel hook, clipboard listener, retention).
+/// Returns what was actually stored: a failed autostart change is reverted, and the clipboard
+/// pause state always keeps its stored value (it changes only through `clip_set_paused`).
+/// Async: writes the file and the registry, and may prune the clipboard store.
 #[tauri::command]
-pub fn set_settings(app: AppHandle, state: State<'_, AppState>, settings: Settings) -> Settings {
-    let old = state.settings();
-    state.save_settings(settings.clone());
-    crate::platform::apply_settings(&app, &old, &settings);
-    settings
+pub async fn set_settings(app: AppHandle, settings: Settings) -> CmdResult<Settings> {
+    blocking(move || {
+        let state = app.state::<AppState>();
+        let _tx = state.settings_transaction();
+        let old = state.settings();
+        let mut new = settings;
+        new.clipboard_paused = old.clipboard_paused;
+        let applied = crate::platform::apply_settings(&app, &old, new);
+        state.save_settings(applied.clone());
+        applied
+    })
+    .await
 }
 
 // ---------------------------------------------------------------- convert
@@ -171,12 +195,13 @@ pub fn list_targets(paths: Vec<String>) -> TargetsResponse {
     }
 }
 
-#[tauri::command]
-pub fn submit_job(state: State<'_, AppState>, mut req: JobRequest) -> CmdResult<Vec<JobId>> {
+/// Fill in defaults from the settings, remember the target, and queue the jobs. Every way of
+/// starting a conversion (Convert view, wheel, toast, install-then-convert) goes through here.
+pub fn submit(state: &AppState, mut req: JobRequest) -> CmdResult<Vec<JobId>> {
     if req.inputs.is_empty() {
         return Err(CmdError::new("unsupported", "no inputs"));
     }
-    let mut s = state.settings();
+    let s = state.settings();
     if req.options.output_dir.is_none() {
         req.options.output_dir = s.output_dir.clone();
     }
@@ -184,10 +209,74 @@ pub fn submit_job(state: State<'_, AppState>, mut req: JobRequest) -> CmdResult<
         req.options.quality = Some(s.image_quality);
     }
     if let Operation::Convert { to } = &req.op {
-        s.touch_recent_target(to);
-        state.save_settings(s);
+        let to = to.clone();
+        state.update_settings(|s| s.touch_recent_target(&to));
     }
-    Ok(state.jobs().submit(req))
+    let needs_downloads = req.options.output_dir.is_none()
+        && req.inputs.iter().any(|p| state.paths.is_clipboard_file(p));
+    let requests = if needs_downloads {
+        let dir = state.default_download_dir();
+        let _ = std::fs::create_dir_all(&dir);
+        let name = format!("Clipboard {}", clipboard::local_stamp());
+        split_clipboard_inputs(req, |p| state.paths.is_clipboard_file(p), &dir, &name)
+    } else {
+        vec![req]
+    };
+    Ok(requests
+        .into_iter()
+        .flat_map(|r| state.jobs().submit(r))
+        .collect())
+}
+
+/// Clipboard images live in the app's hidden store under meaningless names. With no output
+/// folder chosen, their results go to `dir` (the Downloads folder) named `name` (numbered when
+/// taken); other inputs keep their usual place. A PDF merge follows its first input.
+fn split_clipboard_inputs(
+    req: JobRequest,
+    is_clip: impl Fn(&Path) -> bool,
+    dir: &Path,
+    name: &str,
+) -> Vec<JobRequest> {
+    let clip_options = ConvertOptions {
+        output_dir: Some(dir.to_path_buf()),
+        output_name: Some(name.to_string()),
+        ..req.options.clone()
+    };
+    if req.op == Operation::MergePdf {
+        let first_is_clip = req.inputs.first().is_some_and(|p| is_clip(p));
+        return vec![if first_is_clip {
+            JobRequest {
+                options: clip_options,
+                ..req
+            }
+        } else {
+            req
+        }];
+    }
+    let (clip, other): (Vec<PathBuf>, Vec<PathBuf>) =
+        req.inputs.into_iter().partition(|p| is_clip(p));
+    let mut out = Vec::with_capacity(2);
+    if !other.is_empty() {
+        out.push(JobRequest {
+            inputs: other,
+            op: req.op.clone(),
+            options: req.options,
+        });
+    }
+    if !clip.is_empty() {
+        out.push(JobRequest {
+            inputs: clip,
+            op: req.op,
+            options: clip_options,
+        });
+    }
+    out
+}
+
+/// Async: may write the settings file (recent targets).
+#[tauri::command(async)]
+pub fn submit_job(state: State<'_, AppState>, req: JobRequest) -> CmdResult<Vec<JobId>> {
+    submit(&state, req)
 }
 
 #[tauri::command]
@@ -215,63 +304,111 @@ pub fn on_job_update(app: &AppHandle, snap: &JobSnapshot) {
 
 // ---------------------------------------------------------------- engines / tools
 
+/// Async: asks tools for their version (a process per tool; cached by file time).
 #[tauri::command]
-pub fn tools_status(state: State<'_, AppState>) -> Vec<fc_core::engine_mgr::ToolStatus> {
-    state.engines().status()
+pub async fn tools_status(app: AppHandle) -> CmdResult<Vec<fc_core::engine_mgr::ToolStatus>> {
+    blocking(move || app.state::<AppState>().engines().status()).await
+}
+
+/// Install tool `id` on the calling thread, reporting `tool://progress` and `tool://done`.
+pub fn install_now(app: &AppHandle, id: &str) -> fc_core::Result<()> {
+    let engines = app.state::<AppState>().engines().clone();
+    let cancel = CancelToken::new();
+    let last = std::sync::atomic::AtomicU64::new(0);
+    let res = engines.install(
+        id,
+        &|done, total| {
+            // ~1% steps to keep IPC light.
+            let prev = last.load(std::sync::atomic::Ordering::Relaxed);
+            if total == 0 || done == total || done.saturating_sub(prev) * 100 >= total {
+                last.store(done, std::sync::atomic::Ordering::Relaxed);
+                let _ = app.emit(
+                    events::TOOL_PROGRESS,
+                    ToolProgress {
+                        id: id.to_string(),
+                        done,
+                        total,
+                    },
+                );
+            }
+        },
+        &cancel,
+    );
+    let (ok, code, msg) = match &res {
+        Ok(()) => (true, None, None),
+        Err(e) => (false, Some(e.code().to_string()), Some(e.to_string())),
+    };
+    let _ = app.emit(
+        events::TOOL_DONE,
+        ToolDone {
+            id: id.to_string(),
+            ok,
+            error_code: code,
+            error: msg,
+        },
+    );
+    res
 }
 
 /// Installs in the background; progress via `tool://progress`, result via `tool://done`.
 #[tauri::command]
-pub fn install_tool(app: AppHandle, state: State<'_, AppState>, id: String) {
-    let engines = state.engines().clone();
+pub fn install_tool(app: AppHandle, id: String) {
     std::thread::spawn(move || {
-        let cancel = CancelToken::new();
-        let last = std::sync::atomic::AtomicU64::new(0);
-        let res = engines.install(
-            &id,
-            &|done, total| {
-                // ~1% steps to keep IPC light.
-                let prev = last.load(std::sync::atomic::Ordering::Relaxed);
-                if total == 0 || done == total || done.saturating_sub(prev) * 100 >= total {
-                    last.store(done, std::sync::atomic::Ordering::Relaxed);
-                    let _ = app.emit(
-                        events::TOOL_PROGRESS,
-                        ToolProgress {
-                            id: id.clone(),
-                            done,
-                            total,
-                        },
-                    );
-                }
-            },
-            &cancel,
-        );
-        let (ok, code, msg) = match res {
-            Ok(()) => (true, None, None),
-            Err(e) => (false, Some(e.code().to_string()), Some(e.to_string())),
-        };
-        let _ = app.emit(
-            events::TOOL_DONE,
-            ToolDone {
-                id,
-                ok,
-                error_code: code,
-                error: msg,
-            },
-        );
+        let _ = install_now(&app, &id);
     });
 }
 
+/// Install the missing `tools`, then submit `req` (Convert's "Download X and convert").
+/// Runs in Rust so the conversion still starts if the window is closed during the download.
+/// An install failure is reported with code "installFailed".
 #[tauri::command]
-pub fn uninstall_tool(state: State<'_, AppState>, id: String) -> CmdResult<()> {
-    state.engines().uninstall(&id).map_err(Into::into)
+pub async fn install_and_submit(
+    app: AppHandle,
+    tools: Vec<String>,
+    req: JobRequest,
+) -> CmdResult<Vec<JobId>> {
+    blocking(move || {
+        let state = app.state::<AppState>();
+        for id in &tools {
+            if !state.engines().is_available(id) {
+                install_now(&app, id).map_err(|e| CmdError::new("installFailed", e.to_string()))?;
+            }
+        }
+        submit(&state, req)
+    })
+    .await?
+}
+
+/// Check for a newer yt-dlp now and install it. Returns true when it was updated.
+#[tauri::command]
+pub async fn update_ytdlp(app: AppHandle) -> CmdResult<bool> {
+    blocking(move || {
+        app.state::<AppState>()
+            .engines()
+            .update_ytdlp(true, &CancelToken::new())
+            .map_err(CmdError::from)
+    })
+    .await?
+}
+
+/// Async: deletes the tool's folder (hundreds of MB for FFmpeg).
+#[tauri::command]
+pub async fn uninstall_tool(app: AppHandle, id: String) -> CmdResult<()> {
+    blocking(move || {
+        app.state::<AppState>()
+            .engines()
+            .uninstall(&id)
+            .map_err(CmdError::from)
+    })
+    .await?
 }
 
 // Downloads: see `downloads.rs` (Task F). Clipboard: see `clipboard.rs` (Task G).
 
 // ---------------------------------------------------------------- shell helpers
 
-#[tauri::command]
+/// Async: the shell may block (COM, Explorer).
+#[tauri::command(async)]
 pub fn reveal_path(app: AppHandle, path: String) -> CmdResult<()> {
     use tauri_plugin_opener::OpenerExt;
     app.opener()
@@ -279,7 +416,8 @@ pub fn reveal_path(app: AppHandle, path: String) -> CmdResult<()> {
         .map_err(|e| CmdError::new("io", e.to_string()))
 }
 
-#[tauri::command]
+/// Async: starts the default app for the file.
+#[tauri::command(async)]
 pub fn open_path(app: AppHandle, path: String) -> CmdResult<()> {
     use tauri_plugin_opener::OpenerExt;
     app.opener()
@@ -288,7 +426,8 @@ pub fn open_path(app: AppHandle, path: String) -> CmdResult<()> {
 }
 
 /// Bring up the main window, optionally navigating (used by the overlay and tray).
-#[tauri::command]
+/// Async: it may create the main window.
+#[tauri::command(async)]
 pub fn show_main(
     app: AppHandle,
     view: Option<String>,
@@ -322,7 +461,8 @@ pub fn overlay_hide(app: AppHandle) {
 }
 
 /// A toast button was pressed. `action` ids are listed on `events::ToastPayload`.
-#[tauri::command]
+/// Async: actions may create the main window, save images or install tools.
+#[tauri::command(async)]
 pub fn overlay_toast_action(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -334,7 +474,9 @@ pub fn overlay_toast_action(
 }
 
 /// Files were dropped on a wheel slice: convert them to `target` ("more" opens the main window).
-#[tauri::command]
+/// When the route needs a tool that is not installed, a `toolNeeded` toast offers to download it
+/// (and convert afterwards) instead. Async: it may create the main window.
+#[tauri::command(async)]
 pub fn wheel_drop(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -353,10 +495,108 @@ pub fn wheel_drop(
         );
         return Ok(vec![]);
     }
+    let (_, targets) = targets_for_paths(&paths);
+    let needs = targets
+        .iter()
+        .find(|t| t.id == target)
+        .map(|t| t.needs_tools.clone())
+        .unwrap_or_default();
+    if let Some(tool) = needs.iter().find(|id| !state.engines().is_available(id)) {
+        let entry = state.engines().manifest().get(tool);
+        windows::show_toast(
+            &app,
+            "toolNeeded",
+            json!({
+                "tool": tool,
+                "name": entry.map(|e| e.name.clone()).unwrap_or_else(|| tool.to_string()),
+                "size": entry.map(|e| e.size).unwrap_or(0),
+                "paths": paths,
+                "target": target,
+            }),
+            Some(12000),
+        );
+        return Ok(vec![]);
+    }
     let req = JobRequest {
         inputs: paths.into_iter().map(PathBuf::from).collect(),
         op: Operation::Convert { to: target },
         options: Default::default(),
     };
-    submit_job(state, req)
+    submit(&state, req)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn req(inputs: &[&str], op: Operation) -> JobRequest {
+        JobRequest {
+            inputs: inputs.iter().map(PathBuf::from).collect(),
+            op,
+            options: ConvertOptions {
+                quality: Some(80),
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn clipboard_inputs_go_to_downloads_with_a_readable_name() {
+        let is_clip = |p: &Path| p.starts_with("C:/data/clipboard");
+        let dl = Path::new("C:/Users/me/Downloads");
+        let convert = Operation::Convert { to: "webp".into() };
+        let out = split_clipboard_inputs(
+            req(
+                &["C:/x/a.png", "C:/data/clipboard/img/3.png", "C:/x/b.png"],
+                convert.clone(),
+            ),
+            is_clip,
+            dl,
+            "Clipboard 2026-11-20 10.11.12",
+        );
+        assert_eq!(out.len(), 2);
+        // Other files keep their place and name.
+        assert_eq!(
+            out[0].inputs,
+            [PathBuf::from("C:/x/a.png"), "C:/x/b.png".into()]
+        );
+        assert_eq!(out[0].options.output_dir, None);
+        assert_eq!(out[0].options.output_name, None);
+        // The clipboard image goes to Downloads with a readable name; other options are kept.
+        assert_eq!(
+            out[1].inputs,
+            [PathBuf::from("C:/data/clipboard/img/3.png")]
+        );
+        assert_eq!(out[1].options.output_dir.as_deref(), Some(dl));
+        assert_eq!(
+            out[1].options.output_name.as_deref(),
+            Some("Clipboard 2026-11-20 10.11.12")
+        );
+        assert_eq!(out[1].options.quality, Some(80));
+        assert_eq!(out[1].op, convert);
+
+        // A merge is one job: it follows its first input.
+        let merged = split_clipboard_inputs(
+            req(
+                &["C:/data/clipboard/img/3.png", "C:/x/a.png"],
+                Operation::MergePdf,
+            ),
+            is_clip,
+            dl,
+            "Clipboard",
+        );
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].inputs.len(), 2);
+        assert_eq!(merged[0].options.output_dir.as_deref(), Some(dl));
+        let merged = split_clipboard_inputs(
+            req(
+                &["C:/x/a.png", "C:/data/clipboard/img/3.png"],
+                Operation::MergePdf,
+            ),
+            is_clip,
+            dl,
+            "Clipboard",
+        );
+        assert_eq!(merged[0].options.output_dir, None);
+    }
 }
