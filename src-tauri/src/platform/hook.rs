@@ -82,10 +82,10 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                 }
             }
             WM_LBUTTONUP => {
-                if TRIGGERED.swap(false, Relaxed) {
-                    if let Some(tx) = SENDER.get() {
-                        let _ = tx.send(HookEvent::Released);
-                    }
+                if TRIGGERED.swap(false, Relaxed)
+                    && let Some(tx) = SENDER.get()
+                {
+                    let _ = tx.send(HookEvent::Released);
                 }
                 DOWN.store(false, Relaxed);
             }

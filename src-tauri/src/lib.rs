@@ -73,10 +73,10 @@ pub fn run() {
         .expect("failed to build File Chameleon")
         .run(|_app, event| {
             // Closing the main window must not quit: the app keeps living in the tray.
-            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
-                if code.is_none() {
-                    api.prevent_exit();
-                }
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event
+                && code.is_none()
+            {
+                api.prevent_exit();
             }
         });
 }
