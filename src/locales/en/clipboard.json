@@ -1,0 +1,42 @@
+{
+  "title": "Clipboard",
+  "search": "Search clipboard history",
+  "filter": {
+    "all": "All",
+    "links": "Links",
+    "text": "Text",
+    "images": "Images"
+  },
+  "pause": "Pause recording",
+  "paused": "Paused",
+  "clearUnpinned": "Clear unpinned",
+  "clear": {
+    "title": "Clear clipboard history?",
+    "message": "All unpinned items will be removed. Pinned items stay.",
+    "confirm": "Clear"
+  },
+  "empty": {
+    "title": "Nothing copied yet",
+    "message": "Text, links and images you copy show up here so you can find them again.",
+    "privacy": "Passwords from password managers are never recorded."
+  },
+  "noResults": {
+    "title": "No matches",
+    "message": "Try a different search or filter."
+  },
+  "action": {
+    "copy": "Copy",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "delete": "Delete",
+    "download": "Download",
+    "convert": "Convert",
+    "save": "Save as {format}"
+  },
+  "copied": "Copied to the clipboard",
+  "saved": "Saved to Downloads: {name}",
+  "imageSize": "{width} × {height}",
+  "ago": {
+    "now": "just now"
+  }
+}

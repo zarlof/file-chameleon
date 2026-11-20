@@ -1,0 +1,42 @@
+{
+  "title": "Pano",
+  "search": "Pano geçmişinde ara",
+  "filter": {
+    "all": "Tümü",
+    "links": "Bağlantılar",
+    "text": "Metin",
+    "images": "Görseller"
+  },
+  "pause": "Kaydı duraklat",
+  "paused": "Duraklatıldı",
+  "clearUnpinned": "Sabitlenmemişleri temizle",
+  "clear": {
+    "title": "Pano geçmişi temizlensin mi?",
+    "message": "Sabitlenmemiş tüm öğeler silinecek. Sabitlenenler kalır.",
+    "confirm": "Temizle"
+  },
+  "empty": {
+    "title": "Henüz bir şey kopyalanmadı",
+    "message": "Kopyaladığın metinler, bağlantılar ve görseller burada görünür; istediğinde tekrar bulursun.",
+    "privacy": "Parola yöneticilerinden kopyalanan parolalar asla kaydedilmez."
+  },
+  "noResults": {
+    "title": "Eşleşme yok",
+    "message": "Başka bir arama ya da filtre dene."
+  },
+  "action": {
+    "copy": "Kopyala",
+    "pin": "Sabitle",
+    "unpin": "Sabitlemeyi kaldır",
+    "delete": "Sil",
+    "download": "İndir",
+    "convert": "Dönüştür",
+    "save": "{format} olarak kaydet"
+  },
+  "copied": "Panoya kopyalandı",
+  "saved": "İndirilenler'e kaydedildi: {name}",
+  "imageSize": "{width} × {height}",
+  "ago": {
+    "now": "az önce"
+  }
+}

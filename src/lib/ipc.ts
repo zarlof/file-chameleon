@@ -48,6 +48,7 @@ export const api = {
   clipCopy: (id: number) => invoke<void>('clip_copy', { id }),
   clipSaveImage: (id: number, format: 'png' | 'jpg' | 'webp') => invoke<string>('clip_save_image', { id, format }),
   clipSetPaused: (paused: boolean) => invoke<void>('clip_set_paused', { paused }),
+  clipGetPaused: () => invoke<boolean>('clip_get_paused'),
 
   revealPath: (path: string) => invoke<void>('reveal_path', { path }),
   openPath: (path: string) => invoke<void>('open_path', { path }),
@@ -68,6 +69,7 @@ export const on = {
   toolProgress: (cb: (p: ToolProgress) => void) => listen<ToolProgress>('tool://progress', (e) => cb(e.payload)),
   toolDone: (cb: (p: ToolDone) => void) => listen<ToolDone>('tool://done', (e) => cb(e.payload)),
   clipAdded: (cb: (c: ClipItem) => void) => listen<ClipItem>('clip://added', (e) => cb(e.payload)),
+  clipPaused: (cb: (paused: boolean) => void) => listen<boolean>('clip://paused', (e) => cb(e.payload)),
   settingsChanged: (cb: (s: Settings) => void) => listen<Settings>('settings://changed', (e) => cb(e.payload)),
   navGoto: (cb: (n: NavPayload) => void) => listen<NavPayload>('nav://goto', (e) => cb(e.payload)),
   overlayWheel: (cb: (p: WheelPayload) => void) => listen<WheelPayload>('overlay://wheel', (e) => cb(e.payload)),

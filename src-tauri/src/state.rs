@@ -8,7 +8,7 @@ use fc_core::engines::DefaultExecutor;
 use fc_core::jobs::queue::JobQueue;
 use fc_core::settings::Settings;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -47,8 +47,8 @@ pub struct AppState {
     pub downloads: crate::ipc::downloads::Downloads,
     /// Clipboard capture paused from the tray or the Clipboard view.
     pub clip_paused: AtomicBool,
-    /// Set while the clipboard is being written by us (our own copies are not recorded).
-    pub clip_self_write: AtomicBool,
+    /// Clipboard sequence number right after our own write (0 = none); updates with this number are not recorded.
+    pub clip_self_write: AtomicU32,
     toast_seq: AtomicU64,
 }
 
@@ -72,7 +72,7 @@ impl AppState {
             clips: OnceLock::new(),
             downloads: Default::default(),
             clip_paused: AtomicBool::new(false),
-            clip_self_write: AtomicBool::new(false),
+            clip_self_write: AtomicU32::new(0),
             toast_seq: AtomicU64::new(1),
         })
     }

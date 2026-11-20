@@ -60,6 +60,7 @@ pub fn run() {
             ipc::clipboard::clip_copy,
             ipc::clipboard::clip_save_image,
             ipc::clipboard::clip_set_paused,
+            ipc::clipboard::clip_get_paused,
             ipc::reveal_path,
             ipc::open_path,
             ipc::show_main,
