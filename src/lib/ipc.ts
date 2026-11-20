@@ -3,7 +3,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AppInfo,
+  ClipField,
+  ClipFolder,
   ClipItem,
+  ClipQuery,
+  ClipStats,
+  ClipTag,
+  HotkeyStatus,
   DownloadRequest,
   DownloadSnapshot,
   JobRequest,
@@ -17,8 +23,12 @@ import type {
   ToolProgress,
   ToolStatus,
   View,
+  WheelConfig,
   WheelPayload,
+  WheelSlots,
   WheelTargets,
+  WheelThumb,
+  WatchStatus,
 } from './types';
 
 export const api = {
@@ -45,14 +55,68 @@ export const api = {
   cancelDownload: (id: number) => invoke<boolean>('cancel_download', { id }),
   listDownloads: () => invoke<DownloadSnapshot[]>('list_downloads'),
 
-  clipList: (query?: string) => invoke<ClipItem[]>('clip_list', { query: query ?? null }),
-  clipPin: (id: number, pinned: boolean) => invoke<boolean>('clip_pin', { id, pinned }),
-  clipDelete: (id: number) => invoke<boolean>('clip_delete', { id }),
-  clipClear: () => invoke<void>('clip_clear'),
-  clipCopy: (id: number) => invoke<void>('clip_copy', { id }),
+  // ---- clipboard (Task 9 implements the Rust side)
+  /** Newest first. Without `trash`, trashed items are excluded. */
+  clipList: (query: ClipQuery = {}) => invoke<ClipItem[]>('clip_list', { query }),
+  clipGet: (id: number) => invoke<ClipItem>('clip_get', { id }),
+  /** Empty value clears title/note. `text` edits text items only. */
+  clipSetField: (id: number, field: ClipField, value: string) => invoke<ClipItem>('clip_set_field', { id, field, value }),
+  clipPin: (ids: number[], pinned: boolean) => invoke<void>('clip_pin', { ids, pinned }),
+  /** Move to the trash (restorable). */
+  clipTrash: (ids: number[]) => invoke<void>('clip_trash', { ids }),
+  clipRestore: (ids: number[]) => invoke<void>('clip_restore', { ids }),
+  clipDeleteForever: (ids: number[]) => invoke<void>('clip_delete_forever', { ids }),
+  clipEmptyTrash: () => invoke<void>('clip_empty_trash'),
+  /** Trash every unsaved live item; returns how many. */
+  clipClearUnsaved: () => invoke<number>('clip_clear_unsaved'),
+  clipFolders: () => invoke<ClipFolder[]>('clip_folders'),
+  clipFolderCreate: (name: string, parent: number | null = null) => invoke<ClipFolder>('clip_folder_create', { name, parent }),
+  clipFolderRename: (id: number, name: string) => invoke<void>('clip_folder_rename', { id, name }),
+  /** Items in it move to "no folder"; sub-folders move up. */
+  clipFolderDelete: (id: number) => invoke<void>('clip_folder_delete', { id }),
+  clipMove: (ids: number[], folder: number | null) => invoke<void>('clip_move', { ids, folder }),
+  clipTags: () => invoke<ClipTag[]>('clip_tags'),
+  clipTag: (ids: number[], add: string[], remove: string[]) => invoke<void>('clip_tag', { ids, add, remove }),
+  /** One text/image -> that; several texts -> joined with newlines; images -> a file list (CF_HDROP). */
+  clipCopy: (ids: number[]) => invoke<void>('clip_copy', { ids }),
+  /** Copy the OCR text of an image item. */
+  clipCopyOcr: (id: number) => invoke<void>('clip_copy_ocr', { id }),
+  /** Write the items as files into `dir`; returns how many files. */
+  clipExport: (ids: number[], dir: string) => invoke<number>('clip_export', { ids, dir }),
   clipSaveImage: (id: number, format: 'png' | 'jpg' | 'webp') => invoke<string>('clip_save_image', { id, format }),
+  /** Store an edited copy (PNG data URL) of an image item; the original is kept. */
+  clipSaveEdited: (id: number, dataUrl: string) => invoke<ClipItem>('clip_save_edited', { id, dataUrl }),
+  clipRevertEdit: (id: number) => invoke<ClipItem>('clip_revert_edit', { id }),
+  clipStats: () => invoke<ClipStats>('clip_stats'),
   clipSetPaused: (paused: boolean) => invoke<void>('clip_set_paused', { paused }),
   clipGetPaused: () => invoke<boolean>('clip_get_paused'),
+
+  // ---- shelf window (Task 9)
+  showShelf: () => invoke<void>('show_shelf'),
+  shelfHide: () => invoke<void>('shelf_hide'),
+  /** Copy the items, hide the shelf and paste (Ctrl+V) into the app that was active before. */
+  shelfPaste: (ids: number[]) => invoke<void>('shelf_paste', { ids }),
+  hotkeyStatus: () => invoke<HotkeyStatus[]>('hotkey_status'),
+
+  // ---- presets & wheel (Task 6 implements the Rust side)
+  getWheelConfig: () => invoke<WheelConfig>('get_wheel_config'),
+  /** Validates (limits, ids, references) and saves; returns the stored config. Error code "invalid". */
+  setWheelConfig: (config: WheelConfig) => invoke<WheelConfig>('set_wheel_config', { config }),
+  resetWheelProfile: (id: string) => invoke<WheelConfig>('reset_wheel_profile', { id }),
+  resetWheelConfig: () => invoke<WheelConfig>('reset_wheel_config'),
+  /** Preset ids usable for files with at least one of these extensions. */
+  presetsForExtensions: (extensions: string[]) => invoke<string[]>('presets_for_extensions', { extensions }),
+  /** Run a preset on files (copy/move without a folder asks first; annotate opens the editor). */
+  runPreset: (paths: string[], presetId: string) => invoke<number[]>('run_preset', { paths, presetId }),
+  /** Open the wheel in click mode at the cursor for these files. */
+  wheelOpen: (paths: string[]) => invoke<void>('wheel_open', { paths }),
+  /** Downscaled image as a PNG data URL (editor). */
+  readImagePreview: (path: string, maxSide: number) => invoke<string>('read_image_preview', { path, maxSide }),
+  /** Save an edited image (PNG data URL) as "<name> (düzenlendi).png" next to `path`; returns the new path. */
+  saveAnnotated: (path: string, dataUrl: string) => invoke<string>('save_annotated', { path, dataUrl }),
+
+  // ---- watch folders (Task 10)
+  watchStatus: () => invoke<WatchStatus[]>('watch_status'),
 
   revealPath: (path: string) => invoke<void>('reveal_path', { path }),
   openPath: (path: string) => invoke<void>('open_path', { path }),
@@ -64,6 +128,7 @@ export const api = {
   overlayHide: () => invoke<void>('overlay_hide'),
   overlayToastAction: (kind: string, action: string, data: unknown) =>
     invoke<void>('overlay_toast_action', { kind, action, data }),
+  /** Files dropped on (or clicked in) a wheel slot; `target` is a preset id. */
   wheelDrop: (paths: string[], target: string) => invoke<number[]>('wheel_drop', { paths, target }),
 };
 
@@ -73,11 +138,23 @@ export const on = {
   toolProgress: (cb: (p: ToolProgress) => void) => listen<ToolProgress>('tool://progress', (e) => cb(e.payload)),
   toolDone: (cb: (p: ToolDone) => void) => listen<ToolDone>('tool://done', (e) => cb(e.payload)),
   clipAdded: (cb: (c: ClipItem) => void) => listen<ClipItem>('clip://added', (e) => cb(e.payload)),
+  /** One item changed (OCR finished, edited, pinned elsewhere). */
+  clipUpdated: (cb: (c: ClipItem) => void) => listen<ClipItem>('clip://updated', (e) => cb(e.payload)),
+  /** Bulk change (trash, restore, folders, prune): refetch. */
+  clipChanged: (cb: () => void) => listen('clip://changed', () => cb()),
+  /** Shelf window: it was just shown. */
+  shelfOpen: (cb: () => void) => listen('shelf://open', () => cb()),
+  watchStatus: (cb: (s: WatchStatus) => void) => listen<WatchStatus>('watch://status', (e) => cb(e.payload)),
   clipPaused: (cb: (paused: boolean) => void) => listen<boolean>('clip://paused', (e) => cb(e.payload)),
   settingsChanged: (cb: (s: Settings) => void) => listen<Settings>('settings://changed', (e) => cb(e.payload)),
   navGoto: (cb: (n: NavPayload) => void) => listen<NavPayload>('nav://goto', (e) => cb(e.payload)),
   overlayWheel: (cb: (p: WheelPayload) => void) => listen<WheelPayload>('overlay://wheel', (e) => cb(e.payload)),
+  /** @deprecated v1 (removed by Task 5). */
   overlayWheelTargets: (cb: (t: WheelTargets) => void) => listen<WheelTargets>('overlay://wheel-targets', (e) => cb(e.payload)),
+  overlayWheelSlots: (cb: (s: WheelSlots) => void) => listen<WheelSlots>('overlay://wheel-slots', (e) => cb(e.payload)),
+  /** Flip front <-> back (mouse wheel / Tab caught by the global hooks). */
+  overlayWheelFlip: (cb: () => void) => listen('overlay://wheel-flip', () => cb()),
+  overlayWheelThumb: (cb: (t: WheelThumb) => void) => listen<WheelThumb>('overlay://wheel-thumb', (e) => cb(e.payload)),
   overlayToast: (cb: (t: ToastPayload) => void) => listen<ToastPayload>('overlay://toast', (e) => cb(e.payload)),
   overlayHide: (cb: () => void) => listen('overlay://hide', () => cb()),
 };

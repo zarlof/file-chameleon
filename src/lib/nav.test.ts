@@ -38,8 +38,8 @@ describe('nav store', () => {
   });
 
   it('an empty payload only navigates', () => {
-    nav.goto({ view: 'settings', paths: [], url: null });
-    expect(nav.view).toBe('settings');
+    nav.goto({ view: 'general', paths: [], url: null });
+    expect(nav.view).toBe('general');
     expect(nav.pending).toBeNull();
   });
 

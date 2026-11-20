@@ -18,7 +18,7 @@
     { view: 'download', icon: Download },
     { view: 'clipboard', icon: Clipboard },
     { view: 'recent', icon: Clock },
-    { view: 'settings', icon: Settings },
+    { view: 'general', icon: Settings },
   ];
   const activeJobs = $derived(jobs.active.length);
 </script>

@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
-// Two entries: the main window and the tiny always-alive overlay (wheel + toasts).
-// The overlay must stay small, so it never imports from src/app/.
+// Three entries: the main window, the tiny always-alive overlay (wheel + toasts) and the clipboard
+// shelf. The overlay and the shelf must stay small, so they never import from src/app/.
 export default defineConfig({
   plugins: [svelte()],
   clearScreen: false,
@@ -17,7 +17,7 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: false,
     rollupOptions: {
-      input: { main: r('./index.html'), overlay: r('./overlay.html') },
+      input: { main: r('./index.html'), overlay: r('./overlay.html'), shelf: r('./shelf.html') },
     },
   },
   test: {

@@ -73,7 +73,7 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
         }
         clipboard::set_enabled(app, new.clipboard_enabled);
     }
-    if old.clipboard_retention_days != new.clipboard_retention_days
+    if old.clipboard_retention_images != new.clipboard_retention_images
         || old.clipboard_max_items != new.clipboard_max_items
     {
         // Apply the new limits now, not on the next copy.
@@ -81,7 +81,7 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
         let mut store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
         let _ = store.prune(
             fc_core::now_ms(),
-            new.clipboard_retention_days,
+            new.clipboard_retention_images,
             new.clipboard_max_items as usize,
         );
     }

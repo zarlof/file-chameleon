@@ -15,7 +15,7 @@ import type { NavPayload, View } from '../types';
  *
  * `consume(view)` returns the payload only if it is addressed to `view`, and clears it.
  */
-export const VIEWS: View[] = ['convert', 'download', 'clipboard', 'recent', 'settings'];
+export const VIEWS: View[] = ['convert', 'download', 'clipboard', 'recent', 'general'];
 
 export class NavStore {
   view = $state<View>('convert');

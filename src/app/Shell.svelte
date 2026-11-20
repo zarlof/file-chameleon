@@ -38,7 +38,7 @@
     if (!e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.key === ',') {
       e.preventDefault();
-      nav.go('settings');
+      nav.go('general');
     } else if (/^[1-5]$/.test(e.key)) {
       e.preventDefault();
       nav.go(VIEWS[Number(e.key) - 1]);

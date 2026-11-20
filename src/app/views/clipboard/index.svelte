@@ -40,7 +40,7 @@
   async function load() {
     const seq = ++requestSeq;
     try {
-      const list = await api.clipList(query.trim() || undefined);
+      const list = await api.clipList({ text: query.trim() || null });
       if (seq === requestSeq) items = list;
     } catch (e) {
       toast.show(errorOf(e).message, 'error');
@@ -92,18 +92,20 @@
 
   const copy = (c: ClipItem) =>
     guarded(async () => {
-      await api.clipCopy(c.id);
+      await api.clipCopy([c.id]);
       toast.show(t('clipboard.copied'), 'success', 1500);
     });
 
   const pin = (c: ClipItem) =>
     guarded(async () => {
-      if (await api.clipPin(c.id, !c.pinned)) items = items.map((i) => (i.id === c.id ? { ...i, pinned: !c.pinned } : i));
+      await api.clipPin([c.id], !c.pinned);
+      items = items.map((i) => (i.id === c.id ? { ...i, pinned: !c.pinned } : i));
     });
 
   const remove = (c: ClipItem) =>
     guarded(async () => {
-      if (await api.clipDelete(c.id)) items = items.filter((i) => i.id !== c.id);
+      await api.clipTrash([c.id]);
+      items = items.filter((i) => i.id !== c.id);
     });
 
   const save = (c: ClipItem, format: 'png' | 'jpg' | 'webp') =>
@@ -123,7 +125,7 @@
   async function clearUnpinned() {
     confirmClear = false;
     await guarded(async () => {
-      await api.clipClear();
+      await api.clipClearUnsaved();
       await load();
     });
   }

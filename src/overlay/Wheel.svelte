@@ -7,6 +7,8 @@
   import FileText from '@lucide/svelte/icons/file-text';
   import Table from '@lucide/svelte/icons/table';
   import Download from '@lucide/svelte/icons/download';
+  import Captions from '@lucide/svelte/icons/captions';
+  import Archive from '@lucide/svelte/icons/archive';
   import Ellipsis from '@lucide/svelte/icons/ellipsis';
   import Ban from '@lucide/svelte/icons/ban';
   import type { Kind, TargetOption } from '../lib/types';
@@ -32,6 +34,8 @@
     audio: Music,
     pdf: FileText,
     data: Table,
+    subtitle: Captions,
+    archive: Archive,
   };
 
   const n = $derived(slices.length);

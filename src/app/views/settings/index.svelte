@@ -77,7 +77,7 @@
     { value: 'brave', label: 'Brave' },
   ]);
   const itemOptions = $derived(numOptions([50, 100, 200, 500, 1000], s.clipboardMaxItems, (n) => t('settings.clipboard.items', { count: n })));
-  const dayOptions = $derived(numOptions([1, 7, 14, 30, 90, 365], s.clipboardRetentionDays, (n) => t('settings.clipboard.days', { count: n })));
+  const dayOptions = $derived(numOptions([1, 7, 14, 30, 90, 365], s.clipboardRetentionImages, (n) => t('settings.clipboard.days', { count: n })));
 
   function purpose(tool: ToolStatus): string {
     const key = `settings.engines.purpose.${tool.id}`;
@@ -181,7 +181,7 @@
                 {#snippet trailing()}<Select value={String(s.clipboardMaxItems)} options={itemOptions} disabled={!s.clipboardEnabled} label={t('settings.clipboard.maxItems')} onchange={(v) => set({ clipboardMaxItems: Number(v) })} />{/snippet}
               </ListRow>
               <ListRow title={t('settings.clipboard.retention')}>
-                {#snippet trailing()}<Select value={String(s.clipboardRetentionDays)} options={dayOptions} disabled={!s.clipboardEnabled} label={t('settings.clipboard.retention')} onchange={(v) => set({ clipboardRetentionDays: Number(v) })} />{/snippet}
+                {#snippet trailing()}<Select value={String(s.clipboardRetentionImages)} options={dayOptions} disabled={!s.clipboardEnabled} label={t('settings.clipboard.retention')} onchange={(v) => set({ clipboardRetentionImages: Number(v) })} />{/snippet}
               </ListRow>
             </Card>
             <SectionHeader title={t('settings.clipboard.cookies')} />

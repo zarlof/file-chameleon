@@ -8,6 +8,8 @@
 //! - [`download`]   media downloader (yt-dlp + direct HTTP)
 //! - [`clip`]       clipboard classification and history store
 //! - [`settings`]   persisted user settings
+//! - [`presets`]    presets, groups and wheel profiles
+//! - [`watch`]      polling folder watcher
 //! - [`proc`]       child-process helpers (no console window, kill-on-close, cancel)
 
 pub mod cancel;
@@ -18,8 +20,10 @@ pub mod engines;
 pub mod error;
 pub mod formats;
 pub mod jobs;
+pub mod presets;
 pub mod proc;
 pub mod settings;
+pub mod watch;
 
 pub use cancel::CancelToken;
 pub use error::{Error, Result};

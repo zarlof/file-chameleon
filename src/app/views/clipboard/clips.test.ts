@@ -3,7 +3,9 @@ import type { ClipItem } from '../../../lib/types';
 import { baseName, matchesFilter, ordered, relativeTime, ROW_H, rowWindow, scrollToReveal, withAdded } from './clips';
 
 function item(id: number, kind: ClipItem['kind'], pinned = false): ClipItem {
-  return { id, kind, text: null, image: null, thumb: null, width: null, height: null, site: null, hash: String(id), createdAt: id, pinned };
+  return { id, kind, text: null, image: null, thumb: null, width: null, height: null, site: null, hash: String(id), createdAt: id, pinned,
+    title: null, note: null, tags: [], folder: null, ocr: null, trashedAt: null, sourceApp: null, linkTitle: null,
+    edited: null, editedThumb: null, saved: pinned, size: 0 };
 }
 
 describe('clipboard helpers', () => {

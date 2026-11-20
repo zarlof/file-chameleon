@@ -242,7 +242,7 @@ mod imp {
             let Ok(Some(item)) = added else { return };
             let _ = store.prune(
                 now,
-                settings.clipboard_retention_days,
+                settings.clipboard_retention_images,
                 settings.clipboard_max_items as usize,
             );
             // The same content copied again while it is already on top: nothing new to announce.
