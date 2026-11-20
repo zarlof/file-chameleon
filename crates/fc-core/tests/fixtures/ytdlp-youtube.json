@@ -1,0 +1,27 @@
+{
+  "id": "dQw4w9WgXcQ",
+  "title": "Sample Video Title ★ with unicode",
+  "extractor": "youtube",
+  "extractor_key": "Youtube",
+  "webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "duration": 212,
+  "uploader": "Sample Channel",
+  "channel": "Sample Channel",
+  "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
+  "is_live": false,
+  "live_status": "not_live",
+  "ext": "mp4",
+  "width": 1920,
+  "height": 1080,
+  "vcodec": "avc1.640028",
+  "acodec": "mp4a.40.2",
+  "requested_formats": [
+    { "format_id": "137", "ext": "mp4", "width": 1920, "height": 1080, "vcodec": "avc1.640028", "acodec": "none", "filesize": 52428800 },
+    { "format_id": "140", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "filesize_approx": 3355443 }
+  ],
+  "formats": [
+    { "format_id": "140", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "filesize": 3355443 },
+    { "format_id": "18", "ext": "mp4", "width": 640, "height": 360, "vcodec": "avc1.42001E", "acodec": "mp4a.40.2", "filesize": 14000000 },
+    { "format_id": "137", "ext": "mp4", "width": 1920, "height": 1080, "vcodec": "avc1.640028", "acodec": "none", "filesize": 52428800 }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "jfKfPfyJRdk",
+  "title": "lofi hip hop radio - beats to relax/study to",
+  "extractor": "youtube",
+  "extractor_key": "Youtube",
+  "webpage_url": "https://www.youtube.com/watch?v=jfKfPfyJRdk",
+  "duration": null,
+  "uploader": "Lofi Girl",
+  "thumbnail": "https://i.ytimg.com/vi/jfKfPfyJRdk/maxresdefault_live.jpg",
+  "is_live": true,
+  "live_status": "is_live",
+  "ext": "mp4",
+  "width": 1920,
+  "height": 1080,
+  "vcodec": "avc1.640028",
+  "acodec": "mp4a.40.2",
+  "formats": [
+    { "format_id": "96", "ext": "mp4", "width": 1920, "height": 1080, "vcodec": "avc1.640028", "acodec": "mp4a.40.2", "protocol": "m3u8_native" }
+  ]
+}
