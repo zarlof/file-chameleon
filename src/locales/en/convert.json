@@ -1,0 +1,81 @@
+{
+  "title": "Convert",
+  "drop": {
+    "title": "Drop files here or click to choose",
+    "subtitle": "Images, video, audio, PDF and data files",
+    "release": "Release to add files",
+    "addFiles": "Add files",
+    "addFolder": "Add folder",
+    "clear": "Remove all"
+  },
+  "unsupported": "Not supported",
+  "analyzing": "Checking files…",
+  "loadError": "These files could not be read.",
+  "formats": {
+    "title": "Convert to",
+    "empty": "None of these files can be converted."
+  },
+  "kind": {
+    "image": "Images",
+    "vector": "Vector",
+    "video": "Video",
+    "audio": "Audio",
+    "pdf": "PDF",
+    "data": "Data"
+  },
+  "tools": {
+    "title": "Tools",
+    "compress": "Compress",
+    "trim": "Trim",
+    "speed": "Speed",
+    "mute": "Mute",
+    "mergePdf": "Merge PDF",
+    "splitPdf": "Split PDF",
+    "crop": "Crop"
+  },
+  "params": {
+    "level": "Level",
+    "light": "Light",
+    "balanced": "Balanced",
+    "strong": "Strong",
+    "start": "Start",
+    "end": "End",
+    "timeHint": "mm:ss",
+    "speed": "Speed",
+    "x": "X",
+    "y": "Y",
+    "width": "Width",
+    "height": "Height",
+    "muteInfo": "Removes the audio track. The video is not re-encoded.",
+    "mergeInfo": "Combines all PDFs into one file, in the order shown.",
+    "splitInfo": "Saves every page as its own PDF.",
+    "invalid": "Check the values above."
+  },
+  "options": {
+    "title": "Options",
+    "quality": "Quality",
+    "maxWidth": "Max width",
+    "maxHeight": "Max height",
+    "pixels": "px",
+    "outputDir": "Save to",
+    "sameAsSource": "Same folder as the original",
+    "choose": "Choose…",
+    "reset": "Reset"
+  },
+  "action": {
+    "convert": "Convert",
+    "convertCount": {
+      "one": "Convert {count} file",
+      "other": "Convert {count} files"
+    },
+    "apply": "Apply",
+    "download": "Download {name} (≈{size} MB) and convert",
+    "downloading": "Downloading {name}…",
+    "pick": "Pick a format or tool to continue",
+    "submitFailed": "Could not start the conversion."
+  },
+  "queue": {
+    "title": "Queue",
+    "all": "Show all in Recent"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "title": "Son işlemler",
+  "empty": {
+    "title": "Henüz bir şey yok",
+    "message": "Dönüştürdüğünüz dosyalar burada görünür."
+  },
+  "today": "Bugün",
+  "earlier": "Daha önce",
+  "clear": "Bitenleri temizle",
+  "reveal": "Klasörde göster",
+  "open": "Aç",
+  "retry": "Tekrar dene",
+  "retryFailed": "İşlem yeniden başlatılamadı.",
+  "cancel": "İptal",
+  "outputs": {
+    "one": "{count} dosya oluşturuldu",
+    "other": "{count} dosya oluşturuldu"
+  },
+  "state": {
+    "queued": "Bekliyor",
+    "cancelled": "İptal edildi"
+  },
+  "op": {
+    "convert": "{to} biçimine dönüştür",
+    "mergePdf": "PDF birleştir",
+    "splitPdf": "PDF böl",
+    "compress": "Sıkıştır ({level})",
+    "trim": "Kırp (süre)",
+    "mute": "Sessize al",
+    "speed": "Hızı değiştir",
+    "crop": "Kırp (alan)"
+  },
+  "errors": {
+    "cancelled": "İptal edildi.",
+    "missingTool": "Gerekli bir araç eksik. Ayarlar > Motorlar bölümünden kurun.",
+    "unsupported": "Bu dosya türü ya da dönüştürme desteklenmiyor.",
+    "notFound": "Dosya bulunamadı. Taşınmış ya da silinmiş olabilir.",
+    "tooLarge": "Dosya işlenemeyecek kadar büyük.",
+    "network": "Ağ hatası oluştu. Bağlantınızı kontrol edip tekrar deneyin.",
+    "checksum": "İndirilen dosya bozuk. Lütfen tekrar deneyin.",
+    "toolFailed": "Dönüştürme aracı bir hata bildirdi.",
+    "failed": "Bir şeyler ters gitti.",
+    "io": "Dosya okunamadı ya da yazılamadı. Klasörü ve izinleri kontrol edin."
+  }
+}

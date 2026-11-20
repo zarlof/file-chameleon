@@ -1,0 +1,45 @@
+{
+  "title": "Recent",
+  "empty": {
+    "title": "Nothing here yet",
+    "message": "Converted files will show up here."
+  },
+  "today": "Today",
+  "earlier": "Earlier",
+  "clear": "Clear finished",
+  "reveal": "Show in folder",
+  "open": "Open",
+  "retry": "Try again",
+  "retryFailed": "Could not restart the job.",
+  "cancel": "Cancel",
+  "outputs": {
+    "one": "{count} file created",
+    "other": "{count} files created"
+  },
+  "state": {
+    "queued": "Waiting",
+    "cancelled": "Cancelled"
+  },
+  "op": {
+    "convert": "Convert to {to}",
+    "mergePdf": "Merge PDF",
+    "splitPdf": "Split PDF",
+    "compress": "Compress ({level})",
+    "trim": "Trim",
+    "mute": "Mute",
+    "speed": "Change speed",
+    "crop": "Crop"
+  },
+  "errors": {
+    "cancelled": "Cancelled.",
+    "missingTool": "A required tool is missing. Install it in Settings > Engines.",
+    "unsupported": "This file type or conversion is not supported.",
+    "notFound": "The file was not found. It may have been moved or deleted.",
+    "tooLarge": "The file is too large to process.",
+    "network": "A network error occurred. Check your connection and try again.",
+    "checksum": "The download was corrupted. Please try again.",
+    "toolFailed": "The conversion tool reported an error.",
+    "failed": "Something went wrong.",
+    "io": "The file could not be read or written. Check the folder and permissions."
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "title": "Settings",
+  "sections": {
+    "general": "General",
+    "wheel": "Wheel",
+    "clipboard": "Clipboard",
+    "output": "Output",
+    "engines": "Engines",
+    "about": "About"
+  },
+  "general": {
+    "language": "Language",
+    "languageSystem": "System",
+    "theme": "Appearance",
+    "themeSystem": "Auto",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "accent": "Accent colour",
+    "launchAtLogin": "Open at login",
+    "launchAtLoginHint": "Start File Chameleon in the background when you sign in."
+  },
+  "accents": {
+    "blue": "Blue",
+    "purple": "Purple",
+    "pink": "Pink",
+    "red": "Red",
+    "orange": "Orange",
+    "yellow": "Yellow",
+    "green": "Green",
+    "graphite": "Graphite"
+  },
+  "wheel": {
+    "enable": "Quick convert wheel",
+    "enableHint": "Hold Ctrl while dragging a file to open a wheel of formats.",
+    "anyApp": "Work in any app",
+    "anyAppHint": "Off: only in File Explorer and the desktop.",
+    "howTitle": "How it works",
+    "howBody": "Start dragging a file, press and hold Ctrl, then drop it on a format.",
+    "illustration": {
+      "drag": "Drag",
+      "drop": "Drop on a format"
+    }
+  },
+  "clipboard": {
+    "enable": "Keep clipboard history",
+    "enableHint": "Saves what you copy so you can find it later.",
+    "images": "Include images",
+    "suggestLinks": "Suggest downloading copied media links",
+    "suggestImages": "Suggest converting copied images",
+    "maxItems": "History size",
+    "retention": "Keep items for",
+    "days": {
+      "one": "{count} day",
+      "other": "{count} days"
+    },
+    "items": "{count} items",
+    "cookies": "Browser cookies for downloads",
+    "cookiesNone": "None",
+    "cookiesHint": "Lets downloads use your signed-in session for sites that need it. Cookies are only read by the downloader on this device and never leave it."
+  },
+  "output": {
+    "convertDir": "Converted files",
+    "downloadDir": "Downloads",
+    "sameAsSource": "Same folder as the original",
+    "defaultDownloads": "Downloads folder",
+    "choose": "Choose…",
+    "reset": "Reset",
+    "quality": "Default image quality"
+  },
+  "engines": {
+    "note": "FFmpeg found on your PATH is used automatically. Download it here only if you do not have it.",
+    "install": "Download",
+    "remove": "Remove",
+    "installing": "Downloading…",
+    "source": {
+      "managed": "Managed",
+      "system": "System",
+      "missing": "Missing"
+    },
+    "version": "Version {version}",
+    "license": "License: {license}",
+    "purpose": {
+      "ffmpeg": "Video, audio and GIF conversion",
+      "yt-dlp": "Downloading media from links",
+      "deno": "Script runtime some sites need for downloads",
+      "pdfium": "Rendering PDF pages to images"
+    },
+    "error": "Installation failed: {message}"
+  },
+  "about": {
+    "version": "Version",
+    "repo": "Source code",
+    "repoValue": "github.com/your-name/file-chameleon",
+    "licenses": "Licenses",
+    "licensesValue": "File Chameleon is open source. Optional engines keep their own licenses (FFmpeg: GPL-3.0, yt-dlp: Unlicense, PDFium: BSD-3-Clause, Deno: MIT).",
+    "credits": "Inspired by Filee, Nashi and ClipBoardLine. Not affiliated with them."
+  }
+}
