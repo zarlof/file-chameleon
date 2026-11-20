@@ -28,13 +28,19 @@ enum Mode {
     Toast,
 }
 
+/// A toast requested before the overlay page could show it: (kind, data, timeout).
+type QueuedToast = (String, serde_json::Value, Option<u64>);
+
 struct OverlayCtl {
     mode: Mode,
     /// Bumped on every show; delayed hides only fire if the generation is unchanged.
     generation: u64,
     /// Files entered the wheel during this generation.
     entered: bool,
+    /// The overlay page has registered its listeners (`overlay_ready`).
     ready: bool,
+    /// Latest toast sent before `ready`; shown once the page is ready.
+    queued_toast: Option<QueuedToast>,
     pending_nav: Option<NavPayload>,
 }
 
@@ -43,6 +49,7 @@ static CTL: Mutex<OverlayCtl> = Mutex::new(OverlayCtl {
     generation: 0,
     entered: false,
     ready: false,
+    queued_toast: None,
     pending_nav: None,
 });
 
@@ -64,6 +71,9 @@ fn browser_args() -> String {
     std::env::var("FC_WEBVIEW_ARGS").unwrap_or_else(|_| BROWSER_ARGS.to_string())
 }
 
+/// Show (or create) the main window. Never call this from a sync command or another WebView2
+/// callback on the main thread: building the webview there deadlocks (see `ipc` module docs).
+/// Tray, single-instance and setup callers are plain event-loop callbacks and are fine.
 pub fn show_main(app: &AppHandle, nav: Option<NavPayload>) {
     if let Some(w) = app.get_webview_window(MAIN) {
         let _ = w.unminimize();
@@ -148,15 +158,35 @@ pub fn create_overlay(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-pub fn overlay_ready(_app: &AppHandle) {
-    ctl().ready = true;
+/// The overlay page is listening: show a toast that arrived before it was.
+pub fn overlay_ready(app: &AppHandle) {
+    let queued = {
+        let mut c = ctl();
+        c.ready = true;
+        c.queued_toast.take()
+    };
+    if let Some((kind, data, timeout_ms)) = queued {
+        show_toast(app, &kind, data, timeout_ms);
+    }
 }
 
 fn overlay(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(OVERLAY)
 }
 
+/// Run `f` on the main thread (inline when already there). Overlay show/hide uses raw Win32
+/// calls and the overlay state machine, so it always runs there, whoever asks.
+fn on_main(app: &AppHandle, f: impl FnOnce(&AppHandle) + Send + 'static) {
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || f(&a));
+}
+
+/// Hide the overlay (wheel or toast). Callable from any thread.
 pub fn hide_overlay(app: &AppHandle) {
+    on_main(app, hide_overlay_now);
+}
+
+fn hide_overlay_now(app: &AppHandle) {
     {
         let mut c = ctl();
         c.mode = Mode::Hidden;
@@ -187,15 +217,19 @@ fn hide_overlay_later(app: &AppHandle, ms: u64, only_if_not_entered: bool) {
                 && !(only_if_not_entered && c.entered)
         };
         if go {
-            let app2 = app.clone();
-            let _ = app.run_on_main_thread(move || hide_overlay(&app2));
+            hide_overlay(&app);
         }
     });
 }
 
 /// Show the wheel centred on the physical screen point (x, y). Called from the mouse hook.
+/// The window shows nothing until files enter it (`overlay://wheel-targets`), so other
+/// Ctrl+drags (text, a marquee selection) leave no trace.
 pub fn show_wheel_at(app: &AppHandle, x: i32, y: i32) {
     let Some(w) = overlay(app) else { return };
+    if !ctl().ready {
+        return; // the page is still loading and could not draw or hit-test the wheel
+    }
     let scale = app
         .monitor_from_point(x as f64, y as f64)
         .ok()
@@ -235,10 +269,25 @@ pub fn on_drag_released(app: &AppHandle) {
     }
 }
 
+/// Show a toast at the bottom right of the work area under the cursor. Callable from any
+/// thread (it runs on the main thread). Before the overlay page is ready the latest toast is
+/// queued and shown by `overlay_ready`, never as an empty window.
 pub fn show_toast(app: &AppHandle, kind: &str, data: serde_json::Value, timeout_ms: Option<u64>) {
+    let kind = kind.to_string();
+    on_main(app, move |app| show_toast_now(app, &kind, data, timeout_ms));
+}
+
+fn show_toast_now(app: &AppHandle, kind: &str, data: serde_json::Value, timeout_ms: Option<u64>) {
     let Some(w) = overlay(app) else { return };
-    if ctl().mode == Mode::Wheel {
-        return; // the wheel has priority; results are still listed in the app
+    {
+        let mut c = ctl();
+        if !c.ready {
+            c.queued_toast = Some((kind.to_string(), data, timeout_ms));
+            return;
+        }
+        if c.mode == Mode::Wheel {
+            return; // the wheel has priority; results are still listed in the app
+        }
     }
     let state = app.state::<AppState>();
     let payload = ToastPayload {
@@ -257,7 +306,7 @@ pub fn show_toast(app: &AppHandle, kind: &str, data: serde_json::Value, timeout_
     #[cfg(windows)]
     if let Ok(hwnd) = w.hwnd() {
         let (cx, cy) = crate::platform::win::cursor_pos();
-        if let Some((_, wt, wr, _)) = crate::platform::win::work_area_at(cx, cy) {
+        if let Some((_, _, wr, wb)) = crate::platform::win::work_area_at(cx, cy) {
             let scale = app
                 .monitor_from_point(cx as f64, cy as f64)
                 .ok()
@@ -268,7 +317,9 @@ pub fn show_toast(app: &AppHandle, kind: &str, data: serde_json::Value, timeout_
                 (TOAST_W * scale).round() as i32,
                 (TOAST_H * scale).round() as i32,
             );
-            crate::platform::win::show_no_activate(hwnd.0 as isize, wr - tw, wt, tw, th);
+            // Bottom right (the card keeps its margin inside the window), clear of the caption
+            // buttons of maximized windows.
+            crate::platform::win::show_no_activate(hwnd.0 as isize, wr - tw, wb - th, tw, th);
         }
     }
     if let Some(ms) = timeout_ms {
@@ -330,7 +381,8 @@ pub fn toast_job_finished(app: &AppHandle, snap: &JobSnapshot) {
     });
 }
 
-/// Toast button handler. Unknown actions just dismiss.
+/// Toast button handler, called from an async command (never on the main thread). The toast is
+/// hidden first, so an action may show a follow-up toast. Unknown actions just dismiss.
 pub fn toast_action(
     app: &AppHandle,
     state: &AppState,
@@ -339,6 +391,7 @@ pub fn toast_action(
     data: &serde_json::Value,
 ) {
     use tauri_plugin_opener::OpenerExt;
+    hide_overlay(app);
     let s = |k: &str| data.get(k).and_then(|v| v.as_str()).map(String::from);
     let first_output = data
         .get("outputs")
@@ -387,20 +440,81 @@ pub fn toast_action(
                 );
             }
         }
+        ("clipImage", "savePng") => {
+            if let Some(id) = data.get("clipId").and_then(|v| v.as_u64()) {
+                let app = app.clone();
+                // Decoding and encoding a large image takes a while: not on this thread.
+                tauri::async_runtime::spawn_blocking(move || {
+                    let state = app.state::<AppState>();
+                    match crate::ipc::clipboard::save_image(&state, id, "png") {
+                        Ok(out) => {
+                            show_toast(&app, "imageSaved", json!({ "output": out }), Some(6000))
+                        }
+                        Err(e) => eprintln!("save clipboard image: {}", e.message),
+                    }
+                });
+            }
+        }
         ("toolNeeded", "install") => {
-            show_main(
-                app,
-                Some(NavPayload {
-                    view: "settings".into(),
-                    paths: vec![],
-                    url: None,
-                }),
-            );
+            if let Some(tool) = s("tool") {
+                install_then_convert(app, state, tool, data);
+            }
         }
         _ => {}
     }
-    let _ = state;
-    hide_overlay(app);
+}
+
+/// `toolNeeded` → "Download": install in the background, then convert the dropped files.
+fn install_then_convert(app: &AppHandle, state: &AppState, tool: String, data: &serde_json::Value) {
+    let name = state
+        .engines()
+        .manifest()
+        .get(&tool)
+        .map(|e| e.name.clone())
+        .unwrap_or_else(|| tool.clone());
+    let paths: Vec<std::path::PathBuf> = data
+        .get("paths")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|p| p.as_str())
+                .map(Into::into)
+                .collect()
+        })
+        .unwrap_or_default();
+    let target = data
+        .get("target")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    show_toast(
+        app,
+        "toolInstalling",
+        json!({ "tool": tool, "name": name }),
+        Some(5000),
+    );
+    let app = app.clone();
+    std::thread::spawn(move || {
+        if let Err(e) = crate::ipc::install_now(&app, &tool) {
+            show_toast(
+                &app,
+                "toolFailed",
+                json!({ "tool": tool, "name": name, "errorCode": e.code(), "error": e.to_string() }),
+                Some(9000),
+            );
+            return;
+        }
+        let (Some(to), false) = (target, paths.is_empty()) else {
+            return;
+        };
+        let req = fc_core::jobs::JobRequest {
+            inputs: paths,
+            op: fc_core::jobs::Operation::Convert { to },
+            options: Default::default(),
+        };
+        let state = app.state::<AppState>();
+        // Results come back as the usual job toasts.
+        let _ = crate::ipc::submit(&state, req);
+    });
 }
 
 // ------------------------------------------------------------------ window events
@@ -413,7 +527,8 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
     if let WindowEvent::DragDrop(dd) = event {
         match dd {
             DragDropEvent::Enter { paths, .. } => {
-                if ctl().mode != Mode::Wheel {
+                // No files: not a file drag. The wheel stays invisible and goes away.
+                if ctl().mode != Mode::Wheel || paths.is_empty() {
                     return;
                 }
                 {
@@ -427,11 +542,22 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
                     .collect();
                 let (inputs, targets) = crate::ipc::targets_for_paths(&paths);
                 let first_kind = inputs.first().and_then(|i| i.kind);
-                let recent_all = app.state::<AppState>().settings().recent_targets;
-                let recent = recent_all
+                let state = app.state::<AppState>();
+                let recent = state
+                    .settings()
+                    .recent_targets
                     .into_iter()
                     .filter(|r| targets.iter().any(|t| t.id == r))
                     .collect();
+                // Only these get the download glyph (managed or PATH copies count as present).
+                let mut missing_tools: Vec<String> = Vec::new();
+                for tool in targets.iter().flat_map(|t| t.needs_tools.iter()) {
+                    if !missing_tools.iter().any(|m| m.as_str() == *tool)
+                        && !state.engines().is_available(tool)
+                    {
+                        missing_tools.push(tool.to_string());
+                    }
+                }
                 let _ = window.emit(
                     events::OVERLAY_WHEEL_TARGETS,
                     WheelTargets {
@@ -439,6 +565,7 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
                         first_kind,
                         targets,
                         recent,
+                        missing_tools,
                     },
                 );
             }

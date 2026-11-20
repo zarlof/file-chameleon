@@ -62,6 +62,8 @@ pub struct WheelTargets {
     pub targets: Vec<fc_core::formats::planner::TargetOption>,
     /// Recently used target ids that are valid here, newest first (max 7).
     pub recent: Vec<String>,
+    /// Tool ids some target needs that are not installed (those slices show a download glyph).
+    pub missing_tools: Vec<String>,
 }
 
 /// Toasts carry data, not text: the overlay localizes and picks actions per `kind`.
@@ -69,9 +71,13 @@ pub struct WheelTargets {
 /// - "jobDone"    { jobId, outputs: [path], inputName }      actions: reveal, open
 /// - "jobFailed"  { jobId, inputName, errorCode, error }     actions: details (opens Recent)
 /// - "jobsBatch"  { done, failed, total }                    actions: reveal (first output)
-/// - "toolNeeded" { tool, name, size }                       actions: install, dismiss
+/// - "toolNeeded" { tool, name, size, paths, target }        actions: install (then converts
+///   `paths` to `target`), dismiss
+/// - "toolInstalling" { tool, name }                         no actions
+/// - "toolFailed" { tool, name, errorCode, error }           no actions
 /// - "clipLink"   { url, site }                              actions: download, dismiss
-/// - "clipImage"  { clipId, width, height, thumb }           actions: savePng, convert, dismiss
+/// - "clipImage"  { clipId, width, height, thumb, image }    actions: savePng, convert
+/// - "imageSaved" { output }                                 actions: reveal, open
 /// - "downloadDone" { downloadId, output, title }            actions: reveal, open
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
