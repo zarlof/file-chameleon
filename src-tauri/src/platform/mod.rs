@@ -1,10 +1,14 @@
-//! Platform integration: mouse hook (wheel), clipboard listener, autostart, OS language.
+//! Platform integration: mouse hook (wheel), clipboard listener, global hotkeys, OCR,
+//! autostart, OS language.
 
 pub mod clipboard;
 #[cfg(windows)]
 mod hook;
 #[cfg(windows)]
 pub mod win;
+// Clipboard v2 (Task 9): global hotkeys and Windows OCR.
+pub mod hotkeys;
+pub mod ocr;
 
 use crate::state::AppState;
 use fc_core::settings::Settings;
@@ -16,6 +20,11 @@ pub fn start(app: &AppHandle) {
     if s.clipboard_enabled {
         clipboard::start(app);
     }
+    // Clipboard v2 (Task 9): hotkeys, OCR, watched image folders, retention.
+    hotkeys::configure(app, &s);
+    ocr::set_enabled(s.clipboard_ocr);
+    clipboard::configure_folders(app, &s);
+    clipboard::start_maintenance(app);
 }
 
 fn configure_wheel(app: &AppHandle, s: &Settings) {
@@ -79,12 +88,25 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
         || old.clipboard_max_items != new.clipboard_max_items
     {
         // Apply the new limits now, not on the next copy.
-        let state = app.state::<AppState>();
-        let mut store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
-        let _ = store.prune(
-            fc_core::now_ms(),
-            &fc_core::clip::Retention::from_settings(&new),
-        );
+        clipboard::prune(app, &new);
+    }
+    // Clipboard v2 (Task 9).
+    if old.hotkey_shelf != new.hotkey_shelf
+        || old.hotkey_library != new.hotkey_library
+        || old.hotkey_download_link != new.hotkey_download_link
+    {
+        hotkeys::configure(app, &new);
+    }
+    if old.clipboard_ocr != new.clipboard_ocr {
+        ocr::set_enabled(new.clipboard_ocr);
+        if new.clipboard_ocr {
+            ocr::backfill(app);
+        }
+    }
+    if old.clipboard_watch_folders != new.clipboard_watch_folders
+        || old.clipboard_enabled != new.clipboard_enabled
+    {
+        clipboard::configure_folders(app, &new);
     }
     if old.language != new.language {
         crate::tray::refresh(app);

@@ -26,14 +26,14 @@ fn labels(app: &AppHandle) -> Labels {
     if lang == "tr" {
         Labels {
             open: "File Chameleon'ı Aç",
-            clipboard: "Pano",
+            clipboard: "Panoyu aç",
             pause: "Panoyu Duraklat",
             quit: "Çıkış",
         }
     } else {
         Labels {
             open: "Open File Chameleon",
-            clipboard: "Clipboard",
+            clipboard: "Open Clipboard",
             pause: "Pause Clipboard",
             quit: "Quit",
         }
@@ -65,14 +65,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => crate::windows::show_main(app, None),
-            "clipboard" => crate::windows::show_main(
-                app,
-                Some(crate::events::NavPayload {
-                    view: "clipboard".into(),
-                    paths: vec![],
-                    url: None,
-                }),
-            ),
+            // The clipboard shelf (Task 9); the library is in the main window.
+            "clipboard" => crate::shelf::show_shelf(app),
             "pause" => {
                 let state = app.state::<AppState>();
                 let now = !state.clip_paused.load(Ordering::SeqCst);

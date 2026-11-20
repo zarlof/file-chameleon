@@ -168,3 +168,85 @@ pub fn system_language() -> String {
         "en".into()
     }
 }
+
+// ---------------------------------------------------------------- clipboard v2 and shelf (Task 9)
+
+/// Lowercase exe file name of a process (`None` if it cannot be queried).
+fn exe_name_of(pid: u32) -> Option<String> {
+    unsafe {
+        let proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        let ok =
+            QueryFullProcessImageNameW(proc, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len)
+                .is_ok();
+        let _ = CloseHandle(proc);
+        if !ok {
+            return None;
+        }
+        let full = String::from_utf16_lossy(&buf[..len as usize]);
+        Some(
+            full.rsplit(['\\', '/'])
+                .next()
+                .unwrap_or(&full)
+                .to_ascii_lowercase(),
+        )
+    }
+}
+
+/// Lowercase exe name of the app that put the current content on the clipboard. Does not open
+/// the clipboard. `None` when there is no owner window (some apps write without one).
+pub fn clipboard_owner_exe() -> Option<String> {
+    use windows::Win32::System::DataExchange::GetClipboardOwner;
+    unsafe {
+        let owner = GetClipboardOwner().ok()?;
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(owner, Some(&mut pid));
+        if pid == 0 {
+            return None;
+        }
+        exe_name_of(pid)
+    }
+}
+
+/// The foreground top-level window (0 = none).
+pub fn foreground_window() -> isize {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow().0 as isize }
+}
+
+pub fn is_window(h: isize) -> bool {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindow(Some(hwnd(h))).as_bool() }
+}
+
+/// Bring a window to the front (allowed while our own window is in front). True on success.
+pub fn set_foreground(h: isize) -> bool {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd(h)).as_bool() }
+}
+
+/// Type Ctrl+V into whatever window is in front.
+pub fn send_ctrl_v() {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput,
+        VIRTUAL_KEY, VK_CONTROL,
+    };
+    let key = |vk: VIRTUAL_KEY, flags: KEYBD_EVENT_FLAGS| INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: vk,
+                dwFlags: flags,
+                ..Default::default()
+            },
+        },
+    };
+    let v = VIRTUAL_KEY(u16::from(b'V'));
+    let inputs = [
+        key(VK_CONTROL, KEYBD_EVENT_FLAGS(0)),
+        key(v, KEYBD_EVENT_FLAGS(0)),
+        key(v, KEYEVENTF_KEYUP),
+        key(VK_CONTROL, KEYEVENTF_KEYUP),
+    ];
+    unsafe {
+        SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+    }
+}

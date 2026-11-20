@@ -19,6 +19,14 @@ pub const OVERLAY_TOAST: &str = "overlay://toast";
 /// Overlay: hide everything.
 pub const OVERLAY_HIDE: &str = "overlay://hide";
 
+// ---- clipboard v2 and shelf (Task 9)
+/// One clipboard item changed (OCR done, link title, edit, field): payload `ClipItem`.
+pub const CLIP_UPDATED: &str = "clip://updated";
+/// Bulk clipboard change (trash, restore, pins, folders, tags, retention): no payload, refetch.
+pub const CLIP_CHANGED: &str = "clip://changed";
+/// Shelf window: it was just shown (no payload).
+pub const SHELF_OPEN: &str = "shelf://open";
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolProgress {
@@ -79,6 +87,7 @@ pub struct WheelTargets {
 /// - "clipImage"  { clipId, width, height, thumb, image }    actions: savePng, convert
 /// - "imageSaved" { output }                                 actions: reveal, open
 /// - "downloadDone" { downloadId, output, title }            actions: reveal, open
+/// - "noLink"     {}  (download-link hotkey, no media link copied)  no actions
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToastPayload {

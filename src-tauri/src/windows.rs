@@ -67,7 +67,7 @@ fn ctl() -> std::sync::MutexGuard<'static, OverlayCtl> {
 const BROWSER_ARGS: &str =
     "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-gpu --in-process-gpu";
 
-fn browser_args() -> String {
+pub(crate) fn browser_args() -> String {
     std::env::var("FC_WEBVIEW_ARGS").unwrap_or_else(|_| BROWSER_ARGS.to_string())
 }
 
