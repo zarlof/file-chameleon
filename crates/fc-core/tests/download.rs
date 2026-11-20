@@ -146,11 +146,11 @@ fn format_selectors() {
     );
     assert_eq!(
         format_selector(Video, Best),
-        "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b"
+        "bv*[vcodec^=avc1]+ba[ext=m4a]/bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b"
     );
     assert_eq!(
         format_selector(Video, P720),
-        "bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]"
+        "bv*[height<=720][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]"
     );
     assert_eq!(format_selector(Audio, Best), "ba/b");
     // GIF always works from <= 720p video, whatever the quality choice
@@ -246,7 +246,9 @@ fn download_args_per_mode() {
     );
     assert_eq!(
         arg_after(&a, "-f"),
-        Some("bv*[height<=1080][ext=mp4]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]")
+        Some(
+            "bv*[height<=1080][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=1080][ext=mp4]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]"
+        )
     );
     assert_eq!(arg_after(&a, "--merge-output-format"), Some("mp4"));
     assert_eq!(arg_after(&a, "--remux-video"), Some("mp4"));

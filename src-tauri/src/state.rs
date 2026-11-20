@@ -54,11 +54,12 @@ pub struct AppState {
 
 impl AppState {
     pub fn init(app: &AppHandle) -> tauri::Result<Self> {
-        let base_config = app.path().config_dir()?;
-        let base_data = app.path().local_data_dir()?;
+        // Identifier-based folders (%APPDATA% / %LOCALAPPDATA%pp.filechameleon.desktop).
+        // A plain "FileChameleon" folder is already used by an unrelated older app of the same
+        // name, so sharing it would mix files and let one app's uninstall delete the other's data.
         let paths = Paths {
-            config: base_config.join("FileChameleon"),
-            data: base_data.join("FileChameleon"),
+            config: app.path().app_config_dir()?,
+            data: app.path().app_local_data_dir()?,
         };
         let _ = std::fs::create_dir_all(&paths.config);
         let _ = std::fs::create_dir_all(&paths.data);

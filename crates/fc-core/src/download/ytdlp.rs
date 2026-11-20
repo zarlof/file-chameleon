@@ -104,9 +104,11 @@ pub fn format_selector(mode: DlMode, quality: DlQuality) -> String {
     let cap = cap.as_deref().unwrap_or("");
     match mode {
         DlMode::Original => format!("bv*{cap}+ba/b{cap}"),
-        DlMode::Video => {
-            format!("bv*{cap}[ext=mp4]+ba[ext=m4a]/bv*{cap}+ba/b{cap}")
-        }
+        // H.264 first: "Video" promises an MP4 that plays everywhere, and an mp4 container alone
+        // can hold AV1, which older devices and players cannot decode.
+        DlMode::Video => format!(
+            "bv*{cap}[vcodec^=avc1]+ba[ext=m4a]/bv*{cap}[ext=mp4]+ba[ext=m4a]/bv*{cap}+ba/b{cap}"
+        ),
         DlMode::Audio | DlMode::Gif => "ba/b".into(),
     }
 }
