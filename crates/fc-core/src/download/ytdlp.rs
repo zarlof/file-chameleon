@@ -54,6 +54,8 @@ fn common_args(tools: &dyn ToolLocator, url: &str, cookies: Option<&str>) -> Vec
         "--ignore-config",
         "--no-update",
         "--no-playlist",
+        "--playlist-items",
+        "1",
         "--newline",
         "--no-colors",
     ]
@@ -307,7 +309,12 @@ pub fn parse_probe_json(json: &str, url: &str) -> Result<MediaInfo> {
 
 /// Map yt-dlp's stderr to the most useful error.
 pub fn map_failure(stderr: &str, url: &str, had_js_runtime: bool) -> Error {
-    let low = stderr.to_ascii_lowercase();
+    // Warnings (e.g. "some formats were skipped as DRM protected") must not decide the error.
+    let relevant: Vec<&str> = stderr
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("WARNING:"))
+        .collect();
+    let low = relevant.join("\n").to_ascii_lowercase();
     let detail = stderr
         .lines()
         .rev()
@@ -496,5 +503,28 @@ pub fn download(
             let _ = std::fs::remove_file(&temp);
             Err(e)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn final_path_skips_progress_noise() {
+        let out = "FC 10 100 NA 5 3\nFCPP started\n\
+                   C:\\stage\\dl\\First [a].mp4\n\
+                   FC 100 100 NA 5 0\n[download] done\n\n";
+        assert_eq!(
+            final_path(out),
+            Some(PathBuf::from("C:\\stage\\dl\\First [a].mp4"))
+        );
+        // several printed paths: the last one wins
+        let out = "C:\\stage\\dl\\One.mp4\nFC 1 2 NA 1 1\nC:\\stage\\dl\\Two.mp4\nFCPP finished\n";
+        assert_eq!(
+            final_path(out),
+            Some(PathBuf::from("C:\\stage\\dl\\Two.mp4"))
+        );
+        assert_eq!(final_path("FC 1 2 NA 1 1\n[x] y\n"), None);
     }
 }

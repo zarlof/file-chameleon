@@ -53,7 +53,8 @@ pub fn probe_direct(url: &str) -> Result<MediaInfo> {
     };
     let content_type = header(&resp, "content-type");
     let disposition = header(&resp, "content-disposition");
-    let size = resp.body().content_length();
+    // A HEAD response has no body, so the body's length is unknown: use the header.
+    let size = header(&resp, "content-length").and_then(|v| v.trim().parse::<u64>().ok());
     let name = file_name_for(url, disposition.as_deref(), content_type.as_deref());
     let kind = match media_kind(content_type.as_deref(), &name) {
         "image" => "image",
@@ -541,10 +542,16 @@ mod tests {
         std::thread::spawn(move || {
             let (mut s, _) = listener.accept().unwrap();
             let mut reader = BufReader::new(s.try_clone().unwrap());
+            let mut is_head = false;
+            let mut first = true;
             loop {
                 let mut line = String::new();
                 if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
                     break;
+                }
+                if first {
+                    is_head = line.starts_with("HEAD");
+                    first = false;
                 }
             }
             let head = format!(
@@ -552,9 +559,21 @@ mod tests {
                 body.len()
             );
             let _ = s.write_all(head.as_bytes());
-            let _ = s.write_all(body);
+            if !is_head {
+                let _ = s.write_all(body);
+            }
         });
         format!("http://127.0.0.1:{port}/files/clip%201.bin")
+    }
+
+    #[test]
+    fn probe_direct_reads_size_and_type_from_head_headers() {
+        let url = serve_once(b"0123456789", "Content-Type: image/png\r\n");
+        let info = probe_direct(&url).unwrap();
+        assert_eq!(info.size_bytes, Some(10));
+        assert_eq!(info.kind, "image");
+        assert_eq!(info.title, "clip 1.bin");
+        assert!(info.direct);
     }
 
     #[test]

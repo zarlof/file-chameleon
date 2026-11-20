@@ -185,6 +185,40 @@ fn probe_args_are_safe_and_complete() {
 }
 
 #[test]
+fn only_the_first_item_of_multi_item_posts() {
+    let tools = Fake {
+        ffmpeg: true,
+        deno: false,
+    };
+    let url = "https://www.instagram.com/p/C9z8Y7x6W5v/";
+    let p = probe_args(&tools, url, None);
+    assert_eq!(arg_after(&p, "--playlist-items"), Some("1"));
+    let d = download_args(
+        &req(url, DlMode::Original, DlQuality::Best),
+        &tools,
+        Path::new("C:\\stage"),
+        None,
+    );
+    assert_eq!(arg_after(&d, "--playlist-items"), Some("1"));
+}
+
+#[test]
+fn warnings_do_not_decide_the_error() {
+    let yt = "https://www.youtube.com/watch?v=abc";
+    let stderr = "WARNING: [youtube] abc: Some formats have been skipped as they are DRM protected\n\
+                  ERROR: [youtube] abc: Private video. Sign in if you've been granted access";
+    match map_failure(stderr, yt, true) {
+        Error::ToolFailed(m) => assert!(m.contains("Private video"), "{m}"),
+        e => panic!("{e:?}"),
+    }
+    // a real DRM error is still reported as such
+    assert!(matches!(
+        map_failure("ERROR: [x] This video is DRM protected", yt, true),
+        Error::Unsupported(_)
+    ));
+}
+
+#[test]
 fn no_cookies_no_ffmpeg() {
     let tools = Fake {
         ffmpeg: false,

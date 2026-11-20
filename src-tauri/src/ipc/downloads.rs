@@ -186,12 +186,15 @@ pub fn start_download(
 fn run(app: AppHandle, id: u64, req: DownloadRequest, uses_ytdlp: bool, cancel: CancelToken) {
     let state = app.state::<AppState>();
     if uses_ytdlp {
-        // Keep yt-dlp current without delaying this download; failures are not interesting.
-        let engines = state.engines().clone();
-        let c = cancel.clone();
-        std::thread::spawn(move || {
-            let _ = engines.update_ytdlp_if_stale(&c);
-        });
+        // Update yt-dlp first (never while a download is starting); errors are not interesting.
+        // This thread is already a background one, and cancel stops the update too.
+        state
+            .downloads
+            .update(&app, id, false, |s| s.state = DlState::Probing);
+        let _ = state.engines().update_ytdlp_if_stale(&cancel);
+        state
+            .downloads
+            .update(&app, id, false, |s| s.state = DlState::Downloading);
     }
     let staging = state.paths.staging_dir().join(format!("dl-{id}"));
     let cookies = state.settings().cookies_browser;
