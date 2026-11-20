@@ -15,10 +15,10 @@ serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
 fc-core = { path = "crates/fc-core" }
 
-# Size-first release profile. panic stays "unwind" on purpose: a converter must
+# Size-first release profile ("z": ~2 MB smaller exe than "s"; heavy media work runs in ffmpeg). panic stays "unwind" on purpose: a converter must
 # survive a decoder panic on a malformed file (caught per job with catch_unwind).
 [profile.release]
-opt-level = "s"
+opt-level = "z"
 lto = "fat"
 codegen-units = 1
 strip = true
