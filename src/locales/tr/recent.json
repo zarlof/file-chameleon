@@ -25,10 +25,10 @@
     "mergePdf": "PDF birleştir",
     "splitPdf": "PDF böl",
     "compress": "Sıkıştır ({level})",
-    "trim": "Kırp (süre)",
+    "trim": "Kes",
     "mute": "Sessize al",
     "speed": "Hızı değiştir",
-    "crop": "Kırp (alan)"
+    "crop": "Kırp"
   },
   "errors": {
     "cancelled": "İptal edildi.",

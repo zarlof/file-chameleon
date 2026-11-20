@@ -26,12 +26,12 @@
   "tools": {
     "title": "Araçlar",
     "compress": "Sıkıştır",
-    "trim": "Kırp (süre)",
+    "trim": "Kes",
     "speed": "Hız",
     "mute": "Sessize al",
     "mergePdf": "PDF birleştir",
     "splitPdf": "PDF böl",
-    "crop": "Kırp (alan)"
+    "crop": "Kırp"
   },
   "params": {
     "level": "Düzey",

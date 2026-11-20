@@ -2,7 +2,7 @@
   "title": "Ayarlar",
   "sections": {
     "general": "Genel",
-    "wheel": "Çember",
+    "wheel": "Çark",
     "clipboard": "Pano",
     "output": "Çıktı",
     "engines": "Motorlar",
@@ -30,8 +30,8 @@
     "graphite": "Grafit"
   },
   "wheel": {
-    "enable": "Hızlı dönüştürme çemberi",
-    "enableHint": "Bir dosyayı sürüklerken Ctrl'ye basılı tutarak biçim çemberini açın.",
+    "enable": "Hızlı dönüştürme çarkı",
+    "enableHint": "Bir dosyayı sürüklerken Ctrl'ye basılı tutarak biçim çarkını açın.",
     "anyApp": "Her uygulamada çalışsın",
     "anyAppHint": "Kapalıyken yalnızca Dosya Gezgini ve masaüstünde çalışır.",
     "howTitle": "Nasıl çalışır",
