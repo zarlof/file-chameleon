@@ -494,7 +494,14 @@ fn install_then_convert(app: &AppHandle, state: &AppState, tool: String, data: &
     );
     let app = app.clone();
     std::thread::spawn(move || {
-        if let Err(e) = crate::ipc::install_now(&app, &tool) {
+        let state = app.state::<AppState>();
+        // Installed meanwhile (e.g. from Settings): just convert.
+        let installed = if state.engines().is_available(&tool) {
+            Ok(())
+        } else {
+            crate::ipc::install_now(&app, &tool)
+        };
+        if let Err(e) = installed {
             show_toast(
                 &app,
                 "toolFailed",
@@ -511,7 +518,6 @@ fn install_then_convert(app: &AppHandle, state: &AppState, tool: String, data: &
             op: fc_core::jobs::Operation::Convert { to },
             options: Default::default(),
         };
-        let state = app.state::<AppState>();
         // Results come back as the usual job toasts.
         let _ = crate::ipc::submit(&state, req);
     });

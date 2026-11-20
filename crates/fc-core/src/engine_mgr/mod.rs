@@ -86,7 +86,7 @@ pub struct EngineManager {
 }
 
 impl EngineManager {
-    /// `root` = `%LOCALAPPDATA%\FileChameleon\engines`. Creates it if missing.
+    /// `root` = `%LOCALAPPDATA%\app.filechameleon.desktop\engines`. Creates it if missing.
     pub fn new(root: PathBuf, manifest: Manifest) -> Self {
         let _ = fs::create_dir_all(&root);
         let mgr = Self {
