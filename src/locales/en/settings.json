@@ -1,23 +1,55 @@
 {
-  "title": "Settings",
-  "sections": {
-    "general": "General",
-    "wheel": "Wheel",
-    "clipboard": "Clipboard",
-    "output": "Output",
-    "engines": "Engines",
-    "about": "About"
-  },
   "general": {
+    "app": "App",
     "language": "Language",
     "languageSystem": "System",
-    "theme": "Appearance",
+    "launchAtLogin": "Open at login",
+    "launchAtLoginHint": "Start File Chameleon in the background when you sign in.",
+    "closeToTray": "Keep running in the tray when closed",
+    "closeToTrayHint": "Off: closing the window quits the app.",
+    "contextMenu": "File Explorer right-click menu",
+    "contextMenuHint": "Adds an entry that opens the wheel when you right-click files.",
+    "convert": "Converting",
+    "outputDir": "Converted files",
+    "sameAsSource": "Same folder as the original",
+    "quality": "Default image quality",
+    "downloads": "Downloads",
+    "downloadDir": "Download folder",
+    "defaultDownloads": "Downloads folder",
+    "downloadMode": "Default format",
+    "downloadQuality": "Default quality",
+    "downloadQualityHint": "Not used for audio and GIF downloads.",
+    "cookies": "Browser cookies for downloads",
+    "cookiesNone": "None",
+    "cookiesHint": "Lets downloads use your signed-in session for sites that need it. Cookies are only read by the downloader on this device and never leave it.",
+    "choose": "Choose…",
+    "reset": "Reset"
+  },
+  "appearance": {
+    "theme": "Theme",
     "themeSystem": "Auto",
     "themeLight": "Light",
     "themeDark": "Dark",
     "accent": "Accent colour",
-    "launchAtLogin": "Open at login",
-    "launchAtLoginHint": "Start File Chameleon in the background when you sign in."
+    "uiScale": "Interface size",
+    "uiScaleHint": "Makes everything in the main window larger or smaller.",
+    "reduceMotion": "Reduce motion",
+    "reduceMotionHint": "Turns animations off so changes happen instantly.",
+    "percent": "{value}%",
+    "wheel": "Wheel",
+    "wheelColor": "Highlighted slice colour",
+    "wheelColorAccent": "Same as the accent colour",
+    "wheelOpacity": "Wheel opacity",
+    "wheelLabels": "Slice labels",
+    "labels": {
+      "auto": "Automatic",
+      "iconText": "Icon and text",
+      "text": "Text only",
+      "icon": "Icon only"
+    },
+    "wheelSize": "Wheel size",
+    "wheelShowDetail": "Show the detail line",
+    "wheelShowDetailHint": "Slices show details such as quality, ratio or size."
   },
   "accents": {
     "blue": "Blue",
@@ -29,17 +61,25 @@
     "green": "Green",
     "graphite": "Graphite"
   },
-  "wheel": {
+  "shortcuts": {
+    "wheel": "Wheel",
     "enable": "Quick convert wheel",
     "enableHint": "Hold Ctrl while dragging a file to open a wheel of formats.",
     "anyApp": "Work in any app",
     "anyAppHint": "Off: only in File Explorer and the desktop.",
+    "flipScroll": "Flip with the mouse wheel",
+    "flipScrollHint": "While the wheel is open, scrolling switches between the front and back face.",
+    "flipTab": "Flip with Tab",
+    "shiftBack": "Ctrl+Shift opens the back face",
+    "shiftBackHint": "Holding Shift together with Ctrl while dragging opens the wheel on its back face.",
+    "excluded": "Apps where the wheel never opens",
+    "excludedHint": "In these apps, Ctrl+drag works as usual.",
+    "excludedEmpty": "The list is empty.",
+    "excludedPlaceholder": "app.exe",
+    "add": "Add",
+    "removeApp": "Remove {name}",
     "howTitle": "How it works",
-    "howBody": "Start dragging a file, press and hold Ctrl, then drop it on a format.",
-    "illustration": {
-      "drag": "Drag",
-      "drop": "Drop on a format"
-    }
+    "howBody": "Start dragging a file, press and hold Ctrl, then drop it on a format."
   },
   "clipboard": {
     "enable": "Keep clipboard history",
@@ -48,24 +88,12 @@
     "suggestLinks": "Suggest downloading copied media links",
     "suggestImages": "Suggest converting copied images",
     "maxItems": "History size",
-    "retention": "Keep items for",
+    "retention": "Keep images for",
     "days": {
       "one": "{count} day",
       "other": "{count} days"
     },
-    "items": "{count} items",
-    "cookies": "Browser cookies for downloads",
-    "cookiesNone": "None",
-    "cookiesHint": "Lets downloads use your signed-in session for sites that need it. Cookies are only read by the downloader on this device and never leave it."
-  },
-  "output": {
-    "convertDir": "Converted files",
-    "downloadDir": "Downloads",
-    "sameAsSource": "Same folder as the original",
-    "defaultDownloads": "Downloads folder",
-    "choose": "Choose…",
-    "reset": "Reset",
-    "quality": "Default image quality"
+    "items": "{count} items"
   },
   "engines": {
     "note": "FFmpeg found on your PATH is used automatically. Download it here only if you do not have it.",
@@ -96,9 +124,11 @@
   "about": {
     "version": "Version",
     "repo": "Source code",
-    "repoValue": "github.com/your-name/file-chameleon",
+    "repoValue": "github.com/zarlof/file-chameleon",
+    "open": "Open",
     "licenses": "Licenses",
     "licensesValue": "File Chameleon is open source. Optional engines keep their own licenses (FFmpeg: GPL-3.0, yt-dlp: Unlicense, PDFium: BSD-3-Clause, Deno: MIT).",
-    "credits": "Inspired by Filee, Nashi and ClipBoardLine. Not affiliated with them."
+    "licensesOpen": "Show notices",
+    "credits": "Inspired by Filee, Nashi and Clipboardline; not affiliated with them."
   }
 }

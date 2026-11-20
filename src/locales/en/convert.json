@@ -8,6 +8,10 @@
     "addFolder": "Add folder",
     "clear": "Remove all"
   },
+  "home": {
+    "hint": "Or drag in Explorer while holding Ctrl; the wheel opens next to the cursor.",
+    "recent": "Recent conversions"
+  },
   "unsupported": "Not supported",
   "analyzing": "Checking files…",
   "loadError": "These files could not be read.",

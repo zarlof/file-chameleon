@@ -1,48 +1,80 @@
 <!--
-  TitleBar — frameless window chrome: full-width drag region + macOS traffic lights (left).
-  Lights go grey while the window is unfocused; glyphs appear when hovering the group.
-  No props.
+  TitleBar — frameless window chrome: a full-width drag region (double-click maximizes) with
+  Windows 11 caption buttons at the top right (minimize, maximize / restore, close).
+  Glyphs come from the system icon font; they dim while the window is unfocused.
+  The maximize glyph follows `isMaximized()`, re-read on every resize. No props.
 -->
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { t } from '../lib/i18n';
 
   let focused = $state(true);
+  let maximized = $state(false);
 
   function run(fn: () => Promise<unknown>) {
-    fn().catch(() => {});
+    try {
+      fn().catch(() => {});
+    } catch {
+      /* not running inside Tauri */
+    }
   }
+
+  onMount(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    const sync = () => run(async () => (maximized = await getCurrentWindow().isMaximized()));
+    sync();
+    run(async () => {
+      const un = await getCurrentWindow().onResized(sync);
+      if (disposed) un();
+      else unlisten = un;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  });
 </script>
 
 <svelte:window onfocus={() => (focused = true)} onblur={() => (focused = false)} />
 
 <header class="titlebar" data-tauri-drag-region>
-  <div class="lights" class:blur={!focused} role="group" aria-label={t('common.appName')}>
-    <button type="button" class="light close" aria-label={t('common.window.close')} onclick={() => run(() => getCurrentWindow().close())}>
-      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.6 3.6l4.8 4.8M8.4 3.6L3.6 8.4" /></svg>
+  <div class="caption" class:blur={!focused}>
+    <button type="button" class="cb" aria-label={t('common.window.minimize')} title={t('common.window.minimize')}
+      onclick={() => run(() => getCurrentWindow().minimize())}>
+      <span class="glyph" aria-hidden="true">&#xE921;</span>
     </button>
-    <button type="button" class="light min" aria-label={t('common.window.minimize')} onclick={() => run(() => getCurrentWindow().minimize())}>
-      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 6h6" /></svg>
+    <button type="button" class="cb" aria-label={t(maximized ? 'common.window.restore' : 'common.window.maximize')}
+      title={t(maximized ? 'common.window.restore' : 'common.window.maximize')}
+      onclick={() => run(() => getCurrentWindow().toggleMaximize())}>
+      <span class="glyph" aria-hidden="true">{maximized ? '' : ''}</span>
     </button>
-    <button type="button" class="light zoom" aria-label={t('common.window.zoom')} onclick={() => run(() => getCurrentWindow().toggleMaximize())}>
-      <svg viewBox="0 0 12 12" aria-hidden="true"><path class="fill" d="M3.4 3.4h3.6L3.4 7zM8.6 8.6H5L8.6 5z" /></svg>
+    <button type="button" class="cb close" aria-label={t('common.window.close')} title={t('common.window.close')}
+      onclick={() => run(() => getCurrentWindow().close())}>
+      <span class="glyph" aria-hidden="true">&#xE8BB;</span>
     </button>
   </div>
 </header>
 
 <style>
-  .titlebar { position: absolute; z-index: 50; top: 0; left: 0; right: 0; height: var(--titlebar-h); display: flex; align-items: center; padding-left: 20px; }
-  .lights { display: flex; gap: 8px; }
-  .light {
-    position: relative; display: grid; place-items: center; width: 12px; height: 12px; padding: 0; border: 0; border-radius: 50%;
-    box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.18); transition: background var(--dur-fast), filter var(--dur-fast);
+  .titlebar { position: absolute; z-index: 50; top: 0; left: 0; right: 0; height: var(--titlebar-h); display: flex; justify-content: flex-end; }
+  /* Windows 11 caption metrics and colours (system chrome, so literal values rather than theme tokens). */
+  .caption {
+    --cb-hover: rgba(0, 0, 0, 0.06);
+    --cb-press: rgba(0, 0, 0, 0.04);
+    display: flex; height: 32px;
   }
-  .close { background: #ff5f57; }
-  .min { background: #febc2e; }
-  .zoom { background: #28c840; }
-  .light:active { filter: brightness(0.8); }
-  .light svg { width: 12px; height: 12px; opacity: 0; fill: none; stroke: rgba(0, 0, 0, 0.62); stroke-width: 1.15; stroke-linecap: round; transition: opacity var(--dur-fast); }
-  .light svg .fill { fill: rgba(0, 0, 0, 0.62); stroke: none; }
-  .lights:hover .light svg { opacity: 1; }
-  .lights.blur:not(:hover) .light { background: var(--control-bg-active); box-shadow: inset 0 0 0 0.5px var(--hairline); }
+  :global(:root[data-theme='dark']) .caption { --cb-hover: rgba(255, 255, 255, 0.08); --cb-press: rgba(255, 255, 255, 0.05); }
+  .cb {
+    display: grid; place-items: center; width: 46px; height: 32px; padding: 0; border: 0; border-radius: 0;
+    background: transparent; color: var(--text); cursor: default; transition: background var(--dur-fast), color var(--dur-fast);
+  }
+  .cb:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 0; }
+  .glyph { font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets'; font-size: 10px; line-height: 1; }
+  .cb:hover { background: var(--cb-hover); }
+  .cb:active { background: var(--cb-press); }
+  .cb.close:hover { background: #c42b1c; color: #fff; }
+  .cb.close:active { background: rgba(196, 43, 28, 0.9); color: rgba(255, 255, 255, 0.7); }
+  .caption.blur .cb:not(:hover) { color: var(--text-tertiary); }
 </style>

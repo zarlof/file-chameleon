@@ -8,7 +8,7 @@
 </script>
 
 <script lang="ts">
-  import { ChevronRight, FileUp, FolderPlus } from '@lucide/svelte';
+  import { ChevronRight, CircleCheck, FileUp, FolderPlus } from '@lucide/svelte';
   import { open } from '@tauri-apps/plugin-dialog';
   import { api, errorOf } from '../../../lib/ipc';
   import { t } from '../../../lib/i18n';
@@ -18,9 +18,10 @@
   import { tools } from '../../../lib/stores/tools.svelte';
   import type { CompressLevel, JobRequest, Operation, TargetsResponse, ToolOp } from '../../../lib/types';
   import {
-    Badge, Button, Card, FileChip, Icon, ProgressBar, SectionHeader, SegmentedControl, Select, Slider, TextField,
+    Badge, Button, Card, FileChip, Icon, ListRow, ProgressBar, SectionHeader, SegmentedControl, Select, Slider, TextField,
   } from '../../../lib/ui';
   import JobRow from '../recent/JobRow.svelte';
+  import { jobTitle } from '../recent/logic';
   import { buildOptions, buildRequest, buildToolOp, groupTargets, missingTools, opNeeds, SPEEDS } from './logic';
 
   const TOOL_ORDER: ToolOp[] = ['compress', 'trim', 'speed', 'mute', 'mergePdf', 'splitPdf', 'crop'];
@@ -185,8 +186,12 @@
     void submit(req, [...missing]);
   }
 
-  const queue = $derived(jobs.list.filter((j) => j.createdAt >= sessionStart).slice(0, 5));
   const fileCount = $derived(resp?.inputs.length ?? 0);
+  // Home (no files loaded): finished jobs are listed under "Recent conversions", so the queue skips them.
+  const recentDone = $derived(fileCount === 0 ? jobs.list.filter((j) => j.state === 'done').slice(0, 6) : []);
+  const queue = $derived(
+    jobs.list.filter((j) => j.createdAt >= sessionStart && (fileCount > 0 || j.state !== 'done')).slice(0, 5),
+  );
   const levels = $derived([
     { value: 'light' as const, label: t('convert.params.light') },
     { value: 'balanced' as const, label: t('convert.params.balanced') },
@@ -212,6 +217,7 @@
       <span class="drop-title">{over ? t('convert.drop.release') : t('convert.drop.title')}</span>
       <span class="drop-sub">{t('convert.drop.subtitle')}</span>
     </button>
+    {#if settings.value.wheelEnabled}<p class="home-hint">{t('convert.home.hint')}</p>{/if}
     <div class="center">
       <Button variant="plain" size="sm" onclick={pickFolder}>
         {#snippet icon()}<FolderPlus size={14} />{/snippet}
@@ -350,6 +356,26 @@
       {#each queue as job (job.id)}<JobRow {job} />{/each}
     </Card>
   {/if}
+
+  {#if recentDone.length > 0}
+    <SectionHeader title={t('convert.home.recent')}>
+      {#snippet action()}<Button variant="plain" size="sm" onclick={() => jobs.clear()}>{t('common.actions.clear')}</Button>{/snippet}
+    </SectionHeader>
+    <Card>
+      {#each recentDone as job (job.id)}
+        {@const output = job.outputs[0]}
+        <ListRow title={jobTitle(job.outputs.length > 0 ? job.outputs : job.inputs)} subtitle={jobTitle(job.inputs)}>
+          {#snippet leading()}<span class="done"><CircleCheck size={18} /></span>{/snippet}
+          {#snippet trailing()}
+            {#if output}
+              <Button size="sm" onclick={() => api.revealPath(output).catch(() => {})}>{t('recent.reveal')}</Button>
+              <Button size="sm" onclick={() => api.openPath(output).catch(() => {})}>{t('recent.open')}</Button>
+            {/if}
+          {/snippet}
+        </ListRow>
+      {/each}
+    </Card>
+  {/if}
 </section>
 
 <style>
@@ -374,6 +400,8 @@
   .drop-title { font: var(--text-title); letter-spacing: var(--tracking-tight); }
   .drop-sub { font: var(--text-body); color: var(--text-secondary); }
   .center { display: flex; justify-content: center; margin-top: var(--space-3); }
+  .home-hint { margin: var(--space-3) 0 0; font: var(--text-callout); color: var(--text-secondary); text-align: center; }
+  .done { display: inline-flex; justify-content: center; width: 24px; color: var(--green); }
 
   .files { display: flex; flex-direction: column; gap: var(--space-3); }
   .chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }

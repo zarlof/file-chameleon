@@ -15,7 +15,10 @@ import type { NavPayload, View } from '../types';
  *
  * `consume(view)` returns the payload only if it is addressed to `view`, and clears it.
  */
-export const VIEWS: View[] = ['convert', 'download', 'clipboard', 'recent', 'general'];
+/** Sidebar main group, in order (Ctrl+1..4). */
+export const NAV_MAIN: View[] = ['convert', 'download', 'clipboard', 'recent'];
+/** Sidebar "Settings" group, in order. `editor` is not in the sidebar. */
+export const NAV_SETTINGS: View[] = ['general', 'wheel', 'presets', 'shortcuts', 'watch', 'clipboardSettings', 'appearance', 'engines', 'about'];
 
 export class NavStore {
   view = $state<View>('convert');

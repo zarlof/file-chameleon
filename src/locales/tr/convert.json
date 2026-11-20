@@ -8,6 +8,10 @@
     "addFolder": "Klasör ekle",
     "clear": "Tümünü kaldır"
   },
+  "home": {
+    "hint": "Ya da Explorer'da Ctrl'ye basılı tutarak sürükleyin; çark imlecin yanında açılır.",
+    "recent": "Son dönüşümler"
+  },
   "unsupported": "Desteklenmiyor",
   "analyzing": "Dosyalar kontrol ediliyor…",
   "loadError": "Bu dosyalar okunamadı.",

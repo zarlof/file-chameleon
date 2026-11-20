@@ -5,12 +5,27 @@
     "download": "Download",
     "clipboard": "Clipboard",
     "recent": "Recent",
-    "settings": "Settings"
+    "settings": "Settings",
+    "general": "General",
+    "wheel": "Wheel",
+    "presets": "Presets",
+    "shortcuts": "Shortcuts",
+    "watch": "Watch folders",
+    "clipboardSettings": "Clipboard settings",
+    "appearance": "Appearance",
+    "engines": "Engines",
+    "about": "About",
+    "editor": "Image editor"
   },
   "window": {
-    "close": "Close",
     "minimize": "Minimize",
-    "zoom": "Zoom"
+    "maximize": "Maximize",
+    "restore": "Restore down",
+    "close": "Close"
+  },
+  "sidebar": {
+    "github": "GitHub",
+    "githubHint": "Open the source code on GitHub"
   },
   "actions": {
     "ok": "OK",
@@ -29,5 +44,6 @@
   },
   "error": {
     "generic": "Something went wrong."
-  }
+  },
+  "placeholder": "This page is on its way."
 }

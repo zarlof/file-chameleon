@@ -1,23 +1,55 @@
 {
-  "title": "Ayarlar",
-  "sections": {
-    "general": "Genel",
-    "wheel": "Çark",
-    "clipboard": "Pano",
-    "output": "Çıktı",
-    "engines": "Motorlar",
-    "about": "Hakkında"
-  },
   "general": {
+    "app": "Uygulama",
     "language": "Dil",
     "languageSystem": "Sistem",
-    "theme": "Görünüm",
+    "launchAtLogin": "Oturum açıldığında başlat",
+    "launchAtLoginHint": "Oturum açtığınızda File Chameleon arka planda başlasın.",
+    "closeToTray": "Kapatınca bildirim alanında çalışmaya devam et",
+    "closeToTrayHint": "Kapalıyken pencereyi kapatmak uygulamadan çıkar.",
+    "contextMenu": "Dosya Gezgini sağ tık menüsü",
+    "contextMenuHint": "Dosyalara sağ tıklayınca çarkı açan bir seçenek ekler.",
+    "convert": "Dönüştürme",
+    "outputDir": "Dönüştürülen dosyalar",
+    "sameAsSource": "Orijinalin klasörü",
+    "quality": "Varsayılan görsel kalitesi",
+    "downloads": "İndirmeler",
+    "downloadDir": "İndirme klasörü",
+    "defaultDownloads": "İndirilenler klasörü",
+    "downloadMode": "Varsayılan biçim",
+    "downloadQuality": "Varsayılan kalite",
+    "downloadQualityHint": "Ses ve GIF indirmelerinde kullanılmaz.",
+    "cookies": "İndirmeler için tarayıcı çerezleri",
+    "cookiesNone": "Yok",
+    "cookiesHint": "Giriş gerektiren sitelerde indirmelerin oturumunuzu kullanmasını sağlar. Çerezleri yalnızca bu cihazdaki indirici okur, cihazdan dışarı çıkmaz.",
+    "choose": "Seç…",
+    "reset": "Sıfırla"
+  },
+  "appearance": {
+    "theme": "Tema",
     "themeSystem": "Otomatik",
     "themeLight": "Açık",
     "themeDark": "Koyu",
     "accent": "Vurgu rengi",
-    "launchAtLogin": "Oturum açıldığında başlat",
-    "launchAtLoginHint": "Oturum açtığınızda File Chameleon arka planda başlasın."
+    "uiScale": "Arayüz boyutu",
+    "uiScaleHint": "Ana penceredeki her şeyi büyütür ya da küçültür.",
+    "reduceMotion": "Hareketi azalt",
+    "reduceMotionHint": "Animasyonları kapatır; değişiklikler anında olur.",
+    "percent": "%{value}",
+    "wheel": "Çark",
+    "wheelColor": "Vurgulanan dilim rengi",
+    "wheelColorAccent": "Vurgu rengiyle aynı",
+    "wheelOpacity": "Çark opaklığı",
+    "wheelLabels": "Dilim etiketleri",
+    "labels": {
+      "auto": "Otomatik",
+      "iconText": "Simge ve metin",
+      "text": "Yalnızca metin",
+      "icon": "Yalnızca simge"
+    },
+    "wheelSize": "Çark boyutu",
+    "wheelShowDetail": "Ayrıntı satırını göster",
+    "wheelShowDetailHint": "Dilimlerde kalite, oran ya da boyut gibi ayrıntılar görünür."
   },
   "accents": {
     "blue": "Mavi",
@@ -29,17 +61,25 @@
     "green": "Yeşil",
     "graphite": "Grafit"
   },
-  "wheel": {
+  "shortcuts": {
+    "wheel": "Çark",
     "enable": "Hızlı dönüştürme çarkı",
     "enableHint": "Bir dosyayı sürüklerken Ctrl'ye basılı tutarak biçim çarkını açın.",
     "anyApp": "Her uygulamada çalışsın",
     "anyAppHint": "Kapalıyken yalnızca Dosya Gezgini ve masaüstünde çalışır.",
+    "flipScroll": "Fare tekerleğiyle çevir",
+    "flipScrollHint": "Çark açıkken tekerlek ön ve arka yüz arasında geçiş yapar.",
+    "flipTab": "Tab ile çevir",
+    "shiftBack": "Ctrl+Shift ile arka yüzden başla",
+    "shiftBackHint": "Sürüklerken Ctrl ile birlikte Shift de basılıysa çark arka yüzüyle açılır.",
+    "excluded": "Çarkın açılmayacağı uygulamalar",
+    "excludedHint": "Bu uygulamalarda Ctrl ile sürüklemek her zamanki gibi çalışır.",
+    "excludedEmpty": "Liste boş.",
+    "excludedPlaceholder": "uygulama.exe",
+    "add": "Ekle",
+    "removeApp": "{name} uygulamasını kaldır",
     "howTitle": "Nasıl çalışır",
-    "howBody": "Bir dosyayı sürüklemeye başlayın, Ctrl'ye basılı tutun ve bir biçimin üzerine bırakın.",
-    "illustration": {
-      "drag": "Sürükle",
-      "drop": "Bir biçime bırak"
-    }
+    "howBody": "Bir dosyayı sürüklemeye başlayın, Ctrl'ye basılı tutun ve bir biçimin üzerine bırakın."
   },
   "clipboard": {
     "enable": "Pano geçmişini tut",
@@ -48,24 +88,12 @@
     "suggestLinks": "Kopyalanan medya bağlantıları için indirme öner",
     "suggestImages": "Kopyalanan görseller için dönüştürme öner",
     "maxItems": "Geçmiş boyutu",
-    "retention": "Öğeleri şu kadar sakla",
+    "retention": "Görselleri şu kadar sakla",
     "days": {
       "one": "{count} gün",
       "other": "{count} gün"
     },
-    "items": "{count} öğe",
-    "cookies": "İndirmeler için tarayıcı çerezleri",
-    "cookiesNone": "Yok",
-    "cookiesHint": "Giriş gerektiren sitelerde indirmelerin oturumunuzu kullanmasını sağlar. Çerezleri yalnızca bu cihazdaki indirici okur, cihazdan dışarı çıkmaz."
-  },
-  "output": {
-    "convertDir": "Dönüştürülen dosyalar",
-    "downloadDir": "İndirmeler",
-    "sameAsSource": "Orijinalin klasörü",
-    "defaultDownloads": "İndirilenler klasörü",
-    "choose": "Seç…",
-    "reset": "Sıfırla",
-    "quality": "Varsayılan görsel kalitesi"
+    "items": "{count} öğe"
   },
   "engines": {
     "note": "PATH üzerinde bulunan FFmpeg otomatik kullanılır. Yalnızca yoksa buradan indirin.",
@@ -96,9 +124,11 @@
   "about": {
     "version": "Sürüm",
     "repo": "Kaynak kod",
-    "repoValue": "github.com/your-name/file-chameleon",
+    "repoValue": "github.com/zarlof/file-chameleon",
+    "open": "Aç",
     "licenses": "Lisanslar",
     "licensesValue": "File Chameleon açık kaynaklıdır. İsteğe bağlı motorlar kendi lisanslarını taşır (FFmpeg: GPL-3.0, yt-dlp: Unlicense, PDFium: BSD-3-Clause, Deno: MIT).",
-    "credits": "Filee, Nashi ve ClipBoardLine'dan ilham alınmıştır. Onlarla bir bağı yoktur."
+    "licensesOpen": "Bildirimleri göster",
+    "credits": "Filee, Nashi ve Clipboardline'dan ilham alınmıştır; onlarla bir bağı yoktur."
   }
 }

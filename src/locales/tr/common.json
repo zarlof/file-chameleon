@@ -5,12 +5,27 @@
     "download": "İndir",
     "clipboard": "Pano",
     "recent": "Son işlemler",
-    "settings": "Ayarlar"
+    "settings": "Ayarlar",
+    "general": "Genel",
+    "wheel": "Çark",
+    "presets": "Hazır ayarlar",
+    "shortcuts": "Kısayollar",
+    "watch": "İzlenen klasörler",
+    "clipboardSettings": "Pano ayarları",
+    "appearance": "Görünüm",
+    "engines": "Motorlar",
+    "about": "Hakkında",
+    "editor": "Görsel düzenleyici"
   },
   "window": {
-    "close": "Kapat",
-    "minimize": "Küçült",
-    "zoom": "Yakınlaştır"
+    "minimize": "Simge durumuna küçült",
+    "maximize": "Ekranı kapla",
+    "restore": "Aşağı geri getir",
+    "close": "Kapat"
+  },
+  "sidebar": {
+    "github": "GitHub",
+    "githubHint": "Kaynak kodu GitHub'da aç"
   },
   "actions": {
     "ok": "Tamam",
@@ -29,5 +44,6 @@
   },
   "error": {
     "generic": "Bir şeyler ters gitti."
-  }
+  },
+  "placeholder": "Bu sayfa hazırlanıyor."
 }

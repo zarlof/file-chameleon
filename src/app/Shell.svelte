@@ -9,9 +9,9 @@
   import { FileDown } from '@lucide/svelte';
   import { t } from '../lib/i18n';
   import { jobs } from '../lib/stores/jobs.svelte';
-  import { nav, VIEWS } from '../lib/stores/nav.svelte';
+  import { nav, NAV_MAIN } from '../lib/stores/nav.svelte';
   import { settings } from '../lib/stores/settings.svelte';
-  import { applyTheme, watchSystemTheme } from '../lib/stores/theme';
+  import { applyMotion, applyTheme, applyZoom, watchSystemTheme } from '../lib/stores/theme';
   import { tools } from '../lib/stores/tools.svelte';
   import { modal, Toast } from '../lib/ui';
   import Sidebar from './Sidebar.svelte';
@@ -20,7 +20,13 @@
   import Convert from './views/convert/index.svelte';
   import Download from './views/download/index.svelte';
   import Recent from './views/recent/index.svelte';
-  import Settings from './views/settings/index.svelte';
+  import About from './views/settings/About.svelte';
+  import Appearance from './views/settings/Appearance.svelte';
+  import ClipboardSettings from './views/settings/ClipboardSettings.svelte';
+  import Engines from './views/settings/Engines.svelte';
+  import General from './views/settings/General.svelte';
+  import Placeholder from './views/settings/Placeholder.svelte';
+  import Shortcuts from './views/settings/Shortcuts.svelte';
 
   let width = $state(1000);
   let dragging = $state(false);
@@ -33,15 +39,17 @@
     if (theme !== 'system') return;
     return watchSystemTheme(() => applyTheme(theme, accent));
   });
+  $effect(() => applyMotion(settings.value.reduceMotion));
+  $effect(() => applyZoom(settings.value.uiScale));
 
   function onKeydown(e: KeyboardEvent) {
     if (!e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.key === ',') {
       e.preventDefault();
       nav.go('general');
-    } else if (/^[1-5]$/.test(e.key)) {
+    } else if (/^[1-4]$/.test(e.key)) {
       e.preventDefault();
-      nav.go(VIEWS[Number(e.key) - 1]);
+      nav.go(NAV_MAIN[Number(e.key) - 1]);
     }
   }
 
@@ -98,11 +106,22 @@
   <main class="content">
     {#key nav.view}
       <div class="view">
+        <!-- One branch per view, one line each: later tasks swap a Placeholder by editing only its line. -->
         {#if nav.view === 'convert'}<Convert />
         {:else if nav.view === 'download'}<Download />
         {:else if nav.view === 'clipboard'}<Clipboard />
         {:else if nav.view === 'recent'}<Recent />
-        {:else}<Settings />{/if}
+        {:else if nav.view === 'general'}<General />
+        {:else if nav.view === 'wheel'}<Placeholder title={t('common.nav.wheel')} />
+        {:else if nav.view === 'presets'}<Placeholder title={t('common.nav.presets')} />
+        {:else if nav.view === 'shortcuts'}<Shortcuts />
+        {:else if nav.view === 'watch'}<Placeholder title={t('common.nav.watch')} />
+        {:else if nav.view === 'clipboardSettings'}<ClipboardSettings />
+        {:else if nav.view === 'appearance'}<Appearance />
+        {:else if nav.view === 'engines'}<Engines />
+        {:else if nav.view === 'about'}<About />
+        {:else if nav.view === 'editor'}<Placeholder title={t('common.nav.editor')} />
+        {/if}
       </div>
     {/key}
     {#if dragging}
@@ -116,12 +135,13 @@
 </div>
 
 <style>
-  .shell { position: relative; display: flex; width: 100vw; height: 100vh; overflow: hidden; background: var(--window-bg); }
+  /* Windows caption-button height: the title bar (drag region) is this tall and the content card starts below it. */
+  .shell { --titlebar-h: 32px; position: relative; display: flex; width: 100vw; height: 100vh; overflow: hidden; background: var(--window-bg); }
   .content {
-    position: relative; flex: 1; min-width: 0; margin: 8px 8px 8px 0; overflow: hidden; border-radius: var(--radius-lg);
+    position: relative; flex: 1; min-width: 0; margin: var(--titlebar-h) 8px 8px 0; overflow: hidden; border-radius: var(--radius-lg);
     background: var(--content-bg); box-shadow: var(--shadow-sm), var(--glass-edge);
   }
-  .view { position: absolute; inset: 0; padding-top: calc(var(--titlebar-h) - 8px); overflow: auto; animation: enter var(--dur-slow) var(--ease-out); }
+  .view { position: absolute; inset: 0; padding-top: var(--space-5); overflow: auto; animation: enter var(--dur-slow) var(--ease-out); }
   .drop {
     position: absolute; inset: 8px; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
     border-radius: var(--radius-md); border: 2px dashed var(--accent); color: var(--accent); font: var(--text-headline);

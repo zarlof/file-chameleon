@@ -14,7 +14,15 @@ vi.mock('./ipc', () => ({
   },
 }));
 
-const { NavStore } = await import('./stores/nav.svelte');
+const { NavStore, NAV_MAIN, NAV_SETTINGS } = await import('./stores/nav.svelte');
+
+describe('nav lists', () => {
+  it('lists main and settings views', () => {
+    expect(NAV_MAIN).toEqual(['convert', 'download', 'clipboard', 'recent']);
+    expect(NAV_SETTINGS).toHaveLength(9);
+    expect(new Set([...NAV_MAIN, ...NAV_SETTINGS]).size).toBe(13);
+  });
+});
 
 describe('nav store', () => {
   let nav: InstanceType<typeof NavStore>;
