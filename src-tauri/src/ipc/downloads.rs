@@ -136,7 +136,13 @@ pub async fn probe_url(app: AppHandle, url: String) -> CmdResult<MediaInfo> {
     let engines = state.engines().clone();
     let cookies = state.settings().cookies_browser;
     let cancel = CancelToken::new();
-    if let Some(prev) = state.downloads.probe.lock().unwrap().replace(cancel.clone()) {
+    if let Some(prev) = state
+        .downloads
+        .probe
+        .lock()
+        .unwrap()
+        .replace(cancel.clone())
+    {
         prev.cancel();
     }
     tauri::async_runtime::spawn_blocking(move || {
