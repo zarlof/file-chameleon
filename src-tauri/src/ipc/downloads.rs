@@ -181,7 +181,12 @@ pub fn start_download(
         }
     }
 
-    let (snap, cancel) = state.downloads.add(&req.url, req.url.clone());
+    let title = req
+        .title
+        .clone()
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or_else(|| req.url.clone());
+    let (snap, cancel) = state.downloads.add(&req.url, title);
     let id = snap.id;
     let _ = app.emit(events::DOWNLOAD_UPDATE, snap);
 

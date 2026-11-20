@@ -68,6 +68,9 @@ pub struct DownloadRequest {
     pub quality: DlQuality,
     /// Destination folder (the UI fills in the user's Downloads folder by default).
     pub out_dir: PathBuf,
+    /// Title from the preview, shown in the list while downloading (the URL is used if absent).
+    #[serde(default)]
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

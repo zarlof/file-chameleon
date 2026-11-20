@@ -39,6 +39,7 @@ fn req(url: &str, mode: DlMode, quality: DlQuality) -> DownloadRequest {
         mode,
         quality,
         out_dir: PathBuf::from("C:\\Users\\me\\Downloads"),
+        title: None,
     }
 }
 

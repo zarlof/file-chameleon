@@ -138,7 +138,7 @@
     failure = null;
     needTool = null;
     installError = null;
-    const req: DownloadRequest = { url: info.url, mode: effectiveMode, quality: effectiveQuality, outDir };
+    const req: DownloadRequest = { url: info.url, mode: effectiveMode, quality: effectiveQuality, outDir, title: info.title };
     if (await begin(req)) {
       // Ready for the next link; the list below shows this one.
       info = null;

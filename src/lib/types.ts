@@ -158,6 +158,8 @@ export interface DownloadRequest {
   mode: DlMode;
   quality: DlQuality;
   outDir: string;
+  /** Title from the preview, shown while downloading. */
+  title?: string;
 }
 
 export type DlState = 'probing' | 'downloading' | 'processing' | 'done' | 'failed' | 'cancelled';
