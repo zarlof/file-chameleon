@@ -112,11 +112,18 @@ impl AppState {
     pub fn clips(&self) -> &Mutex<ClipStore> {
         self.clips.get_or_init(|| {
             let dir = self.paths.clipboard_dir();
-            let store = ClipStore::open(&dir).unwrap_or_else(|_| {
+            let mut store = ClipStore::open(&dir).unwrap_or_else(|_| {
                 // A broken store must never stop the app; start empty in a fresh folder.
                 let fallback = dir.with_file_name(format!("clipboard-{}", fc_core::now_ms()));
                 ClipStore::open(&fallback).expect("clipboard store")
             });
+            // Apply retention on open too, so expired items do not wait for the next copy.
+            let s = self.settings();
+            let _ = store.prune(
+                fc_core::now_ms(),
+                s.clipboard_retention_days,
+                s.clipboard_max_items as usize,
+            );
             Mutex::new(store)
         })
     }

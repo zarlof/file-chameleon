@@ -34,6 +34,16 @@ pub fn run() {
                 windows::show_main(&handle, None);
             }
             platform::start(&handle);
+            // Apply clipboard retention shortly after start (opening the store prunes it), so
+            // expired items are removed even if nothing is copied. Delayed to keep startup light.
+            let h = handle.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(10));
+                let state = h.state::<state::AppState>();
+                if state.settings().clipboard_enabled {
+                    let _ = state.clips();
+                }
+            });
             Ok(())
         })
         .on_window_event(windows::on_window_event)
