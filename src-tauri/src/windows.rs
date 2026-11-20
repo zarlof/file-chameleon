@@ -246,6 +246,7 @@ pub fn show_wheel_at(app: &AppHandle, x: i32, y: i32) {
     let _ = w.emit(events::OVERLAY_WHEEL, WheelPayload { scale });
     #[cfg(windows)]
     if let Ok(hwnd) = w.hwnd() {
+        crate::platform::win::share_drop_target(hwnd.0 as isize);
         let (mut left, mut top) = (x - size / 2, y - size / 2);
         if let Some((wl, wt, wr, wb)) = crate::platform::win::work_area_at(x, y) {
             left = left.clamp(wl, (wr - size).max(wl));

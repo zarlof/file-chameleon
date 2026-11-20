@@ -107,6 +107,54 @@ pub fn process_at(x: i32, y: i32) -> Option<(String, u32)> {
     }
 }
 
+/// Give every descendant window of the webview window `top` the drop target wry registered.
+///
+/// wry registers its OLE drop target only on the child windows that exist when the webview is
+/// created. The overlay is the first webview, created hidden at startup, so WebView2 creates its
+/// browser-side windows (`Chrome_WidgetWin_1`, `Chrome_RenderWidgetHostHWND`, ...) afterwards and
+/// they never get a target. OLE hands a drag to the deepest window under the cursor, finds no
+/// target there and the wheel never sees the files. Registering wry's own target on those windows
+/// (as wry does for windows that already exist) fixes it. Idempotent and cheap; must run on the UI
+/// thread, where OLE is initialised.
+pub fn share_drop_target(top: isize) {
+    use windows::Win32::Foundation::LPARAM;
+    use windows::Win32::System::Ole::{IDropTarget, RegisterDragDrop};
+    use windows::Win32::UI::WindowsAndMessaging::{EnumChildWindows, GetPropW};
+    use windows::core::{BOOL, Interface, w};
+
+    unsafe extern "system" fn collect(h: HWND, l: LPARAM) -> BOOL {
+        let v = unsafe { &mut *(l.0 as *mut Vec<HWND>) };
+        v.push(h);
+        true.into()
+    }
+
+    let mut children: Vec<HWND> = Vec::new();
+    unsafe {
+        let _ = EnumChildWindows(
+            Some(hwnd(top)),
+            Some(collect),
+            LPARAM(&mut children as *mut Vec<HWND> as isize),
+        );
+        let me = GetCurrentProcessId();
+        // The target wry registered sits on a child window of our own process.
+        let raw = children.iter().find_map(|&c| {
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(c, Some(&mut pid));
+            let p = GetPropW(c, w!("OleDropTargetInterface"));
+            (pid == me && !p.0.is_null()).then_some(p.0)
+        });
+        let Some(raw) = raw else { return };
+        let Some(target) = IDropTarget::from_raw_borrowed(&raw) else {
+            return;
+        };
+        for &c in &children {
+            if GetPropW(c, w!("OleDropTargetInterface")).0.is_null() {
+                let _ = RegisterDragDrop(c, target);
+            }
+        }
+    }
+}
+
 pub fn current_pid() -> u32 {
     unsafe { GetCurrentProcessId() }
 }
