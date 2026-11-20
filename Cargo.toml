@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 authors = ["File Chameleon contributors"]
-repository = "https://github.com/file-chameleon/file-chameleon"
+repository = "https://github.com/zarlof/file-chameleon"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

@@ -33,7 +33,7 @@ Notes:
 
 - Commits carry the git e-mail configured on this computer. To keep it private, publish with
   `--private` first, or switch to your GitHub `noreply` address before publishing.
-- After publishing, update `repository` in the root `Cargo.toml` to the real URL.
+- The repository is published (private) at https://github.com/zarlof/file-chameleon. Make it public in GitHub → Settings → General → Danger Zone → Change visibility.
 
 ## 3. Make a release
 
