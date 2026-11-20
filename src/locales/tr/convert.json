@@ -1,0 +1,81 @@
+{
+  "title": "Dönüştür",
+  "drop": {
+    "title": "Dosyaları buraya bırakın ya da tıklayıp seçin",
+    "subtitle": "Görsel, video, ses, PDF ve veri dosyaları",
+    "release": "Eklemek için bırakın",
+    "addFiles": "Dosya ekle",
+    "addFolder": "Klasör ekle",
+    "clear": "Tümünü kaldır"
+  },
+  "unsupported": "Desteklenmiyor",
+  "analyzing": "Dosyalar kontrol ediliyor…",
+  "loadError": "Bu dosyalar okunamadı.",
+  "formats": {
+    "title": "Şuna dönüştür",
+    "empty": "Bu dosyaların hiçbiri dönüştürülemiyor."
+  },
+  "kind": {
+    "image": "Görseller",
+    "vector": "Vektör",
+    "video": "Video",
+    "audio": "Ses",
+    "pdf": "PDF",
+    "data": "Veri"
+  },
+  "tools": {
+    "title": "Araçlar",
+    "compress": "Sıkıştır",
+    "trim": "Kırp (süre)",
+    "speed": "Hız",
+    "mute": "Sessize al",
+    "mergePdf": "PDF birleştir",
+    "splitPdf": "PDF böl",
+    "crop": "Kırp (alan)"
+  },
+  "params": {
+    "level": "Düzey",
+    "light": "Hafif",
+    "balanced": "Dengeli",
+    "strong": "Güçlü",
+    "start": "Başlangıç",
+    "end": "Bitiş",
+    "timeHint": "dd:ss",
+    "speed": "Hız",
+    "x": "X",
+    "y": "Y",
+    "width": "Genişlik",
+    "height": "Yükseklik",
+    "muteInfo": "Ses kanalını kaldırır. Video yeniden kodlanmaz.",
+    "mergeInfo": "Tüm PDF'leri gösterilen sırayla tek dosyada birleştirir.",
+    "splitInfo": "Her sayfayı ayrı bir PDF olarak kaydeder.",
+    "invalid": "Yukarıdaki değerleri kontrol edin."
+  },
+  "options": {
+    "title": "Seçenekler",
+    "quality": "Kalite",
+    "maxWidth": "En büyük genişlik",
+    "maxHeight": "En büyük yükseklik",
+    "pixels": "px",
+    "outputDir": "Kaydedilecek yer",
+    "sameAsSource": "Orijinalin klasörü",
+    "choose": "Seç…",
+    "reset": "Sıfırla"
+  },
+  "action": {
+    "convert": "Dönüştür",
+    "convertCount": {
+      "one": "{count} dosyayı dönüştür",
+      "other": "{count} dosyayı dönüştür"
+    },
+    "apply": "Uygula",
+    "download": "{name} indir (≈{size} MB) ve dönüştür",
+    "downloading": "{name} indiriliyor…",
+    "pick": "Devam etmek için bir biçim ya da araç seçin",
+    "submitFailed": "Dönüştürme başlatılamadı."
+  },
+  "queue": {
+    "title": "Sıra",
+    "all": "Tümünü Son işlemler'de gör"
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "title": "Ayarlar",
+  "sections": {
+    "general": "Genel",
+    "wheel": "Çember",
+    "clipboard": "Pano",
+    "output": "Çıktı",
+    "engines": "Motorlar",
+    "about": "Hakkında"
+  },
+  "general": {
+    "language": "Dil",
+    "languageSystem": "Sistem",
+    "theme": "Görünüm",
+    "themeSystem": "Otomatik",
+    "themeLight": "Açık",
+    "themeDark": "Koyu",
+    "accent": "Vurgu rengi",
+    "launchAtLogin": "Oturum açıldığında başlat",
+    "launchAtLoginHint": "Oturum açtığınızda File Chameleon arka planda başlasın."
+  },
+  "accents": {
+    "blue": "Mavi",
+    "purple": "Mor",
+    "pink": "Pembe",
+    "red": "Kırmızı",
+    "orange": "Turuncu",
+    "yellow": "Sarı",
+    "green": "Yeşil",
+    "graphite": "Grafit"
+  },
+  "wheel": {
+    "enable": "Hızlı dönüştürme çemberi",
+    "enableHint": "Bir dosyayı sürüklerken Ctrl'ye basılı tutarak biçim çemberini açın.",
+    "anyApp": "Her uygulamada çalışsın",
+    "anyAppHint": "Kapalıyken yalnızca Dosya Gezgini ve masaüstünde çalışır.",
+    "howTitle": "Nasıl çalışır",
+    "howBody": "Bir dosyayı sürüklemeye başlayın, Ctrl'ye basılı tutun ve bir biçimin üzerine bırakın.",
+    "illustration": {
+      "drag": "Sürükle",
+      "drop": "Bir biçime bırak"
+    }
+  },
+  "clipboard": {
+    "enable": "Pano geçmişini tut",
+    "enableHint": "Kopyaladıklarınızı kaydeder, sonra kolayca bulursunuz.",
+    "images": "Görselleri de kaydet",
+    "suggestLinks": "Kopyalanan medya bağlantıları için indirme öner",
+    "suggestImages": "Kopyalanan görseller için dönüştürme öner",
+    "maxItems": "Geçmiş boyutu",
+    "retention": "Öğeleri şu kadar sakla",
+    "days": {
+      "one": "{count} gün",
+      "other": "{count} gün"
+    },
+    "items": "{count} öğe",
+    "cookies": "İndirmeler için tarayıcı çerezleri",
+    "cookiesNone": "Yok",
+    "cookiesHint": "Giriş gerektiren sitelerde indirmelerin oturumunuzu kullanmasını sağlar. Çerezleri yalnızca bu cihazdaki indirici okur, cihazdan dışarı çıkmaz."
+  },
+  "output": {
+    "convertDir": "Dönüştürülen dosyalar",
+    "downloadDir": "İndirmeler",
+    "sameAsSource": "Orijinalin klasörü",
+    "defaultDownloads": "İndirilenler klasörü",
+    "choose": "Seç…",
+    "reset": "Sıfırla",
+    "quality": "Varsayılan görsel kalitesi"
+  },
+  "engines": {
+    "note": "PATH üzerinde bulunan FFmpeg otomatik kullanılır. Yalnızca yoksa buradan indirin.",
+    "install": "İndir",
+    "remove": "Kaldır",
+    "installing": "İndiriliyor…",
+    "source": {
+      "managed": "Yönetilen",
+      "system": "Sistem",
+      "missing": "Eksik"
+    },
+    "version": "Sürüm {version}",
+    "license": "Lisans: {license}",
+    "purpose": {
+      "ffmpeg": "Video, ses ve GIF dönüştürme",
+      "yt-dlp": "Bağlantılardan medya indirme",
+      "deno": "Bazı sitelerin indirme için gerektirdiği betik çalışma ortamı",
+      "pdfium": "PDF sayfalarını görsele çevirme"
+    },
+    "error": "Kurulum başarısız: {message}"
+  },
+  "about": {
+    "version": "Sürüm",
+    "repo": "Kaynak kod",
+    "repoValue": "github.com/your-name/file-chameleon",
+    "licenses": "Lisanslar",
+    "licensesValue": "File Chameleon açık kaynaklıdır. İsteğe bağlı motorlar kendi lisanslarını taşır (FFmpeg: GPL-3.0, yt-dlp: Unlicense, PDFium: BSD-3-Clause, Deno: MIT).",
+    "credits": "Filee, Nashi ve ClipBoardLine'dan ilham alınmıştır. Onlarla bir bağı yoktur."
+  }
+}
