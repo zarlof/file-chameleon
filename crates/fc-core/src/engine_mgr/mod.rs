@@ -23,7 +23,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use manifest::{Archive, FileMap};
 pub use manifest::{Manifest, ToolEntry};
@@ -34,6 +34,9 @@ const MAX_DOWNLOAD: u64 = 400 * 1024 * 1024;
 const MAX_EXTRACTED: u64 = 1024 * 1024 * 1024;
 const STALE_MS: u64 = 24 * 60 * 60 * 1000;
 const VERSION_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// (tool id, exe) -> (exe modification time, version output).
+type VersionCache = HashMap<(String, PathBuf), (SystemTime, Option<String>)>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -75,6 +78,9 @@ pub struct EngineManager {
     manifest: Manifest,
     /// PATH lookups (validated) cached for the process lifetime, keyed by lowercase file name.
     system_cache: Mutex<HashMap<String, Option<PathBuf>>>,
+    /// `--version` results by (tool, exe) with the exe's modification time, so `status()` does
+    /// not start processes on every call. Cleared on install/uninstall.
+    version_cache: Mutex<VersionCache>,
     /// Serializes installs/uninstalls.
     install_lock: Mutex<()>,
 }
@@ -87,6 +93,7 @@ impl EngineManager {
             root,
             manifest,
             system_cache: Mutex::new(HashMap::new()),
+            version_cache: Mutex::new(HashMap::new()),
             install_lock: Mutex::new(()),
         };
         mgr.cleanup_old();
@@ -149,7 +156,8 @@ impl EngineManager {
         }
         let mut found = which(file);
         if let (Some(path), Some(min)) = (&found, &entry.min_version) {
-            let ok = system_version(&entry.id, path)
+            let ok = self
+                .version_of(&entry.id, path)
                 .map(|v| version_at_least(&v, min))
                 .unwrap_or(false);
             if !ok {
@@ -162,6 +170,37 @@ impl EngineManager {
         found
     }
 
+    /// `system_version`, cached per (tool, exe) until the exe's modification time changes.
+    fn version_of(&self, tool: &str, exe: &Path) -> Option<String> {
+        let mtime = fs::metadata(exe).and_then(|m| m.modified()).ok();
+        let key = (tool.to_string(), exe.to_path_buf());
+        if let (Some(t), Ok(cache)) = (mtime, self.version_cache.lock())
+            && let Some((cached_at, v)) = cache.get(&key)
+            && *cached_at == t
+        {
+            return v.clone();
+        }
+        let v = system_version(tool, exe);
+        if let (Some(t), Ok(mut cache)) = (mtime, self.version_cache.lock()) {
+            cache.insert(key, (t, v.clone()));
+        }
+        v
+    }
+
+    fn forget_versions(&self) {
+        if let Ok(mut cache) = self.version_cache.lock() {
+            cache.clear();
+        }
+    }
+
+    /// True when tool `id` can be used now (managed install or a valid copy on PATH).
+    pub fn is_available(&self, id: &str) -> bool {
+        self.manifest
+            .get(id)
+            .and_then(|e| e.files.first())
+            .is_some_and(|f| self.locate(id, &f.to).is_some())
+    }
+
     pub fn status(&self) -> Vec<ToolStatus> {
         self.manifest
             .engines
@@ -172,13 +211,13 @@ impl EngineManager {
                     if e.id == "yt-dlp" {
                         // "latest" is not informative; ask the binary.
                         let exe = self.tool_dir(&e.id).join(&e.files[0].to);
-                        if let Some(v) = system_version(&e.id, &exe) {
+                        if let Some(v) = self.version_of(&e.id, &exe) {
                             version = Some(v);
                         }
                     }
                     (ToolSource::Managed, Some(self.tool_dir(&e.id)), version)
                 } else if let Some(p) = e.files.first().and_then(|f| self.system_lookup(e, &f.to)) {
-                    let v = system_version(&e.id, &p);
+                    let v = self.version_of(&e.id, &p);
                     (ToolSource::System, Some(p), v)
                 } else {
                     (ToolSource::Missing, None, None)
@@ -215,6 +254,7 @@ impl EngineManager {
         let result = self.install_inner(entry, &download, &extract_dir, progress, cancel);
         let _ = fs::remove_file(&download);
         let _ = fs::remove_dir_all(&extract_dir);
+        self.forget_versions();
         result
     }
 
@@ -277,28 +317,46 @@ impl EngineManager {
             .ok_or_else(|| Error::Unsupported(format!("unknown tool {id}")))?;
         let _guard = self.install_lock.lock().unwrap_or_else(|p| p.into_inner());
         let dir = self.tool_dir(id);
-        if dir.exists() {
-            fs::remove_dir_all(dir)?;
-        }
-        Ok(())
+        let result = if dir.exists() {
+            fs::remove_dir_all(dir)
+        } else {
+            Ok(())
+        };
+        self.forget_versions();
+        Ok(result?)
     }
 
     /// Managed yt-dlp only: re-download latest if the installed one is older than 24 h
     /// since the last check (state kept in `installed.json` as `checkedAt`). Returns true if updated.
     pub fn update_ytdlp_if_stale(&self, cancel: &CancelToken) -> Result<bool> {
+        self.update_ytdlp(false, cancel)
+    }
+
+    /// Managed yt-dlp: download the latest build when its checksum differs from the installed
+    /// one. Without `force` this only checks once per 24 h; with `force` it always checks and
+    /// fails with `MissingTool` when there is no managed copy. Returns true if updated.
+    pub fn update_ytdlp(&self, force: bool, cancel: &CancelToken) -> Result<bool> {
+        let missing = || {
+            if force {
+                Err(Error::MissingTool("yt-dlp".into()))
+            } else {
+                Ok(false)
+            }
+        };
         let Some(entry) = self.manifest.get("yt-dlp") else {
-            return Ok(false);
+            return missing();
         };
         if !self.is_managed(entry) {
-            return Ok(false);
+            return missing();
         }
         let Some(mut installed) = self.read_installed("yt-dlp") else {
-            return Ok(false);
+            return missing();
         };
         let now = crate::now_ms();
-        if installed
-            .checked_at
-            .is_some_and(|t| now.saturating_sub(t) < STALE_MS)
+        if !force
+            && installed
+                .checked_at
+                .is_some_and(|t| now.saturating_sub(t) < STALE_MS)
         {
             return Ok(false);
         }
