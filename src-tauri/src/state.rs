@@ -157,8 +157,7 @@ impl AppState {
             let s = self.settings();
             let _ = store.prune(
                 fc_core::now_ms(),
-                s.clipboard_retention_images,
-                s.clipboard_max_items as usize,
+                &fc_core::clip::Retention::from_settings(&s),
             );
             Mutex::new(store)
         })
