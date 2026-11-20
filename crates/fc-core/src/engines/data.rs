@@ -84,18 +84,13 @@ fn csv_to_value(text: &str) -> Result<Value> {
     let mut rdr = csv::ReaderBuilder::new()
         .flexible(true)
         .from_reader(text.as_bytes());
-    let headers: Vec<String> = rdr
+    let raw: Vec<String> = rdr
         .headers()
         .map_err(|e| Error::Failed(format!("invalid CSV: {e}")))?
         .iter()
         .map(str::to_owned)
         .collect();
-    let mut seen = std::collections::HashSet::with_capacity(headers.len());
-    for h in &headers {
-        if !seen.insert(h.as_str()) {
-            return Err(Error::Failed(format!("duplicate CSV column: {h}")));
-        }
-    }
+    let headers = unique_headers(&raw);
     let mut rows = Vec::new();
     let mut cells = 0usize;
     for rec in rdr.records() {
@@ -106,15 +101,60 @@ fn csv_to_value(text: &str) -> Result<Value> {
         }
         let mut obj = Map::new();
         for (i, field) in rec.iter().enumerate() {
-            let key = headers
-                .get(i)
-                .cloned()
-                .unwrap_or_else(|| format!("column{}", i + 1));
+            let key = match headers.get(i) {
+                Some(h) => h.clone(),
+                // A row longer than the header: name the extra cells, never over a header.
+                None => free_name(format!("column_{}", i + 1), |n| {
+                    headers.iter().any(|h| h == n)
+                }),
+            };
             obj.insert(key, Value::String(field.to_owned()));
         }
         rows.push(Value::Object(obj));
     }
     Ok(Value::Array(rows))
+}
+
+/// `base`, or `base_2`, `base_3`, ... — the first that `taken` rejects.
+fn free_name(base: String, taken: impl Fn(&str) -> bool) -> String {
+    if !taken(&base) {
+        return base;
+    }
+    (2..)
+        .map(|n| format!("{base}_{n}"))
+        .find(|c| !taken(c))
+        .unwrap_or(base)
+}
+
+/// Column names that are all distinct, so no cell overwrites another (spreadsheet exports
+/// often have several blank header cells): a blank header becomes `column_N` (its 1-based
+/// position) and a repeated name gets `_2`, `_3`, ... (`a,a,` -> `a, a_2, column_3`).
+fn unique_headers(raw: &[String]) -> Vec<String> {
+    let base: Vec<String> = raw
+        .iter()
+        .enumerate()
+        .map(|(i, h)| {
+            if h.trim().is_empty() {
+                format!("column_{}", i + 1)
+            } else {
+                h.clone()
+            }
+        })
+        .collect();
+    // First occurrences keep their name; renamed repeats avoid every name in use.
+    let mut taken: std::collections::HashSet<String> = base.iter().cloned().collect();
+    let mut seen = std::collections::HashSet::with_capacity(base.len());
+    let mut out = Vec::with_capacity(base.len());
+    for name in base {
+        if seen.insert(name.clone()) {
+            out.push(name);
+            continue;
+        }
+        let unique = free_name(name, |c| taken.contains(c));
+        taken.insert(unique.clone());
+        out.push(unique);
+    }
+    out
 }
 
 fn toml_to_json(v: toml::Value) -> Value {

@@ -717,15 +717,35 @@ fn split_keeps_inherited_page_attributes() {
 }
 
 #[test]
-fn csv_rejects_duplicate_headers_and_huge_tables() {
+fn csv_renames_duplicate_and_blank_headers_and_rejects_huge_tables() {
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("d.csv");
-    std::fs::write(&input, "a,b,a\n1,2,3\n").unwrap();
-    let err = data::convert(&input, "csv", "json", &dir.path().join("o.json")).unwrap_err();
-    assert!(
-        matches!(&err, Error::Failed(m) if m == "duplicate CSV column: a"),
-        "{err:?}"
-    );
+    // Repeated names, blank header cells (spreadsheet exports), a name that looks like a
+    // generated one, and a row longer than the header: every cell keeps its own key.
+    std::fs::write(&input, "a,b,a,,,a_2,a\n1,2,3,4,5,6,7,8\n").unwrap();
+    let out = dir.path().join("o.json");
+    data::convert(&input, "csv", "json", &out).unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    let row = v[0].as_object().unwrap();
+    let expect = [
+        ("a", "1"),
+        ("b", "2"),
+        ("a_3", "3"),
+        ("column_4", "4"),
+        ("column_5", "5"),
+        ("a_2", "6"),
+        ("a_4", "7"),
+        ("column_8", "8"),
+    ];
+    assert_eq!(row.len(), expect.len(), "{row:?}");
+    for (k, val) in expect {
+        assert_eq!(
+            row.get(k).and_then(|x| x.as_str()),
+            Some(val),
+            "{k}: {row:?}"
+        );
+    }
 
     // 1000 columns x 1001 rows > 1,000,000 cells
     let header: Vec<String> = (0..1000).map(|i| format!("c{i}")).collect();
