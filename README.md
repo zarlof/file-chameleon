@@ -56,11 +56,12 @@ convert it in one click.
 
 ### Light by design
 
-- **Small installer.** Heavy engines (FFmpeg, yt-dlp, PDFium) are downloaded only the first time a
+- **Small installer.** The installer is about 4 MB. Heavy engines (FFmpeg, yt-dlp, PDFium) are downloaded only the first time a
   feature needs them, and each download is SHA-256 verified. An FFmpeg already on your `PATH` is
   used as is.
 - **Low memory.** The background work (tray, Ctrl+drag hook, clipboard watcher, job queue) runs in
-  Rust. The main window is destroyed when you close it and rebuilt when you open it.
+  Rust. The main window is destroyed when you close it and rebuilt when you open it. Idle in
+  the tray, the whole app (including WebView2) uses about 90 MB of memory.
 - **Native feel.** Windows 11 Mica, macOS-style window controls, the Inter font and Lucide icons. It
   follows light and dark mode, and the interface is in Turkish and English.
 

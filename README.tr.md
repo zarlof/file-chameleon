@@ -56,11 +56,12 @@ ses (MP3), GIF veya orijinal dosya olarak, En iyi, 1080p ya da 720p kalitede kay
 
 ### Hafif olacak şekilde tasarlandı
 
-- **Küçük kurulum.** Ağır motorlar (FFmpeg, yt-dlp, PDFium) bir özellik onlara ilk ihtiyaç duyduğunda
+- **Küçük kurulum.** Kurulum dosyası yaklaşık 4 MB. Ağır motorlar (FFmpeg, yt-dlp, PDFium) bir özellik onlara ilk ihtiyaç duyduğunda
   bir kez indirilir ve SHA-256 ile doğrulanır. Bilgisayarınızda `PATH` içinde FFmpeg varsa doğrudan o
   kullanılır.
 - **Az bellek.** Arka plandaki işler (tepsi, Ctrl+sürükle kancası, pano dinleyici, iş kuyruğu) Rust
-  ile çalışır. Ana pencere kapatılınca tamamen kapanır, açılınca yeniden oluşturulur.
+  ile çalışır. Ana pencere kapatılınca tamamen kapanır, açılınca yeniden oluşturulur. Tepsideyken
+  uygulamanın tamamı (WebView2 dahil) yaklaşık 90 MB bellek kullanır.
 - **Doğal görünüm.** Windows 11 Mica, macOS tarzı pencere düğmeleri, Inter yazı tipi ve Lucide
   ikonları. Açık ve koyu temaya uyar. Arayüz Türkçe ve İngilizcedir.
 
