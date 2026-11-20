@@ -3,10 +3,13 @@
 //!   standalone HTML5 page with `<meta charset="utf-8">`, the input stem as `<title>`,
 //!   and a small embedded readable stylesheet (system font, max-width 760px, light/dark).
 //! - txt -> html: HTML-escaped inside `<pre>` in the same page shell.
-//! - csv/json/yaml/toml cross conversion through `serde_json::Value`:
-//!   csv -> array of objects keyed by header row (all values strings);
-//!   to csv requires an array of flat objects (union of keys as header, nested values
+//! - csv/tsv/json/yaml/toml cross conversion through `serde_json::Value`:
+//!   csv/tsv -> array of objects keyed by header row (all values strings);
+//!   to csv/tsv requires an array of flat objects (union of keys as header, nested values
 //!   JSON-encoded); to toml requires a top-level object (arrays get wrapped as `{ items = [...] }`).
+//! - csv <-> tsv changes only the delimiter (every row and column kept as is). TSV uses the
+//!   same quoting as CSV (as spreadsheet exports do): fields holding tabs, quotes or line
+//!   breaks are quoted.
 //!
 //! Inputs over 64 MB -> `Error::TooLarge`.
 //!
@@ -60,7 +63,7 @@ fn page(title: &str, body: &str) -> String {
     )
 }
 
-fn read_text(path: &Path) -> Result<String> {
+pub(crate) fn read_text(path: &Path) -> Result<String> {
     let meta = std::fs::metadata(path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             Error::NotFound(path.to_path_buf())
@@ -80,9 +83,15 @@ fn read_text(path: &Path) -> Result<String> {
     })
 }
 
-fn csv_to_value(text: &str) -> Result<Value> {
+/// Field delimiter of a delimited text format.
+fn delimiter(format: &str) -> u8 {
+    if format == "tsv" { b'\t' } else { b',' }
+}
+
+fn csv_to_value(text: &str, delim: u8) -> Result<Value> {
     let mut rdr = csv::ReaderBuilder::new()
         .flexible(true)
+        .delimiter(delim)
         .from_reader(text.as_bytes());
     let raw: Vec<String> = rdr
         .headers()
@@ -199,7 +208,7 @@ fn json_to_toml(v: &Value) -> Option<toml::Value> {
 
 fn parse(text: &str, from: &str) -> Result<Value> {
     match from {
-        "csv" => csv_to_value(text),
+        "csv" | "tsv" => csv_to_value(text, delimiter(from)),
         "json" => {
             serde_json::from_str(text).map_err(|e| Error::Failed(format!("invalid JSON: {e}")))
         }
@@ -222,7 +231,7 @@ fn cell(v: &Value) -> String {
     }
 }
 
-fn to_csv(v: &Value) -> Result<String> {
+fn to_csv(v: &Value, delim: u8) -> Result<String> {
     let rows = v
         .as_array()
         .ok_or_else(|| Error::Failed("CSV needs an array of objects at the top level".into()))?;
@@ -237,7 +246,9 @@ fn to_csv(v: &Value) -> Result<String> {
             }
         }
     }
-    let mut wtr = csv::Writer::from_writer(Vec::new());
+    let mut wtr = csv::WriterBuilder::new()
+        .delimiter(delim)
+        .from_writer(Vec::new());
     let csv_err = |e: csv::Error| Error::Failed(format!("CSV write failed: {e}"));
     if !header.is_empty() {
         wtr.write_record(&header).map_err(csv_err)?;
@@ -286,7 +297,7 @@ fn serialize(v: &Value, to: &str) -> Result<String> {
         "yaml" => {
             serde_yaml::to_string(v).map_err(|e| Error::Failed(format!("YAML write failed: {e}")))
         }
-        "csv" => to_csv(v),
+        "csv" | "tsv" => to_csv(v, delimiter(to)),
         "toml" => to_toml(v),
         other => Err(Error::Unsupported(format!("data output format: {other}"))),
     }
@@ -308,7 +319,10 @@ pub fn convert(input: &Path, from: &str, to: &str, output: &Path) -> Result<()> 
             &stem_of(input),
             &format!("<pre>{}</pre>", escape_html(&text)),
         ),
-        ("csv" | "json" | "yaml" | "toml", "csv" | "json" | "yaml" | "toml") if from != to => {
+        ("csv", "tsv") | ("tsv", "csv") => redelimit(&text, delimiter(from), delimiter(to))?,
+        ("csv" | "tsv" | "json" | "yaml" | "toml", "csv" | "tsv" | "json" | "yaml" | "toml")
+            if from != to =>
+        {
             serialize(&parse(&text, from)?, to)?
         }
         _ => {
@@ -321,6 +335,35 @@ pub fn convert(input: &Path, from: &str, to: &str, output: &Path) -> Result<()> 
         let _ = std::fs::remove_file(output);
     })?;
     Ok(())
+}
+
+/// Same rows and columns, another delimiter.
+fn redelimit(text: &str, from: u8, to: u8) -> Result<String> {
+    let mut rdr = csv::ReaderBuilder::new()
+        .flexible(true)
+        .has_headers(false)
+        .delimiter(from)
+        .from_reader(text.as_bytes());
+    let mut wtr = csv::WriterBuilder::new()
+        .flexible(true)
+        .delimiter(to)
+        .from_writer(Vec::new());
+    let mut cells = 0usize;
+    for rec in rdr.records() {
+        let rec = rec.map_err(|e| Error::Failed(format!("invalid table: {e}")))?;
+        cells += rec.len();
+        if cells > MAX_CSV_CELLS {
+            return Err(Error::TooLarge(
+                "table has more than 1,000,000 cells".into(),
+            ));
+        }
+        wtr.write_record(&rec)
+            .map_err(|e| Error::Failed(format!("table write failed: {e}")))?;
+    }
+    let bytes = wtr
+        .into_inner()
+        .map_err(|e| Error::Failed(format!("table write failed: {e}")))?;
+    String::from_utf8(bytes).map_err(|_| Error::Failed("table output is not UTF-8".into()))
 }
 
 fn stem_of(path: &Path) -> String {

@@ -11,7 +11,9 @@
 //! - [`presets`]    presets, groups and wheel profiles
 //! - [`watch`]      polling folder watcher
 //! - [`proc`]       child-process helpers (no console window, kill-on-close, cancel)
+//! - [`b64`]        base64 helpers (data URLs crossing IPC)
 
+pub mod b64;
 pub mod cancel;
 pub mod clip;
 pub mod download;

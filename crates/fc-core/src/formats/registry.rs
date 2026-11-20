@@ -1,5 +1,5 @@
 //! The conversion graph: which engine turns format A into format B in one step.
-//! This table *is* the v1 format matrix. Add an edge here and implement it in
+//! This table *is* the format matrix. Add an edge here and implement it in
 //! the engine; the planner, the wheel and the Convert view pick it up.
 
 use serde::{Deserialize, Serialize};
@@ -20,6 +20,8 @@ pub enum EngineId {
     Pdfium,
     /// In-process text/data conversions.
     Data,
+    /// In-process subtitle conversions (srt <-> vtt, -> txt).
+    Subtitle,
 }
 
 impl EngineId {
@@ -49,8 +51,9 @@ const RASTER_IN: &[&str] = &["png", "jpg", "webp", "gif", "bmp", "tiff", "ico"];
 const RASTER_OUT: &[&str] = &["png", "jpg", "webp", "gif", "bmp", "tiff", "ico"];
 const SVG_OUT: &[&str] = &["png", "jpg", "webp", "ico"];
 const VIDEO: &[&str] = &["mp4", "mkv", "webm", "mov", "avi"];
-const AUDIO: &[&str] = &["mp3", "m4a", "opus", "ogg", "flac", "wav"];
-const DATA_STRUCT: &[&str] = &["csv", "json", "yaml", "toml"];
+/// `m4r` is an ordinary audio target (ffmpeg cuts it to 40 s) and input.
+const AUDIO: &[&str] = &["mp3", "m4a", "opus", "ogg", "flac", "wav", "m4r"];
+const DATA_STRUCT: &[&str] = &["csv", "json", "yaml", "toml", "tsv"];
 
 fn build() -> Vec<Edge> {
     let mut v = Vec::new();
@@ -104,6 +107,12 @@ fn build() -> Vec<Edge> {
             add(a, b, EngineId::Data, 1);
         }
     }
+    add("srt", "vtt", EngineId::Subtitle, 1);
+    add("vtt", "srt", EngineId::Subtitle, 1);
+    add("srt", "txt", EngineId::Subtitle, 1);
+    add("vtt", "txt", EngineId::Subtitle, 1);
+    add("ass", "srt", EngineId::Ffmpeg, 3);
+    add("ass", "vtt", EngineId::Ffmpeg, 3);
     v
 }
 
@@ -130,5 +139,20 @@ mod tests {
             assert!(by_id(e.to).is_some(), "unknown to {}", e.to);
             assert_ne!(e.from, e.to);
         }
+    }
+
+    #[test]
+    fn v2_edges() {
+        let has = |from: &str, to: &str, engine: EngineId| {
+            edges()
+                .iter()
+                .any(|e| e.from == from && e.to == to && e.engine == engine)
+        };
+        assert!(has("wav", "m4r", EngineId::Ffmpeg) && has("mp4", "m4r", EngineId::Ffmpeg));
+        assert!(has("tsv", "csv", EngineId::Data) && has("toml", "tsv", EngineId::Data));
+        assert!(has("srt", "vtt", EngineId::Subtitle) && has("vtt", "txt", EngineId::Subtitle));
+        assert!(has("ass", "srt", EngineId::Ffmpeg) && has("ass", "vtt", EngineId::Ffmpeg));
+        assert!(edges_from("zip").next().is_none(), "zip is input only");
+        assert!(!edges().iter().any(|e| e.to == "zip" || e.to == "ass"));
     }
 }

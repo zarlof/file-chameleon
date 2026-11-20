@@ -3,10 +3,10 @@
 pub mod planner;
 pub mod registry;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
     Image,
@@ -15,6 +15,8 @@ pub enum Kind {
     Audio,
     Pdf,
     Data,
+    Subtitle,
+    Archive,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
@@ -33,7 +35,7 @@ macro_rules! f {
     };
 }
 
-/// Every format File Chameleon understands in v1 (input, output or both).
+/// Every format File Chameleon understands (input, output or both).
 pub static FORMATS: &[FormatInfo] = &[
     // Raster images
     f!("png", Image, "PNG", ["png"]),
@@ -58,6 +60,8 @@ pub static FORMATS: &[FormatInfo] = &[
     f!("ogg", Audio, "OGG", ["ogg", "oga"]),
     f!("flac", Audio, "FLAC", ["flac"]),
     f!("wav", Audio, "WAV", ["wav"]),
+    // iPhone ringtone: AAC in an MP4 (ipod) container, at most 40 s.
+    f!("m4r", Audio, "M4R", ["m4r"]),
     // Documents
     f!("pdf", Pdf, "PDF", ["pdf"]),
     // Text & data
@@ -68,6 +72,13 @@ pub static FORMATS: &[FormatInfo] = &[
     f!("json", Data, "JSON", ["json"]),
     f!("yaml", Data, "YAML", ["yaml", "yml"]),
     f!("toml", Data, "TOML", ["toml"]),
+    f!("tsv", Data, "TSV", ["tsv"]),
+    // Subtitles
+    f!("srt", Subtitle, "SRT", ["srt"]),
+    f!("vtt", Subtitle, "WebVTT", ["vtt"]),
+    f!("ass", Subtitle, "ASS", ["ass", "ssa"]),
+    // Archives (input only: extract)
+    f!("zip", Archive, "ZIP", ["zip"]),
 ];
 
 pub fn by_id(id: &str) -> Option<&'static FormatInfo> {
