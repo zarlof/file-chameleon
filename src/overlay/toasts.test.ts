@@ -38,6 +38,30 @@ describe('toastView', () => {
     expect(c.body).toBe('800×600');
     expect(c.thumb).toBe('C:\\t.png');
   });
+  it('offers reveal and open for a saved clipboard image', () => {
+    setLang('en', 'en');
+    const v = toastView(p('imageSaved', { output: 'C:\\Users\\me\\Downloads\\Clipboard 2026-11-20 10.11.12.png' }), t);
+    expect(v.title).toBe('Image saved');
+    expect(v.body).toBe('Clipboard 2026-11-20 10.11.12.png');
+    expect(v.actions.map((a) => a.id)).toEqual(['reveal', 'open']);
+    setLang('tr', 'en');
+    expect(toastView(p('imageSaved', { output: 'a.png' }), t).title).toBe('Resim kaydedildi');
+  });
+  it('describes tool downloads started from the wheel', () => {
+    setLang('en', 'en');
+    const needed = toastView(p('toolNeeded', { tool: 'ffmpeg', name: 'FFmpeg', size: 114_768_076, paths: ['a.mov'], target: 'mp4' }), t);
+    expect(needed.title).toBe('FFmpeg required');
+    expect(needed.actions.map((a) => a.id)).toEqual(['install', 'dismiss']);
+    const busy = toastView(p('toolInstalling', { tool: 'ffmpeg', name: 'FFmpeg' }), t);
+    expect(busy.title).toBe('Downloading FFmpeg…');
+    expect(busy.actions).toEqual([]);
+    const failed = toastView(p('toolFailed', { tool: 'ffmpeg', name: 'FFmpeg', errorCode: 'network' }), t);
+    expect(failed.title).toBe("Couldn't download FFmpeg");
+    expect(failed.body).toBe('Network error');
+    expect(toastView(p('toolFailed', { name: 'FFmpeg', errorCode: 'odd' }), t).body).toBe(t('error.failed'));
+    setLang('tr', 'en');
+    expect(toastView(p('toolInstalling', { name: 'FFmpeg' }), t).title).toBe('FFmpeg indiriliyor…');
+  });
   it('shortens urls', () => {
     expect(shortenUrl('https://www.example.com/')).toBe('example.com');
     expect(shortenUrl('https://example.com/' + 'a'.repeat(80)).length).toBe(44);

@@ -1,10 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { INNER_R, OUTER_R, WHEEL_SIZE, orderSlices, polar, sliceAt, toLogical } from './geometry';
+import { INNER_R, OUTER_R, WHEEL_SIZE, needsDownload, orderSlices, polar, sliceAt, toLogical } from './geometry';
 import type { TargetOption } from '../types';
 
 const C = WHEEL_SIZE / 2;
 const mk = (n: number): TargetOption[] =>
   Array.from({ length: n }, (_, i) => ({ id: `t${i}`, label: `T${i}`, kind: 'image', needsTools: [] }));
+
+describe('needsDownload', () => {
+  const mp4: TargetOption = { id: 'mp4', label: 'MP4', kind: 'video', needsTools: ['ffmpeg'] };
+  it('marks only slices whose tool is missing', () => {
+    expect(needsDownload(mp4, ['ffmpeg'])).toBe(true);
+    expect(needsDownload(mp4, [])).toBe(false); // installed (managed or on PATH)
+    expect(needsDownload(mp4, ['pdfium'])).toBe(false);
+    expect(needsDownload(mk(1)[0], ['ffmpeg'])).toBe(false); // in-process engine
+  });
+});
 
 describe('sliceAt', () => {
   it('centres slice 0 at the top and goes clockwise', () => {
