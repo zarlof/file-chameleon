@@ -1,7 +1,9 @@
-//! Persisted settings (`%APPDATA%\FileChameleon\settings.json`). Unknown/missing fields fall back
-//! to defaults so old files keep loading.
+//! Persisted settings (`settings.json` in the app's config folder,
+//! `%APPDATA%\app.filechameleon.desktop`). Missing, unknown or invalid fields fall back to
+//! their defaults one by one, so old or hand-edited files keep loading.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -39,6 +41,9 @@ pub struct Settings {
     pub clipboard_suggest_images: bool,
     pub clipboard_max_items: u32,
     pub clipboard_retention_days: u32,
+    /// Capture paused from the tray or the Clipboard view (kept across restarts). Changed only
+    /// through `clip_set_paused` / the tray; `set_settings` keeps the stored value.
+    pub clipboard_paused: bool,
 
     /// Set after the first-run welcome was shown.
     pub onboarded: bool,
@@ -66,6 +71,7 @@ impl Default for Settings {
             clipboard_suggest_images: true,
             clipboard_max_items: 100,
             clipboard_retention_days: 7,
+            clipboard_paused: false,
             onboarded: false,
         }
     }
@@ -74,12 +80,38 @@ impl Default for Settings {
 impl Settings {
     pub const MAX_RECENT_TARGETS: usize = 7;
 
-    /// Missing or corrupt file -> defaults (never fails).
+    /// Missing or corrupt file -> defaults (never fails). A field with a bad value (an unknown
+    /// enum variant, a wrong type) falls back to its default; the other fields are kept.
     pub fn load(path: &Path) -> Self {
         std::fs::read(path)
             .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
+            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+            .map(Self::from_value)
             .unwrap_or_default()
+    }
+
+    /// Merge the fields of `v` onto the defaults, skipping any field that does not deserialize.
+    fn from_value(v: Value) -> Self {
+        let Value::Object(file) = v else {
+            return Self::default();
+        };
+        if let Ok(s) = serde_json::from_value(Value::Object(file.clone())) {
+            return s;
+        }
+        let Ok(Value::Object(mut merged)) = serde_json::to_value(Self::default()) else {
+            return Self::default();
+        };
+        for (key, value) in file {
+            // Unknown keys are ignored, as in the normal path.
+            let Some(previous) = merged.insert(key.clone(), value) else {
+                merged.remove(&key);
+                continue;
+            };
+            if serde_json::from_value::<Self>(Value::Object(merged.clone())).is_err() {
+                merged.insert(key, previous);
+            }
+        }
+        serde_json::from_value(Value::Object(merged)).unwrap_or_default()
     }
 
     /// Atomic write (temp + rename), creating the parent directory.
@@ -123,6 +155,28 @@ mod tests {
         assert_eq!(s.theme, "dark");
         assert_eq!(s.clipboard_max_items, 100);
         std::fs::write(&p, b"not json").unwrap();
+        assert_eq!(Settings::load(&p), Settings::default());
+    }
+
+    #[test]
+    fn one_bad_value_keeps_the_other_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        std::fs::write(
+            &p,
+            br#"{"theme":"dark","downloadMode":"banana","clipboardMaxItems":42,
+                "imageQuality":"high","clipboardPaused":true,"futureField":1}"#,
+        )
+        .unwrap();
+        let s = Settings::load(&p);
+        assert_eq!(s.theme, "dark");
+        assert_eq!(s.clipboard_max_items, 42);
+        assert!(s.clipboard_paused);
+        // The invalid values fall back to their defaults.
+        assert_eq!(s.download_mode, crate::download::DlMode::default());
+        assert_eq!(s.image_quality, Settings::default().image_quality);
+        // A non-object file is just defaults.
+        std::fs::write(&p, b"[1, 2]").unwrap();
         assert_eq!(Settings::load(&p), Settings::default());
     }
 
