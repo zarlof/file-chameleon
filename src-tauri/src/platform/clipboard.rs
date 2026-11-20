@@ -234,17 +234,19 @@ mod imp {
         let now = fc_core::now_ms();
         let item = {
             let mut store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
-            let first_before = store.items().first().map(|i| i.id);
+            let first_before = store
+                .query(&fc_core::clip::ClipQuery {
+                    limit: Some(1),
+                    ..Default::default()
+                })
+                .first()
+                .map(|i| i.id);
             let added = match &captured {
                 Captured::Text(t) => store.add_text(t, now),
                 Captured::Image { png, w, h } => store.add_image_png(png, *w, *h, now),
             };
             let Ok(Some(item)) = added else { return };
-            let _ = store.prune(
-                now,
-                settings.clipboard_retention_images,
-                settings.clipboard_max_items as usize,
-            );
+            let _ = store.prune(now, &fc_core::clip::Retention::from_settings(&settings));
             // The same content copied again while it is already on top: nothing new to announce.
             if first_before == Some(item.id) {
                 return;

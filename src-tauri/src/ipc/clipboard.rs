@@ -3,7 +3,7 @@
 use super::{CmdError, CmdResult};
 use crate::state::AppState;
 use fc_core::clip::history;
-use fc_core::clip::{ClipItem, ClipKind, ClipStore};
+use fc_core::clip::{ClipItem, ClipKind, ClipQuery, ClipStore};
 use std::path::{Path, PathBuf};
 use std::sync::MutexGuard;
 use std::sync::atomic::Ordering;
@@ -15,9 +15,7 @@ fn store(state: &AppState) -> MutexGuard<'_, ClipStore> {
 
 fn find(state: &AppState, id: u64) -> CmdResult<ClipItem> {
     store(state)
-        .items()
-        .iter()
-        .find(|i| i.id == id)
+        .get(id)
         .cloned()
         .ok_or_else(|| CmdError::new("notFound", "clipboard item not found"))
 }
@@ -27,22 +25,28 @@ fn find(state: &AppState, id: u64) -> CmdResult<ClipItem> {
 
 #[tauri::command(async)]
 pub fn clip_list(state: State<'_, AppState>, query: Option<String>) -> Vec<ClipItem> {
-    store(&state).search(query.as_deref().unwrap_or(""))
+    store(&state).query(&ClipQuery {
+        text: query,
+        ..Default::default()
+    })
 }
 
 #[tauri::command(async)]
 pub fn clip_pin(state: State<'_, AppState>, id: u64, pinned: bool) -> CmdResult<bool> {
-    Ok(store(&state).set_pinned(id, pinned)?)
+    Ok(store(&state).set_pinned(&[id], pinned)? > 0)
 }
 
+/// Moves the item to the trash (v1 deleted it for good).
 #[tauri::command(async)]
 pub fn clip_delete(state: State<'_, AppState>, id: u64) -> CmdResult<bool> {
-    Ok(store(&state).remove(id)?)
+    Ok(store(&state).trash(&[id], fc_core::now_ms())? > 0)
 }
 
+/// Trashes every unsaved item.
 #[tauri::command(async)]
 pub fn clip_clear(state: State<'_, AppState>) -> CmdResult<()> {
-    Ok(store(&state).clear_unpinned()?)
+    store(&state).clear_unsaved(fc_core::now_ms())?;
+    Ok(())
 }
 
 /// Put an item back on the clipboard (not re-recorded as a new item).
