@@ -2,12 +2,26 @@
   import { onMount } from 'svelte';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
   import { api, on } from '../lib/ipc';
-  import type { Kind, TargetOption, ToastPayload } from '../lib/types';
-  import { orderSlices, sliceAt, toLogical } from '../lib/wheel/geometry';
-  import Wheel from './Wheel.svelte';
+  import type { ToastPayload, WheelFace, WheelSlots, WheelThumb } from '../lib/types';
+  import { ringRadii, toLogical, type Hit } from '../lib/wheel/geometry';
+  import { FAN_DELAY_MS, clickAction, dropTarget, otherFace, pointerAt } from '../lib/wheel/hover';
+  import { centerTitle, commonExt } from '../lib/wheel/labels';
+  import Wheel from '../lib/wheel/Wheel.svelte';
+  import DragChip from './DragChip.svelte';
   import ToastCard from './ToastCard.svelte';
   import { toastView, type ToastView } from './toasts';
   import { t } from './i18n';
+
+  interface Props {
+    /** Settings.wheelFlipScroll, read when the mouse wheel reaches the page (click mode). */
+    flipScroll?: () => boolean;
+  }
+  let { flipScroll = () => true }: Props = $props();
+
+  /** Flips closer together than this are one (the hook debounces the same way, and in click
+   *  mode the mouse wheel may arrive both from the hook and as a DOM event). */
+  const FLIP_GAP_MS = 250;
+  const NO_HIT: Hit = { slot: -1, child: -1 };
 
   type Mode = 'none' | 'wheel' | 'toast';
   let mode = $state<Mode>('none');
@@ -15,12 +29,31 @@
   // wheel: nothing is drawn until the dragged files are known (`waiting`), so Ctrl+drags of
   // text or a marquee selection leave no trace while the (needed) window is up.
   let waiting = $state(true);
-  let slices = $state<TargetOption[]>([]);
-  let paths = $state<string[]>([]);
-  let hovered = $state(-1);
-  let firstKind = $state<Kind | null>(null);
-  let missingTools = $state<string[]>([]);
+  /** Click mode (context menu / "open the wheel"): pointer events instead of a drag. */
+  let click = $state(false);
+  let wheel = $state.raw<WheelSlots | null>(null);
+  let face = $state<WheelFace>('front');
+  let hovered = $state.raw<Hit>(NO_HIT);
+  let fan = $state(-1);
+  /** Drag mode: pointer in window coordinates (the file chip follows it). */
+  let chip = $state.raw<{ x: number; y: number } | null>(null);
+  let thumb = $state.raw<WheelThumb | null>(null);
   let wheelKey = $state(0);
+  /** Last pointer position (window coordinates), to re-hit after a flip or a fan timer. */
+  let last: { x: number; y: number } | null = null;
+  /** A slot was chosen: ignore input until the next wheel. */
+  let done = false;
+  let lastFlip = 0;
+  let armed = -1;
+  let fanTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const slots = $derived(wheel ? (face === 'front' ? wheel.front : wheel.back) : []);
+  const scale = $derived(wheel?.style.scale ?? 1);
+  const center = $derived({
+    title: wheel ? centerTitle(wheel.count, wheel.count <= 1 ? wheel.firstExt : commonExt(wheel.paths), t) : '',
+    subtitle: t('overlay.escToClose'),
+  });
+  const thumbUrl = $derived(thumb && wheel && thumb.path === wheel.paths[0] ? thumb.dataUrl : null);
 
   // toast
   let toast = $state<ToastPayload | null>(null);
@@ -29,18 +62,128 @@
 
   function clear() {
     mode = 'none';
-    slices = [];
-    paths = [];
-    hovered = -1;
-    firstKind = null;
-    missingTools = [];
+    wheel = null;
+    face = 'front';
+    hovered = NO_HIT;
+    fan = -1;
+    chip = null;
+    thumb = null;
+    click = false;
+    last = null;
+    done = false;
+    armFan(-1);
     toast = null;
     clearTimeout(toastTimer);
   }
 
-  function hit(p: { x: number; y: number }): number {
-    const dpr = window.devicePixelRatio || 1;
-    return sliceAt(toLogical(p.x, dpr), toLogical(p.y, dpr), slices.length);
+  /** Window coordinates -> the wheel box (centred in the window). */
+  function local(x: number, y: number): { x: number; y: number } {
+    const size = ringRadii(scale).size;
+    return { x: x - (window.innerWidth - size) / 2, y: y - (window.innerHeight - size) / 2 };
+  }
+
+  function pointAt(x: number, y: number) {
+    last = { x, y };
+    if (waiting || !wheel || done) return;
+    const p = local(x, y);
+    const s = pointerAt(p.x, p.y, slots, fan, scale);
+    fan = s.fan;
+    if (s.hit.slot !== hovered.slot || s.hit.child !== hovered.child) hovered = s.hit;
+    armFan(s.arm);
+  }
+
+  /** Runs the FAN_DELAY_MS timer for group slot `i` (-1 stops it); re-arming the same slot
+   *  keeps the running timer. */
+  function armFan(i: number) {
+    if (i === armed) return;
+    clearTimeout(fanTimer);
+    armed = i;
+    if (i < 0) return;
+    fanTimer = setTimeout(() => {
+      armed = -1;
+      if (hovered.slot !== i || hovered.child >= 0) return;
+      fan = i;
+      if (last) pointAt(last.x, last.y);
+    }, FAN_DELAY_MS);
+  }
+
+  function unhover() {
+    hovered = NO_HIT;
+    fan = -1;
+    armFan(-1);
+  }
+
+  function flip() {
+    if (mode !== 'wheel' || waiting || !wheel || done) return;
+    const now = performance.now();
+    if (now - lastFlip < FLIP_GAP_MS) return;
+    const next = otherFace(face, wheel.front, wheel.back);
+    if (next === face) return;
+    lastFlip = now;
+    face = next;
+    unhover();
+    if (last) pointAt(last.x, last.y);
+  }
+
+  function close() {
+    clear();
+    api.overlayHide().catch(console.error);
+  }
+
+  function run(paths: string[], presetId: string) {
+    done = true;
+    unhover();
+    api.wheelDrop(paths, presetId).catch(console.error);
+  }
+
+  /** Drag mode: files dropped at (x, y) window coordinates. */
+  function drop(paths: string[], x: number, y: number) {
+    if (waiting || !wheel || done) {
+      if (!done) close();
+      return;
+    }
+    const p = local(x, y);
+    const id = dropTarget(slots, pointerAt(p.x, p.y, slots, fan, scale).hit);
+    if (id) run(paths.length ? paths : wheel.paths, id);
+    else close();
+  }
+
+  // ---- click mode (the window takes clicks but never focus: Esc / Tab come from the hooks)
+  const clickWheel = () => mode === 'wheel' && click;
+
+  function onpointermove(e: PointerEvent) {
+    if (clickWheel()) pointAt(e.clientX, e.clientY);
+  }
+
+  function onpointerout(e: PointerEvent) {
+    if (clickWheel() && !e.relatedTarget) unhover();
+  }
+
+  function onclick(e: MouseEvent) {
+    if (!clickWheel() || done) return;
+    if (waiting || !wheel) {
+      close();
+      return;
+    }
+    const p = local(e.clientX, e.clientY);
+    const a = clickAction(slots, pointerAt(p.x, p.y, slots, fan, scale).hit);
+    if (a.kind === 'run') run(wheel.paths, a.id);
+    else if (a.kind === 'close') close();
+    else {
+      fan = a.slot;
+      armFan(-1);
+      pointAt(e.clientX, e.clientY);
+    }
+  }
+
+  function onwheel() {
+    if (clickWheel() && flipScroll()) flip();
+  }
+
+  function oncontextmenu(e: MouseEvent) {
+    if (mode !== 'wheel') return;
+    e.preventDefault();
+    if (click) close();
   }
 
   function closeToast() {
@@ -63,19 +206,30 @@
 
   onMount(() => {
     const unlisten: Array<Promise<() => void>> = [
-      on.overlayWheel(() => {
+      on.overlayWheel((p) => {
         clear();
         mode = 'wheel';
         waiting = true;
+        click = p.click;
         wheelKey++;
       }),
-      on.overlayWheelTargets((w) => {
-        mode = 'wheel';
+      on.overlayWheelSlots((s) => {
+        if (mode !== 'wheel') {
+          clear();
+          mode = 'wheel';
+          wheelKey++;
+        }
         waiting = false;
-        paths = w.paths;
-        slices = orderSlices(w.targets, w.recent);
-        firstKind = w.firstKind ?? w.targets[0]?.kind ?? null;
-        missingTools = w.missingTools ?? [];
+        wheel = s;
+        click = s.click;
+        face = s.face;
+        done = false;
+        unhover();
+        if (last) pointAt(last.x, last.y);
+      }),
+      on.overlayWheelFlip(flip),
+      on.overlayWheelThumb((th) => {
+        if (mode === 'wheel') thumb = th;
       }),
       on.overlayToast((p) => {
         clear();
@@ -85,18 +239,21 @@
       }),
       on.overlayHide(clear),
       getCurrentWebview().onDragDropEvent((e) => {
-        if (mode !== 'wheel' || waiting) return;
+        if (mode !== 'wheel' || click) return;
         const p = e.payload;
-        if (p.type === 'enter' || p.type === 'over') {
-          hovered = hit(p.position);
-        } else if (p.type === 'leave') {
-          hovered = -1;
-        } else if (p.type === 'drop') {
-          const i = hit(p.position);
-          const dropped = p.paths.length ? p.paths : paths;
-          hovered = -1;
-          if (i >= 0) api.wheelDrop(dropped, slices[i].id).catch(console.error);
-          else api.overlayHide().catch(console.error);
+        if (p.type === 'leave') {
+          chip = null;
+          unhover();
+          return;
+        }
+        const dpr = window.devicePixelRatio || 1;
+        const x = toLogical(p.position.x, dpr);
+        const y = toLogical(p.position.y, dpr);
+        if (p.type === 'drop') {
+          drop(p.paths, x, y);
+        } else {
+          chip = { x, y };
+          pointAt(x, y);
         }
       }),
     ];
@@ -104,16 +261,47 @@
     Promise.all(unlisten)
       .then(() => api.overlayReady())
       .catch(console.error);
-    return () => unlisten.forEach((u) => u.then((f) => f()));
+    return () => {
+      clearTimeout(fanTimer);
+      clearTimeout(toastTimer);
+      unlisten.forEach((u) => u.then((f) => f()));
+    };
   });
 </script>
 
-{#if mode === 'wheel' && !waiting}
+<svelte:window {onpointermove} {onpointerout} {onclick} {onwheel} {oncontextmenu} />
+
+{#if mode === 'wheel' && !waiting && wheel}
   {#key wheelKey}
-    <Wheel {slices} {hovered} fileCount={paths.length} {firstKind} {missingTools} />
+    <div class="stage">
+      <Wheel
+        front={wheel.front}
+        back={wheel.back}
+        {face}
+        {hovered}
+        {fan}
+        style={wheel.style}
+        {center}
+        missingTools={wheel.missingTools}
+        {t}
+      />
+    </div>
+    {#if chip && !click}
+      <DragChip x={chip.x} y={chip.y} ext={wheel.firstExt} kind={wheel.firstKind} thumb={thumbUrl} count={wheel.count} />
+    {/if}
   {/key}
 {:else if mode === 'toast' && toast && view}
   {#key toast.id}
     <ToastCard {view} progress={toast.progress} onaction={toastAction} onclose={closeToast} />
   {/key}
 {/if}
+
+<style>
+  /* The wheel sits in the middle of the window (Rust sizes it to the wheel). */
+  .stage {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+  }
+</style>

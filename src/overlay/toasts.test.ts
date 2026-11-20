@@ -62,6 +62,15 @@ describe('toastView', () => {
     setLang('tr', 'en');
     expect(toastView(p('toolInstalling', { name: 'FFmpeg' }), t).title).toBe('FFmpeg indiriliyor…');
   });
+  it('says so when the download hotkey finds no link on the clipboard', () => {
+    setLang('en', 'en');
+    const v = toastView(p('noLink', {}), t);
+    expect(v.title).toBe('No downloadable link on the clipboard');
+    expect(v.body).toBe('');
+    expect(v.actions).toEqual([]);
+    setLang('tr', 'en');
+    expect(toastView(p('noLink', {}), t).title).toBe('Panoda indirilebilir bağlantı yok');
+  });
   it('shortens urls', () => {
     expect(shortenUrl('https://www.example.com/')).toBe('example.com');
     expect(shortenUrl('https://example.com/' + 'a'.repeat(80)).length).toBe(44);

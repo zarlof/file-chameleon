@@ -117,6 +117,8 @@ export function toastView(p: ToastPayload, t: T): ToastView {
         actions: [a('reveal'), a('open')],
         thumb: null,
       };
+    case 'noLink':
+      return { title: t('toast.noLink.title'), body: '', actions: [], thumb: null };
     default:
       return { title: String(p.kind), body: '', actions: [], thumb: null };
   }

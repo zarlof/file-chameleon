@@ -482,17 +482,6 @@ export interface WheelPayload {
   click: boolean;
 }
 
-/** @deprecated v1 wheel event, replaced by `WheelSlots` (removed by Task 5). */
-export interface WheelTargets {
-  paths: string[];
-  /** Kind of the first dragged file (centre icon). */
-  firstKind: Kind | null;
-  targets: TargetOption[];
-  recent: string[];
-  /** Tool ids some target needs that are not installed (only those slices show a download glyph). */
-  missingTools: string[];
-}
-
 export type ToastKind =
   | 'jobDone'
   | 'jobFailed'
@@ -503,7 +492,9 @@ export type ToastKind =
   | 'clipLink'
   | 'clipImage'
   | 'imageSaved'
-  | 'downloadDone';
+  | 'downloadDone'
+  /** The "download the copied link" hotkey found no link on the clipboard. */
+  | 'noLink';
 
 export interface ToastPayload {
   id: number;

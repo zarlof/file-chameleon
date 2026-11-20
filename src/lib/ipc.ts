@@ -26,7 +26,6 @@ import type {
   WheelConfig,
   WheelPayload,
   WheelSlots,
-  WheelTargets,
   WheelThumb,
   WatchStatus,
 } from './types';
@@ -149,8 +148,6 @@ export const on = {
   settingsChanged: (cb: (s: Settings) => void) => listen<Settings>('settings://changed', (e) => cb(e.payload)),
   navGoto: (cb: (n: NavPayload) => void) => listen<NavPayload>('nav://goto', (e) => cb(e.payload)),
   overlayWheel: (cb: (p: WheelPayload) => void) => listen<WheelPayload>('overlay://wheel', (e) => cb(e.payload)),
-  /** @deprecated v1 (removed by Task 5). */
-  overlayWheelTargets: (cb: (t: WheelTargets) => void) => listen<WheelTargets>('overlay://wheel-targets', (e) => cb(e.payload)),
   overlayWheelSlots: (cb: (s: WheelSlots) => void) => listen<WheelSlots>('overlay://wheel-slots', (e) => cb(e.payload)),
   /** Flip front <-> back (mouse wheel / Tab caught by the global hooks). */
   overlayWheelFlip: (cb: () => void) => listen('overlay://wheel-flip', () => cb()),
