@@ -10,6 +10,7 @@
   "reveal": "Klasörde göster",
   "open": "Aç",
   "retry": "Tekrar dene",
+  "retryFailed": "İşlem yeniden başlatılamadı.",
   "cancel": "İptal",
   "outputs": {
     "one": "{count} dosya oluşturuldu",

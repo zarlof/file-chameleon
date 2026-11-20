@@ -16,12 +16,12 @@
   import { nav } from '../../../lib/stores/nav.svelte';
   import { settings } from '../../../lib/stores/settings.svelte';
   import { tools } from '../../../lib/stores/tools.svelte';
-  import type { CompressLevel, Operation, TargetsResponse, ToolOp } from '../../../lib/types';
+  import type { CompressLevel, JobRequest, Operation, TargetsResponse, ToolOp } from '../../../lib/types';
   import {
     Badge, Button, Card, FileChip, Icon, ProgressBar, SectionHeader, SegmentedControl, Select, Slider, TextField,
   } from '../../../lib/ui';
   import JobRow from '../recent/JobRow.svelte';
-  import { buildOptions, buildRequest, buildToolOp, groupTargets, missingTools, opNeeds, SPEEDS } from './logic';
+  import { buildOptions, buildRequest, buildToolOp, groupTargets, missingTools, opNeeds, pendingStatus, SPEEDS } from './logic';
 
   const TOOL_ORDER: ToolOp[] = ['compress', 'trim', 'speed', 'mute', 'mergePdf', 'splitPdf', 'crop'];
 
@@ -138,8 +138,8 @@
   const missing = $derived(tools.list.length > 0 ? missingTools(needs, tools.list) : []);
   const useQuality = $derived(target?.kind === 'image' || target?.kind === 'video');
   const showSize = $derived(useQuality || toolOp === 'crop');
-  const installing = $derived(missing.find((id) => tools.isInstalling(id)));
-  const canGo = $derived(!busy && operation !== null && supported.length > 0);
+  const installing = $derived(needs.find((id) => tools.isInstalling(id)));
+  const canGo = $derived(!busy && !installing && operation !== null && supported.length > 0);
 
   function mb(bytes: number): number {
     const m = bytes / 1048576;
@@ -156,27 +156,50 @@
           : t('convert.action.apply'),
   );
 
-  async function run() {
-    if (!operation || busy) return;
-    busy = true;
-    submitError = null;
+  /** A request waiting for its tool downloads to finish (`tool://done` arrives later, see tools store). */
+  let pending = $state<{ req: JobRequest; ids: string[] } | null>(null);
+
+  async function submit(req: JobRequest) {
     try {
-      for (const id of missing) {
-        await tools.install(id);
-        await tools.refresh();
-        if (!tools.isInstalled(id)) {
-          submitError = tools.errors[id] ?? t('recent.errors.missingTool');
-          return;
-        }
-      }
-      const options = buildOptions({ useQuality, quality, maxWidth: showSize ? maxWidth : '', maxHeight: showSize ? maxHeight : '', outputDir: outDir });
-      await api.submitJob(buildRequest(supported.map((i) => i.path), operation, options));
+      await jobs.submit(req);
       await refresh([]);
     } catch (e) {
       submitError = errorOf(e).message || t('convert.action.submitFailed');
     } finally {
       busy = false;
     }
+  }
+
+  $effect(() => {
+    if (!pending) return;
+    const status = pendingStatus(pending.ids, {
+      installed: (id) => tools.isInstalled(id),
+      installing: (id) => tools.isInstalling(id),
+      error: (id) => tools.errors[id],
+    });
+    if (status.state === 'wait') return;
+    const p = pending;
+    pending = null;
+    if (status.state === 'ready') void submit(p.req);
+    else {
+      submitError = t('settings.engines.error', { message: status.message });
+      busy = false;
+    }
+  });
+
+  function run() {
+    if (!operation || busy || installing) return;
+    busy = true;
+    submitError = null;
+    const options = buildOptions({ useQuality, quality, maxWidth: showSize ? maxWidth : '', maxHeight: showSize ? maxHeight : '', outputDir: outDir });
+    const req = buildRequest(supported.map((i) => i.path), operation, options);
+    if (missing.length === 0) {
+      void submit(req);
+      return;
+    }
+    const ids = [...missing];
+    for (const id of ids) void tools.install(id);
+    pending = { req, ids };
   }
 
   const queue = $derived(jobs.list.filter((j) => j.createdAt >= sessionStart).slice(0, 5));

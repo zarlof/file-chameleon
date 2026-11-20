@@ -1,11 +1,11 @@
 <!-- Recent — every job, newest first, grouped Today / Earlier, with reveal / open / retry. -->
 <script lang="ts">
   import { Clock } from '@lucide/svelte';
-  import { api } from '../../../lib/ipc';
+  import { errorOf } from '../../../lib/ipc';
   import { t } from '../../../lib/i18n';
   import { jobs } from '../../../lib/stores/jobs.svelte';
   import type { JobSnapshot } from '../../../lib/types';
-  import { Button, Card, EmptyState, SectionHeader } from '../../../lib/ui';
+  import { Button, Card, EmptyState, SectionHeader, toast } from '../../../lib/ui';
   import JobRow from './JobRow.svelte';
   import { groupJobs, isActive } from './logic';
 
@@ -13,7 +13,7 @@
   const hasFinished = $derived(jobs.list.some((j) => !isActive(j)));
 
   function retry(job: JobSnapshot) {
-    api.submitJob({ inputs: job.inputs, op: job.op }).catch(() => {});
+    jobs.retry(job).catch((e) => toast.show(`${t('recent.retryFailed')} ${errorOf(e).message}`.trim(), 'error'));
   }
 </script>
 

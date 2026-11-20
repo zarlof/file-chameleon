@@ -1,5 +1,5 @@
 import { api, on } from '../ipc';
-import type { JobSnapshot } from '../types';
+import type { JobRequest, JobSnapshot } from '../types';
 
 /** Merge a snapshot into a list by id (replace in place, or prepend when new). Pure helper. */
 export function mergeJob(list: JobSnapshot[], snap: JobSnapshot): JobSnapshot[] {
@@ -10,7 +10,15 @@ export function mergeJob(list: JobSnapshot[], snap: JobSnapshot): JobSnapshot[] 
   return next;
 }
 
+/** The request to resubmit for `job`: the remembered one when the UI submitted it, else `{ inputs, op }`. */
+export function requestFor(remembered: Map<number, JobRequest>, job: JobSnapshot): JobRequest {
+  return remembered.get(job.id) ?? { inputs: job.inputs, op: job.op };
+}
+
 class JobsStore {
+  /** Requests submitted from this UI (in memory only), by job id, so Retry keeps the same options. */
+  private requests = new Map<number, JobRequest>();
+
   /** Newest first. */
   list = $state<JobSnapshot[]>([]);
   private started = false;
@@ -28,6 +36,18 @@ class JobsStore {
       /* no event bridge */
     }
     await this.refresh();
+  }
+
+  /** Submit a request and remember it for each created job. */
+  async submit(req: JobRequest): Promise<number[]> {
+    const ids = await api.submitJob(req);
+    for (const id of ids) this.requests.set(id, req);
+    return ids;
+  }
+
+  /** Resubmit the same request a job was created with. */
+  retry(job: JobSnapshot): Promise<number[]> {
+    return this.submit(requestFor(this.requests, job));
   }
 
   async refresh(): Promise<void> {

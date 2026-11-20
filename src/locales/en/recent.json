@@ -10,6 +10,7 @@
   "reveal": "Show in folder",
   "open": "Open",
   "retry": "Try again",
+  "retryFailed": "Could not restart the job.",
   "cancel": "Cancel",
   "outputs": {
     "one": "{count} file created",
