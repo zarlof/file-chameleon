@@ -23,6 +23,8 @@ export interface Settings {
   clipboardSuggestImages: boolean;
   clipboardMaxItems: number;
   clipboardRetentionDays: number;
+  /** Changed only through `clipSetPaused` / the tray; `setSettings` keeps the stored value. */
+  clipboardPaused: boolean;
   onboarded: boolean;
 }
 
@@ -216,6 +218,8 @@ export interface WheelTargets {
   firstKind: Kind | null;
   targets: TargetOption[];
   recent: string[];
+  /** Tool ids some target needs that are not installed (only those slices show a download glyph). */
+  missingTools: string[];
 }
 
 export type ToastKind =
@@ -223,8 +227,11 @@ export type ToastKind =
   | 'jobFailed'
   | 'jobsBatch'
   | 'toolNeeded'
+  | 'toolInstalling'
+  | 'toolFailed'
   | 'clipLink'
   | 'clipImage'
+  | 'imageSaved'
   | 'downloadDone';
 
 export interface ToastPayload {

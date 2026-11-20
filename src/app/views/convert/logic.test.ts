@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { InputInfo, ToolStatus } from '../../../lib/types';
 import {
-  buildOptions, buildRequest, buildToolOp, formatTime, groupTargets, missingTools, opNeeds, parseTime, pendingStatus, type ToolParams,
+  buildOptions, buildRequest, buildToolOp, formatTime, groupTargets, missingTools, opNeeds, parseTime, type ToolParams,
 } from './logic';
 
 describe('parseTime', () => {
@@ -82,23 +82,5 @@ describe('targets and tools', () => {
     expect(opNeeds('compress', img)).toEqual([]);
     expect(opNeeds('compress', vid)).toEqual(['ffmpeg']);
     expect(opNeeds('mergePdf', img)).toEqual([]);
-  });
-});
-
-describe('pendingStatus', () => {
-  const mk = (installed: string[], installing: string[], errors: Record<string, string>) => ({
-    installed: (id: string) => installed.includes(id),
-    installing: (id: string) => installing.includes(id),
-    error: (id: string) => errors[id],
-  });
-  it('waits while downloading and before the refresh lands', () => {
-    expect(pendingStatus(['ffmpeg'], mk([], ['ffmpeg'], {}))).toEqual({ state: 'wait' });
-    expect(pendingStatus(['ffmpeg'], mk([], [], {}))).toEqual({ state: 'wait' });
-  });
-  it('is ready once installed', () => {
-    expect(pendingStatus(['ffmpeg'], mk(['ffmpeg'], [], {}))).toEqual({ state: 'ready' });
-  });
-  it('reports install errors', () => {
-    expect(pendingStatus(['ffmpeg'], mk([], [], { ffmpeg: 'boom' }))).toEqual({ state: 'error', id: 'ffmpeg', message: 'boom' });
   });
 });

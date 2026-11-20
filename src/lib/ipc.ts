@@ -34,6 +34,10 @@ export const api = {
 
   toolsStatus: () => invoke<ToolStatus[]>('tools_status'),
   installTool: (id: string) => invoke<void>('install_tool', { id }),
+  /** Install the missing tools, then submit (runs in Rust: survives closing the window). Error code "installFailed". */
+  installAndSubmit: (tools: string[], req: JobRequest) => invoke<number[]>('install_and_submit', { tools, req }),
+  /** Check for a newer yt-dlp now; true when it was updated. */
+  updateYtdlp: () => invoke<boolean>('update_ytdlp'),
   uninstallTool: (id: string) => invoke<void>('uninstall_tool', { id }),
 
   probeUrl: (url: string) => invoke<MediaInfo>('probe_url', { url }),

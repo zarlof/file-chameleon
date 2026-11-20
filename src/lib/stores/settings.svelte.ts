@@ -20,8 +20,10 @@ export const DEFAULT_SETTINGS: Settings = {
   clipboardImages: true,
   clipboardSuggestLinks: true,
   clipboardSuggestImages: true,
-  clipboardMaxItems: 200,
-  clipboardRetentionDays: 30,
+  // Same defaults as `Settings::default()` in crates/fc-core/src/settings.rs.
+  clipboardMaxItems: 100,
+  clipboardRetentionDays: 7,
+  clipboardPaused: false,
   onboarded: false,
 };
 

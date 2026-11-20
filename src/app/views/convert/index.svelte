@@ -21,7 +21,7 @@
     Badge, Button, Card, FileChip, Icon, ProgressBar, SectionHeader, SegmentedControl, Select, Slider, TextField,
   } from '../../../lib/ui';
   import JobRow from '../recent/JobRow.svelte';
-  import { buildOptions, buildRequest, buildToolOp, groupTargets, missingTools, opNeeds, pendingStatus, SPEEDS } from './logic';
+  import { buildOptions, buildRequest, buildToolOp, groupTargets, missingTools, opNeeds, SPEEDS } from './logic';
 
   const TOOL_ORDER: ToolOp[] = ['compress', 'trim', 'speed', 'mute', 'mergePdf', 'splitPdf', 'crop'];
 
@@ -156,36 +156,25 @@
           : t('convert.action.apply'),
   );
 
-  /** A request waiting for its tool downloads to finish (`tool://done` arrives later, see tools store). */
-  let pending = $state<{ req: JobRequest; ids: string[] } | null>(null);
-
-  async function submit(req: JobRequest) {
+  /**
+   * Submit, or (when tools are missing) let the backend download them and submit afterwards: that
+   * runs in Rust, so the conversion still starts if this window is closed during the download.
+   */
+  async function submit(req: JobRequest, needed: string[]) {
     try {
-      await jobs.submit(req);
+      if (needed.length === 0) await jobs.submit(req);
+      else jobs.remember(await tools.installAndSubmit(needed, req), req);
       await refresh([]);
     } catch (e) {
-      submitError = errorOf(e).message || t('convert.action.submitFailed');
+      const err = errorOf(e);
+      submitError =
+        err.code === 'installFailed'
+          ? t('settings.engines.error', { message: err.message })
+          : err.message || t('convert.action.submitFailed');
     } finally {
       busy = false;
     }
   }
-
-  $effect(() => {
-    if (!pending) return;
-    const status = pendingStatus(pending.ids, {
-      installed: (id) => tools.isInstalled(id),
-      installing: (id) => tools.isInstalling(id),
-      error: (id) => tools.errors[id],
-    });
-    if (status.state === 'wait') return;
-    const p = pending;
-    pending = null;
-    if (status.state === 'ready') void submit(p.req);
-    else {
-      submitError = t('settings.engines.error', { message: status.message });
-      busy = false;
-    }
-  });
 
   function run() {
     if (!operation || busy || installing) return;
@@ -193,13 +182,7 @@
     submitError = null;
     const options = buildOptions({ useQuality, quality, maxWidth: showSize ? maxWidth : '', maxHeight: showSize ? maxHeight : '', outputDir: outDir });
     const req = buildRequest(supported.map((i) => i.path), operation, options);
-    if (missing.length === 0) {
-      void submit(req);
-      return;
-    }
-    const ids = [...missing];
-    for (const id of ids) void tools.install(id);
-    pending = { req, ids };
+    void submit(req, [...missing]);
   }
 
   const queue = $derived(jobs.list.filter((j) => j.createdAt >= sessionStart).slice(0, 5));

@@ -132,22 +132,3 @@ export function buildOptions(o: OptionInputs): ConvertOptions {
 export function buildRequest(inputs: string[], op: Operation, options: ConvertOptions): JobRequest {
   return { inputs, op, options };
 }
-
-export type PendingStatus = { state: 'wait' } | { state: 'ready' } | { state: 'error'; id: string; message: string };
-
-/**
- * State of a request waiting for tool installs. `install_tool` is fire-and-forget; completion arrives as
- * `tool://done`, which clears progress and records an error on failure. While anything is installing, or a
- * finished install has not yet shown up as installed, keep waiting.
- */
-export function pendingStatus(
-  ids: string[],
-  q: { installed(id: string): boolean; installing(id: string): boolean; error(id: string): string | undefined },
-): PendingStatus {
-  if (ids.some((id) => q.installing(id))) return { state: 'wait' };
-  for (const id of ids) {
-    const message = q.error(id);
-    if (message && !q.installed(id)) return { state: 'error', id, message };
-  }
-  return ids.every((id) => q.installed(id)) ? { state: 'ready' } : { state: 'wait' };
-}

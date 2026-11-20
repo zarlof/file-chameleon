@@ -70,8 +70,14 @@
   "engines": {
     "note": "PATH üzerinde bulunan FFmpeg otomatik kullanılır. Yalnızca yoksa buradan indirin.",
     "install": "İndir",
+    "installManaged": "Yönetilen kopyayı indir",
     "remove": "Kaldır",
     "installing": "İndiriliyor…",
+    "update": "Güncellemeyi denetle",
+    "updating": "Denetleniyor…",
+    "updated": "{name} en son sürüme güncellendi",
+    "upToDate": "{name} zaten güncel",
+    "updateFailed": "Güncelleme başarısız: {message}",
     "source": {
       "managed": "Yönetilen",
       "system": "Sistem",
