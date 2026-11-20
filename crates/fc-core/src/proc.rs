@@ -37,16 +37,16 @@ mod job {
     use std::ffi::c_void;
     use std::process::Child;
     use std::sync::OnceLock;
-    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
     use windows::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
-        SetInformationJobObject,
+        SetInformationJobObject, TerminateJobObject,
     };
 
-    /// Raw handle value; the job lives for the whole process and is never closed explicitly,
-    /// so the OS closes it (and kills the children) when the app exits.
-    static JOB: OnceLock<Option<isize>> = OnceLock::new();
+    /// App-wide job (raw handle value). Never closed explicitly: the OS closes it, and kills
+    /// every child, when the app exits.
+    static APP_JOB: OnceLock<Option<isize>> = OnceLock::new();
 
     fn create() -> Option<isize> {
         // SAFETY: plain Win32 calls with valid, correctly sized arguments.
@@ -54,29 +54,87 @@ mod job {
             let handle = CreateJobObjectW(None, None).ok()?;
             let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
             info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            SetInformationJobObject(
+            let set = SetInformationJobObject(
                 handle,
                 JobObjectExtendedLimitInformation,
                 &info as *const _ as *const c_void,
                 std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-            )
-            .ok()?;
+            );
+            if set.is_err() {
+                let _ = CloseHandle(handle);
+                return None;
+            }
             Some(handle.0 as isize)
         }
     }
 
-    /// Best effort: failure to join the job never fails the spawn.
-    pub fn assign(child: &Child) {
+    fn assign_to(job: isize, child: &Child) -> bool {
         use std::os::windows::io::AsRawHandle;
-        if let Some(job) = JOB.get_or_init(create) {
-            // SAFETY: both handles are valid for the duration of the call.
-            unsafe {
-                let _ = AssignProcessToJobObject(
-                    HANDLE(*job as *mut c_void),
-                    HANDLE(child.as_raw_handle()),
-                );
+        // SAFETY: both handles are valid for the duration of the call.
+        unsafe {
+            AssignProcessToJobObject(HANDLE(job as *mut c_void), HANDLE(child.as_raw_handle()))
+                .is_ok()
+        }
+    }
+
+    /// A per-child job nested in the app-wide one (Windows 8+), so a cancel can terminate the
+    /// whole process tree of this child while the app-wide kill-on-close stays in force.
+    /// Dropping it closes the handle, which also kills anything the child left behind.
+    pub struct ChildJob(Option<isize>);
+
+    impl ChildJob {
+        /// Best effort: failure to join a job never fails the spawn.
+        pub fn assign(child: &Child) -> Self {
+            if let Some(app) = APP_JOB.get_or_init(create) {
+                assign_to(*app, child);
+            }
+            let own = create();
+            match own {
+                Some(job) if assign_to(job, child) => Self(Some(job)),
+                Some(job) => {
+                    // SAFETY: handle was created above and is not used elsewhere.
+                    unsafe {
+                        let _ = CloseHandle(HANDLE(job as *mut c_void));
+                    }
+                    Self(None)
+                }
+                None => Self(None),
             }
         }
+
+        pub fn terminate(&self) {
+            if let Some(job) = self.0 {
+                // SAFETY: the handle is owned by `self` and still open.
+                unsafe {
+                    let _ = TerminateJobObject(HANDLE(job as *mut c_void), 1);
+                }
+            }
+        }
+    }
+
+    impl Drop for ChildJob {
+        fn drop(&mut self) {
+            if let Some(job) = self.0.take() {
+                // SAFETY: the handle is owned by `self`.
+                unsafe {
+                    let _ = CloseHandle(HANDLE(job as *mut c_void));
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(windows))]
+mod job {
+    use std::process::Child;
+
+    pub struct ChildJob;
+
+    impl ChildJob {
+        pub fn assign(_child: &Child) -> Self {
+            Self
+        }
+        pub fn terminate(&self) {}
     }
 }
 
@@ -122,8 +180,7 @@ pub fn run_streaming(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = cmd.spawn()?;
-    #[cfg(windows)]
-    job::assign(&child);
+    let job = job::ChildJob::assign(&child);
 
     let (tx, rx) = mpsc::channel::<(bool, String)>();
     if let Some(out) = child.stdout.take() {
@@ -136,10 +193,18 @@ pub fn run_streaming(
     }
     drop(tx);
 
+    // Kill the whole tree (job) and the direct child, then reap it.
+    let kill = |child: &mut std::process::Child| {
+        job.terminate();
+        let _ = child.kill();
+        let _ = child.wait();
+    };
+
     let (mut stdout, mut stderr) = (String::new(), String::new());
     let mut status: Option<ExitStatus> = None;
     let mut exited_at: Option<Instant> = None;
     loop {
+        let mut timed_out = false;
         match rx.recv_timeout(Duration::from_millis(100)) {
             Ok((false, line)) => {
                 capture(&mut stdout, &line);
@@ -150,25 +215,46 @@ pub fn run_streaming(
                 on_stderr(&line);
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Timeout) => timed_out = true,
         }
         if cancel.is_cancelled() {
-            let _ = child.kill();
-            let _ = child.wait();
+            kill(&mut child);
             return Err(Error::Cancelled);
         }
         if status.is_none() {
-            if let Some(s) = child.try_wait()? {
-                status = Some(s);
-                exited_at = Some(Instant::now());
+            match child.try_wait() {
+                Ok(Some(s)) => {
+                    status = Some(s);
+                    exited_at = Some(Instant::now());
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    kill(&mut child);
+                    return Err(e.into());
+                }
             }
-        } else if exited_at.is_some_and(|t| t.elapsed() > DRAIN_GRACE) {
+        } else if timed_out && exited_at.is_some_and(|t| t.elapsed() > DRAIN_GRACE) {
             break;
         }
     }
-    let status = match status {
-        Some(s) => s,
-        None => child.wait()?,
+    // Pipes are closed; the process may still be running (it closed its output early).
+    // Keep honoring cancel while waiting for it.
+    let status = loop {
+        if let Some(s) = status {
+            break s;
+        }
+        if cancel.is_cancelled() {
+            kill(&mut child);
+            return Err(Error::Cancelled);
+        }
+        match child.try_wait() {
+            Ok(Some(s)) => break s,
+            Ok(None) => std::thread::sleep(Duration::from_millis(25)),
+            Err(e) => {
+                kill(&mut child);
+                return Err(e.into());
+            }
+        }
     };
     Ok(Output {
         status,

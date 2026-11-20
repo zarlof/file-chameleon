@@ -103,27 +103,31 @@ fn video_codec_args(id: &str, quality: Option<u8>, crf: Option<u32>) -> Vec<Stri
             v
         }
         "avi" => {
-            let q = crf.map_or_else(
-                || 2 + u32::from(100 - quality.unwrap_or(75).clamp(1, 100)) / 10,
-                |c| c.saturating_sub(19).clamp(2, 31),
-            );
+            let q = 2 + u32::from(100 - quality.unwrap_or(75).clamp(1, 100)) / 10;
             let mut v = strs(&["-c:v", "mpeg4", "-q:v"]);
             v.push(q.to_string());
             v.extend(strs(&["-pix_fmt", "yuv420p"]));
             v
         }
-        _ => {
-            let c = crf.unwrap_or_else(|| x264_crf(quality)).to_string();
-            let mut v = strs(&["-c:v", "libx264", "-crf"]);
-            v.push(c);
-            v.extend(strs(&["-preset", "veryfast", "-pix_fmt", "yuv420p"]));
-            if matches!(id, "mp4" | "mov") {
-                v.extend(strs(&["-movflags", "+faststart"]));
-            }
-            v
-        }
+        _ => x264_args(
+            crf.unwrap_or_else(|| x264_crf(quality)),
+            matches!(id, "mp4" | "mov"),
+        ),
     }
 }
+
+fn x264_args(crf: u32, faststart: bool) -> Vec<String> {
+    let mut v = strs(&["-c:v", "libx264", "-crf"]);
+    v.push(crf.to_string());
+    v.extend(strs(&["-preset", "veryfast", "-pix_fmt", "yuv420p"]));
+    if faststart {
+        v.extend(strs(&["-movflags", "+faststart"]));
+    }
+    v
+}
+
+/// Even dimensions (yuv420p encoders reject odd sizes).
+const EVEN_SCALE: &str = "scale=trunc(iw/2)*2:trunc(ih/2)*2";
 
 /// Audio encoder arguments for a container. `bitrate_k` overrides the default bitrate.
 fn audio_codec_args(id: &str, bitrate_k: Option<u32>) -> Vec<String> {
@@ -239,27 +243,59 @@ fn copy_args(input: &Path, to: &str, output: &Path) -> Vec<OsString> {
     assemble(Vec::new(), input, body, muxer(to), output)
 }
 
-fn gif_args(
-    input: &Path,
-    output: &Path,
+/// GIF encoding parameters.
+struct GifSpec {
     max_width: u32,
+    max_height: Option<u32>,
     fps: u32,
     max_seconds: u32,
-) -> Vec<OsString> {
-    let graph = format!(
-        "[0:v]fps={fps},scale=w='min(iw,{max_width})':h=-2:flags=lanczos,split[a][b];\
-         [a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5"
-    );
+}
+
+/// Shared by both passes so the palette matches the frames it is applied to.
+fn gif_chain(spec: &GifSpec) -> String {
+    let h = spec
+        .max_height
+        .map_or("ih".to_string(), |h| format!("min(ih,{h})"));
+    format!(
+        "fps={},scale=w='min(iw,{})':h='{h}':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos",
+        spec.fps, spec.max_width
+    )
+}
+
+/// Pass 1: write a single palette PNG.
+fn gif_palette_args(input: &Path, palette: &Path, spec: &GifSpec) -> Vec<OsString> {
     let body = vec![
         "-t".to_string(),
-        max_seconds.to_string(),
+        spec.max_seconds.to_string(),
+        "-vf".into(),
+        format!("{},palettegen=stats_mode=diff", gif_chain(spec)),
+        "-frames:v".into(),
+        "1".into(),
+        "-update".into(),
+        "1".into(),
+    ];
+    assemble(Vec::new(), input, body, "image2", palette)
+}
+
+/// Pass 2: apply the palette (a second input, so no path appears inside the filter string).
+fn gif_encode_args(input: &Path, palette: &Path, output: &Path, spec: &GifSpec) -> Vec<OsString> {
+    let mut args: Vec<OsString> = vec!["-i".into(), input.into(), "-i".into(), palette.into()];
+    args.extend(os(vec![
+        "-t".to_string(),
+        spec.max_seconds.to_string(),
         "-filter_complex".into(),
-        graph,
+        format!(
+            "[0:v]{}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5",
+            gif_chain(spec)
+        ),
         "-an".into(),
         "-loop".into(),
         "0".into(),
-    ];
-    assemble(Vec::new(), input, body, "gif", output)
+        "-f".into(),
+        "gif".into(),
+    ]));
+    args.push(output.into());
+    args
 }
 
 fn compress_args(input: &Path, id: &str, output: &Path, level: CompressLevel) -> Vec<OsString> {
@@ -272,7 +308,12 @@ fn compress_args(input: &Path, id: &str, output: &Path, level: CompressLevel) ->
     if is_video_container(id) {
         let crf = if id == "webm" { crf + 8 } else { crf };
         body.extend(strs(&MAP_AV));
-        body.extend(video_codec_args(id, None, Some(crf)));
+        body.extend(strs(&["-vf", EVEN_SCALE]));
+        if id == "avi" {
+            body.extend(x264_args(crf, false));
+        } else {
+            body.extend(video_codec_args(id, None, Some(crf)));
+        }
         body.extend(audio_codec_args(id, Some(kbps)));
     } else {
         body.extend(strs(&["-vn", "-map", "0:a:0"]));
@@ -297,6 +338,7 @@ fn trim_args(input: &Path, id: &str, output: &Path, start_ms: u64, end_ms: u64) 
     let mut body = vec!["-t".to_string(), secs(end_ms - start_ms)];
     if is_video_container(id) {
         body.extend(strs(&MAP_AV));
+        body.extend(strs(&["-vf", EVEN_SCALE]));
         body.extend(video_codec_args(id, None, None));
     } else {
         body.extend(strs(&["-vn", "-map", "0:a:0"]));
@@ -315,7 +357,10 @@ fn speed_args(input: &Path, id: &str, output: &Path, factor: f32) -> Vec<OsStrin
     if is_video_container(id) {
         body.extend(strs(&MAP_AV));
         body.push("-vf".into());
-        body.push(format!("setpts=PTS/{}", trim_float(f64::from(factor))));
+        body.push(format!(
+            "setpts=PTS/{},{EVEN_SCALE}",
+            trim_float(f64::from(factor))
+        ));
         // Keep every frame at its new timestamp instead of resampling to the source frame rate
         // (cfr resampling pads the tail and distorts the duration).
         body.extend(strs(&["-fps_mode", "passthrough"]));
@@ -458,6 +503,42 @@ impl Ffmpeg {
         Ok(())
     }
 
+    /// Real two-pass GIF: palette PNG next to the output (deleted afterwards, also on
+    /// error/cancel), then the encode. Progress: pass 1 = 0..0.5, pass 2 = 0.5..1.
+    fn gif(
+        &self,
+        input: &Path,
+        output: &Path,
+        spec: &GifSpec,
+        total: Option<f64>,
+        cancel: &CancelToken,
+        progress: &dyn Fn(f32),
+    ) -> Result<()> {
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let palette = output.with_file_name(format!(
+            ".fc-palette-{}-{}.png",
+            std::process::id(),
+            COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let result = self
+            .run(
+                gif_palette_args(input, &palette, spec),
+                total,
+                cancel,
+                &|p| progress(p * 0.5),
+            )
+            .and_then(|()| {
+                self.run(
+                    gif_encode_args(input, &palette, output, spec),
+                    total,
+                    cancel,
+                    &|p| progress(0.5 + p * 0.5),
+                )
+            });
+        let _ = std::fs::remove_file(&palette);
+        result
+    }
+
     fn require_input(input: &Path) -> Result<()> {
         if input.is_file() {
             Ok(())
@@ -473,7 +554,7 @@ impl Ffmpeg {
     /// Format conversion. Codec choices:
     /// mp4/mov -> libx264 (CRF from quality, default 23, preset veryfast, yuv420p, +faststart) + aac 160k;
     /// mkv -> libx264 + aac; webm -> libvpx-vp9 (CRF 32, -b:v 0, row-mt) + libopus 128k; avi -> mpeg4 q:v 4 + mp3;
-    /// gif -> two-pass palette (fps 15, width min(src,480), lanczos, max 60 s);
+    /// gif -> real two-pass palette (palette PNG next to the output, deleted afterwards) (fps 15, width min(src,480), lanczos, max 60 s);
     /// audio: mp3 libmp3lame q:a 2, m4a aac 192k, opus/ogg libopus 128k, flac, wav pcm_s16le; video->audio drops video (-vn).
     /// Try stream copy first when the target container accepts the source codecs (mp4<->mov<->mkv with h264/aac).
     /// Honors `max_width`/`max_height` with scale filter (even dimensions).
@@ -496,14 +577,14 @@ impl Ffmpeg {
             .and_then(|p| p.duration)
             .or_else(|| self.duration(input));
         if to == "gif" {
-            let width = options.max_width.map_or(480, |w| w.min(480));
+            let spec = GifSpec {
+                max_width: options.max_width.map_or(480, |w| w.min(480)),
+                max_height: options.max_height,
+                fps: 15,
+                max_seconds: 60,
+            };
             let total = duration.map(|d| d.min(60.0));
-            return self.run(
-                gif_args(input, output, width, 15, 60),
-                total,
-                cancel,
-                progress,
-            );
+            return self.gif(input, output, &spec, total, cancel, progress);
         }
         if !matches!(
             to,
@@ -673,18 +754,13 @@ impl Ffmpeg {
     ) -> Result<()> {
         Self::require_input(input)?;
         let total = self.duration(input).map(|d| d.min(f64::from(max_seconds)));
-        self.run(
-            gif_args(
-                input,
-                output,
-                max_width.max(16),
-                fps.clamp(1, 60),
-                max_seconds.max(1),
-            ),
-            total,
-            cancel,
-            progress,
-        )
+        let spec = GifSpec {
+            max_width: max_width.max(16),
+            max_height: None,
+            fps: fps.clamp(1, 60),
+            max_seconds: max_seconds.max(1),
+        };
+        self.gif(input, output, &spec, total, cancel, progress)
     }
 }
 
@@ -776,21 +852,29 @@ mod tests {
     }
 
     #[test]
-    fn gif_pipeline() {
-        let a = line(&gif_args(
+    fn gif_two_pass() {
+        let spec = GifSpec {
+            max_width: 480,
+            max_height: Some(300),
+            fps: 15,
+            max_seconds: 60,
+        };
+        let p1 = line(&gif_palette_args(
             Path::new("a.mp4"),
-            Path::new("o.gif"),
-            480,
-            15,
-            60,
+            Path::new("pal.png"),
+            &spec,
         ));
-        assert!(
-            a.contains("fps=15")
-                && a.contains("min(iw,480)")
-                && a.contains("palettegen")
-                && a.contains("paletteuse")
-        );
-        assert!(a.contains("-t 60") && a.contains("lanczos"));
+        assert!(p1.contains("palettegen") && p1.contains("min(ih,300)") && p1.contains("fps=15"));
+        assert!(p1.ends_with("-f image2 pal.png"));
+        let p2 = line(&gif_encode_args(
+            Path::new("a.mp4"),
+            Path::new("pal.png"),
+            Path::new("o.gif"),
+            &spec,
+        ));
+        assert!(p2.starts_with("-i a.mp4 -i pal.png"));
+        assert!(p2.contains("paletteuse") && p2.contains("min(iw,480)") && p2.contains("lanczos"));
+        assert!(p2.contains("-t 60") && p2.ends_with("-f gif o.gif"));
     }
 
     #[test]
@@ -823,6 +907,28 @@ mod tests {
             CompressLevel::Strong,
         ));
         assert!(au.contains("-b:a 96k") && !au.contains("libx264"));
+    }
+
+    #[test]
+    fn avi_compress_uses_x264_and_even_scale() {
+        let a = line(&compress_args(
+            Path::new("a.avi"),
+            "avi",
+            Path::new("o"),
+            CompressLevel::Balanced,
+        ));
+        assert!(a.contains("libx264 -crf 29") && !a.contains("mpeg4"), "{a}");
+        assert!(a.contains("trunc(iw/2)*2") && !a.contains("faststart"));
+        let t = line(&trim_args(
+            Path::new("a.mp4"),
+            "mp4",
+            Path::new("o"),
+            0,
+            1000,
+        ));
+        assert!(t.contains("trunc(iw/2)*2"));
+        let sp = line(&speed_args(Path::new("a.mp4"), "mp4", Path::new("o"), 2.0));
+        assert!(sp.contains("setpts=PTS/2,scale=trunc(iw/2)*2"));
     }
 
     #[test]

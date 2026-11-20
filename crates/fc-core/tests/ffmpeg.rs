@@ -9,9 +9,13 @@ fn tool() -> Option<Ffmpeg> {
         eprintln!("skipping: ffmpeg not on PATH");
         return None;
     };
+    let Some(ffprobe) = which("ffprobe.exe") else {
+        eprintln!("skipping: ffprobe not on PATH");
+        return None;
+    };
     Some(Ffmpeg {
         ffmpeg,
-        ffprobe: which("ffprobe.exe"),
+        ffprobe: Some(ffprobe),
     })
 }
 
@@ -368,4 +372,128 @@ fn duration_without_ffprobe_falls_back_to_ffmpeg_stderr() {
     f.ffprobe = None;
     let dur = f.duration(&src).unwrap();
     assert!((dur - 2.0).abs() < 0.3, "{dur}");
+}
+
+/// 321x241 lossless source (yuv444p allows odd sizes), 1 s with a sine track.
+fn odd_source(f: &Ffmpeg, dir: &Path, name: &str) -> PathBuf {
+    make(
+        f,
+        dir,
+        name,
+        &[
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=duration=1:size=321x241:rate=10",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=1",
+            "-c:v",
+            "ffv1",
+            "-pix_fmt",
+            "yuv444p",
+            "-c:a",
+            "pcm_s16le",
+        ],
+    )
+}
+
+#[test]
+fn compress_trim_speed_handle_odd_dimensions() {
+    let Some(f) = tool() else { return };
+    let d = tempfile::tempdir().unwrap();
+    let c = CancelToken::new();
+    let src = odd_source(&f, d.path(), "odd.mkv");
+
+    let comp = d.path().join("c.mkv");
+    f.compress(&src, &comp, CompressLevel::Balanced, &c, &nop)
+        .unwrap();
+    assert!(
+        streams(&f, &comp).contains("320,240"),
+        "{}",
+        streams(&f, &comp)
+    );
+
+    let trimmed = d.path().join("t.mkv");
+    f.trim(&src, &trimmed, 0, 500, &c, &nop).unwrap();
+    assert!(streams(&f, &trimmed).contains("320,240"));
+
+    let fast = d.path().join("s.mkv");
+    f.speed(&src, &fast, 2.0, &c, &nop).unwrap();
+    assert!(streams(&f, &fast).contains("320,240"));
+}
+
+#[test]
+fn avi_compress_uses_h264() {
+    let Some(f) = tool() else { return };
+    let d = tempfile::tempdir().unwrap();
+    let c = CancelToken::new();
+    let src = odd_source(&f, d.path(), "odd.mkv");
+    let avi = d.path().join("in.avi");
+    f.convert(&src, "avi", &avi, &ConvertOptions::default(), &c, &nop)
+        .unwrap();
+    assert!(streams(&f, &avi).contains("mpeg4"));
+    let out = d.path().join("c.avi");
+    f.compress(&avi, &out, CompressLevel::Light, &c, &nop)
+        .unwrap();
+    assert!(streams(&f, &out).contains("h264"), "{}", streams(&f, &out));
+}
+
+fn leftovers(dir: &Path) -> Vec<String> {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .filter(|n| n.starts_with(".fc-palette"))
+        .collect()
+}
+
+#[test]
+fn gif_two_pass_progress_height_limit_and_palette_cleanup() {
+    let Some(f) = tool() else { return };
+    let d = tempfile::tempdir().unwrap();
+    let src = sample_mp4(&f, d.path(), "320x240");
+    let out = d.path().join("g.gif");
+    let seen = std::sync::Mutex::new(Vec::<f32>::new());
+    let o = ConvertOptions {
+        max_height: Some(100),
+        ..ConvertOptions::default()
+    };
+    f.convert(&src, "gif", &out, &o, &CancelToken::new(), &|p| {
+        seen.lock().unwrap().push(p)
+    })
+    .unwrap();
+    let s = streams(&f, &out);
+    assert!(s.contains("gif") && s.contains(",100"), "{s}");
+    let seen = seen.lock().unwrap();
+    assert!(seen.windows(2).all(|w| w[0] <= w[1] + 1e-6), "{seen:?}");
+    assert!(seen.iter().any(|p| (0.45..=0.55).contains(p)), "{seen:?}");
+    assert_eq!(*seen.last().unwrap(), 1.0);
+    assert!(leftovers(d.path()).is_empty());
+}
+
+#[test]
+fn gif_failure_and_cancel_remove_the_palette() {
+    let Some(f) = tool() else { return };
+    let d = tempfile::tempdir().unwrap();
+    let junk = d.path().join("junk.mp4");
+    std::fs::write(&junk, b"nope").unwrap();
+    let r = f.to_gif(
+        &junk,
+        &d.path().join("g.gif"),
+        100,
+        10,
+        5,
+        &CancelToken::new(),
+        &nop,
+    );
+    assert!(r.is_err());
+    assert!(leftovers(d.path()).is_empty());
+
+    let src = sample_mp4(&f, d.path(), "320x240");
+    let cancel = CancelToken::new();
+    cancel.cancel();
+    let r = f.to_gif(&src, &d.path().join("g2.gif"), 100, 10, 5, &cancel, &nop);
+    assert!(matches!(r, Err(Error::Cancelled)));
+    assert!(leftovers(d.path()).is_empty());
 }

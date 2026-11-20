@@ -83,11 +83,34 @@ impl EngineManager {
     /// `root` = `%LOCALAPPDATA%\FileChameleon\engines`. Creates it if missing.
     pub fn new(root: PathBuf, manifest: Manifest) -> Self {
         let _ = fs::create_dir_all(&root);
-        Self {
+        let mgr = Self {
             root,
             manifest,
             system_cache: Mutex::new(HashMap::new()),
             install_lock: Mutex::new(()),
+        };
+        mgr.cleanup_old();
+        mgr
+    }
+
+    /// Best-effort removal of `<id>.old-<ms>` folders left behind by earlier reinstalls
+    /// (their files may have been in use at the time).
+    fn cleanup_old(&self) {
+        let Ok(entries) = fs::read_dir(&self.root) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if entry.file_name().to_string_lossy().contains(".old-") {
+                let _ = fs::remove_dir_all(path);
+            } else if path.is_dir() {
+                // Files moved aside by `swap_in_place`.
+                for f in fs::read_dir(&path).into_iter().flatten().flatten() {
+                    if f.file_name().to_string_lossy().contains(".old-") {
+                        let _ = fs::remove_file(f.path());
+                    }
+                }
+            }
         }
     }
 
@@ -185,6 +208,7 @@ impl EngineManager {
             .get(id)
             .ok_or_else(|| Error::Unsupported(format!("unknown tool {id}")))?;
         let _guard = self.install_lock.lock().unwrap_or_else(|p| p.into_inner());
+        self.cleanup_old();
         let staging = self.staging_dir();
         let download = staging.join(format!("{id}.download"));
         let extract_dir = staging.join(id);
@@ -226,11 +250,24 @@ impl EngineManager {
             serde_json::to_string_pretty(&installed).map_err(|e| Error::Failed(e.to_string()))?;
         fs::write(extract_dir.join("installed.json"), json)?;
         let target = self.tool_dir(&entry.id);
-        if target.exists() {
-            fs::remove_dir_all(&target)?;
+        // Never delete the live folder first: a running exe makes that fail half way.
+        if !target.exists() {
+            fs::rename(extract_dir, &target)?;
+            return Ok(());
         }
-        fs::rename(extract_dir, &target)?;
-        Ok(())
+        let stamp = crate::now_ms();
+        let aside = self.root.join(format!("{}.old-{stamp}", entry.id));
+        if fs::rename(&target, &aside).is_ok() {
+            if let Err(e) = fs::rename(extract_dir, &target) {
+                let _ = fs::rename(&aside, &target);
+                return Err(e.into());
+            }
+            let _ = fs::remove_dir_all(aside);
+            return Ok(());
+        }
+        // Windows refuses to rename a folder that has open files inside (e.g. a running exe).
+        // The files themselves can usually be renamed, so swap them one by one.
+        swap_in_place(&target, extract_dir, stamp)
     }
 
     /// Removes only a managed install; system copies are never touched.
@@ -290,6 +327,58 @@ impl ToolLocator for EngineManager {
         }
         self.system_lookup(entry, file)
     }
+}
+
+/// Replace the files of `target` with those of `new_dir` without renaming the folder:
+/// old files are renamed to `<name>.old-<stamp>` (allowed for a running exe), new files are
+/// moved in, then the old ones are deleted best effort (leftovers are removed later by
+/// `cleanup_old`). On any failure everything is rolled back and the old install stays intact.
+fn swap_in_place(target: &Path, new_dir: &Path, stamp: u64) -> Result<()> {
+    let names = |dir: &Path| -> Result<Vec<std::ffi::OsString>> {
+        let mut v = Vec::new();
+        for e in fs::read_dir(dir)? {
+            let e = e?;
+            if e.file_type()?.is_file() {
+                v.push(e.file_name());
+            }
+        }
+        Ok(v)
+    };
+    let aside_name = |n: &std::ffi::OsString| {
+        let mut a = n.clone();
+        a.push(format!(".old-{stamp}"));
+        a
+    };
+    let old = names(target)?;
+    let new_names = names(new_dir)?;
+    let mut moved_aside: Vec<&std::ffi::OsString> = Vec::new();
+    let rollback_aside = |moved: &[&std::ffi::OsString]| {
+        for n in moved {
+            let _ = fs::rename(target.join(aside_name(n)), target.join(n));
+        }
+    };
+    for n in &old {
+        if let Err(e) = fs::rename(target.join(n), target.join(aside_name(n))) {
+            rollback_aside(&moved_aside);
+            return Err(e.into());
+        }
+        moved_aside.push(n);
+    }
+    let mut placed: Vec<std::ffi::OsString> = Vec::new();
+    for n in new_names {
+        if let Err(e) = fs::rename(new_dir.join(&n), target.join(&n)) {
+            for p in &placed {
+                let _ = fs::remove_file(target.join(p));
+            }
+            rollback_aside(&moved_aside);
+            return Err(e.into());
+        }
+        placed.push(n);
+    }
+    for n in &old {
+        let _ = fs::remove_file(target.join(aside_name(n)));
+    }
+    Ok(())
 }
 
 /// Search `PATH` for an executable file name. Exposed for tests.
@@ -415,6 +504,8 @@ fn http_agent() -> ureq::Agent {
         .tls_config(tls)
         .timeout_connect(Some(Duration::from_secs(15)))
         .timeout_recv_response(Some(Duration::from_secs(30)))
+        // A stalled download must fail (and be cancellable) instead of blocking in a read.
+        .timeout_per_read(Some(Duration::from_secs(30)))
         .user_agent("FileChameleon")
         .build()
         .into()

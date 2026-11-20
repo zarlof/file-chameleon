@@ -71,6 +71,46 @@ fn cancelled_child_is_really_gone() {
     assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "0");
 }
 
+#[cfg(windows)]
+fn count_pings(marker: &str) -> String {
+    let script = format!(
+        "(Get-CimInstance Win32_Process -Filter \"Name='PING.EXE'\" | Where-Object {{ $_.CommandLine -like '*{marker}*' }} | Measure-Object).Count"
+    );
+    let out = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-Command", &script])
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+#[cfg(windows)]
+#[test]
+fn cancel_kills_the_grandchild_too() {
+    // cmd -> ping: ping is a grandchild of the spawned process.
+    let mut cmd = proc::command("cmd");
+    cmd.args(["/C", "ping -n 37 127.0.0.1"]);
+    let cancel = CancelToken::new();
+    let c2 = cancel.clone();
+    let watcher = std::thread::spawn(move || {
+        // Wait until the grandchild really exists before cancelling.
+        for _ in 0..50 {
+            if count_pings("-n 37 ") == "1" {
+                break;
+            }
+        }
+        c2.cancel();
+    });
+    let r = proc::run(cmd, &cancel);
+    watcher.join().unwrap();
+    assert!(matches!(r, Err(Error::Cancelled)));
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(
+        count_pings("-n 37 "),
+        "0",
+        "grandchild ping survived the cancel"
+    );
+}
+
 #[test]
 fn pre_cancelled_does_not_spawn() {
     let c = CancelToken::new();

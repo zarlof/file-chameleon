@@ -216,6 +216,102 @@ fn install_verifies_extracts_and_uninstalls() {
     assert_eq!(mgr.status()[0].source, ToolSource::Missing);
 }
 
+fn installed_demo(tmp: &tempfile::TempDir) -> (EngineManager, std::path::PathBuf) {
+    let zip = zip_bytes(&[("bin/demo.exe", b"DEMO")]);
+    let archive = tmp.path().join("p.zip");
+    std::fs::write(&archive, &zip).unwrap();
+    let sha = sha256_file(&archive).unwrap();
+    let url = serve(zip);
+    let root = tmp.path().join("engines");
+    let mgr = EngineManager::new(root.clone(), manifest_for(&url, &sha));
+    mgr.install("demo", &|_, _| {}, &CancelToken::new())
+        .unwrap();
+    (mgr, root)
+}
+
+#[test]
+fn reinstall_with_a_file_held_open_swaps_and_cleans_up_later() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mgr, root) = installed_demo(&tmp);
+    let held = std::fs::File::open(root.join("demo").join("demo.exe")).unwrap();
+    mgr.install("demo", &|_, _| {}, &CancelToken::new())
+        .unwrap();
+    // New install is in place and complete.
+    assert!(root.join("demo").join("installed.json").is_file());
+    assert_eq!(
+        std::fs::read(root.join("demo").join("demo.exe")).unwrap(),
+        b"DEMO"
+    );
+    drop(held);
+    // Any `.old-*` leftover is removed by the next install.
+    mgr.install("demo", &|_, _| {}, &CancelToken::new())
+        .unwrap();
+    let old: Vec<_> = std::fs::read_dir(&root)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().contains(".old-"))
+        .collect();
+    assert!(old.is_empty(), "{old:?}");
+}
+
+#[cfg(windows)]
+#[test]
+fn reinstall_while_the_managed_exe_is_running() {
+    // Use a real executable (a copy of ping.exe) as the "tool" and keep it running.
+    let ping = std::fs::read(r"C:\Windows\System32\PING.EXE").unwrap();
+    let zip = zip_bytes(&[("bin/demo.exe", &ping)]);
+    let tmp = tempfile::tempdir().unwrap();
+    let archive = tmp.path().join("p.zip");
+    std::fs::write(&archive, &zip).unwrap();
+    let sha = sha256_file(&archive).unwrap();
+    let url = serve(zip);
+    let root = tmp.path().join("engines");
+    let mgr = EngineManager::new(root.clone(), manifest_for(&url, &sha));
+    mgr.install("demo", &|_, _| {}, &CancelToken::new())
+        .unwrap();
+
+    let mut running = std::process::Command::new(root.join("demo").join("demo.exe"))
+        .args(["-n", "20", "127.0.0.1"])
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let r = mgr.install("demo", &|_, _| {}, &CancelToken::new());
+    let _ = running.kill();
+    let _ = running.wait();
+    r.unwrap();
+    assert!(root.join("demo").join("installed.json").is_file());
+    assert!(root.join("demo").join("demo.exe").is_file());
+    // The next install/startup sweeps leftovers.
+    let _ = EngineManager::new(root.clone(), mgr.manifest().clone());
+    let left: Vec<_> = std::fs::read_dir(root.join("demo"))
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().contains(".old-"))
+        .collect();
+    assert!(left.is_empty(), "{left:?}");
+}
+
+#[cfg(windows)]
+#[test]
+fn reinstall_blocked_by_a_locked_file_keeps_the_old_install_intact() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let tmp = tempfile::tempdir().unwrap();
+    let (mgr, root) = installed_demo(&tmp);
+    // Share read/write only: no delete/rename, like a running executable.
+    let _held = std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(3)
+        .open(root.join("demo").join("demo.exe"))
+        .unwrap();
+    let r = mgr.install("demo", &|_, _| {}, &CancelToken::new());
+    // Whatever the outcome, the tool must still be fully installed.
+    let dir = root.join("demo");
+    assert!(dir.join("installed.json").is_file(), "{r:?}");
+    assert!(dir.join("demo.exe").is_file(), "{r:?}");
+    assert_eq!(mgr.status()[0].source, ToolSource::Managed);
+}
+
 #[test]
 fn checksum_mismatch_installs_nothing_and_cleans_staging() {
     let zip = zip_bytes(&[("bin/demo.exe", b"DEMO")]);
