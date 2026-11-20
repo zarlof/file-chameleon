@@ -3,7 +3,7 @@
 //! (read dimensions first). GIF input decodes the first frame only.
 
 use super::quality_or;
-use crate::jobs::{CompressLevel, ConvertOptions};
+use crate::jobs::{CompressLevel, ConvertOptions, ImageOp};
 use crate::{CancelToken, Error, Result};
 use image::codecs::gif::GifEncoder;
 use image::codecs::ico::{IcoEncoder, IcoFrame};
@@ -360,9 +360,151 @@ pub fn crop(input: &Path, output: &Path, x: u32, y: u32, width: u32, height: u32
     write_as(&cropped, &to, output, &ConvertOptions::default())
 }
 
+/// Apply `ops` in order, then `max_width`/`max_height` (downscale only), and write raster
+/// format `to`. Invalid parameters -> `Error::Invalid` before anything is written.
+pub fn edit(
+    input: &Path,
+    ops: &[ImageOp],
+    to: &str,
+    output: &Path,
+    options: &ConvertOptions,
+    cancel: &CancelToken,
+) -> Result<()> {
+    ops.iter().try_for_each(ImageOp::validate)?;
+    if cancel.is_cancelled() {
+        return Err(Error::Cancelled);
+    }
+    let mut img = decode(input)?;
+    for op in ops {
+        if cancel.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        img = apply(img, *op)?;
+    }
+    let img = fit_owned(img, options);
+    if cancel.is_cancelled() {
+        return Err(Error::Cancelled);
+    }
+    write_as(&img, to, output, options)
+}
+
+fn apply(img: DynamicImage, op: ImageOp) -> Result<DynamicImage> {
+    Ok(match op {
+        ImageOp::Grayscale => img.grayscale(),
+        ImageOp::RotateLeft => img.rotate270(),
+        ImageOp::RotateRight => img.rotate90(),
+        ImageOp::Rotate180 => img.rotate180(),
+        ImageOp::FlipH => img.fliph(),
+        ImageOp::FlipV => img.flipv(),
+        ImageOp::Trim => trim_transparent(img),
+        ImageOp::Pixelate { block } => pixelate(img, block.max(1)),
+        ImageOp::Blur { sigma } => img.blur(sigma),
+        ImageOp::Scale { percent } => scale(img, percent)?,
+    })
+}
+
+/// Crop to the bounding box of pixels with alpha > 0. Unchanged when the image has no alpha,
+/// no transparent border, or no visible pixel at all.
+fn trim_transparent(img: DynamicImage) -> DynamicImage {
+    if !img.color().has_alpha() {
+        return img;
+    }
+    let bounds = {
+        let rgba = match img.as_rgba8() {
+            Some(r) => Cow::Borrowed(r),
+            None => Cow::Owned(img.to_rgba8()),
+        };
+        let (mut x0, mut y0, mut x1, mut y1) = (u32::MAX, u32::MAX, 0, 0);
+        for (x, y, p) in rgba.enumerate_pixels() {
+            if p[3] > 0 {
+                x0 = x0.min(x);
+                y0 = y0.min(y);
+                x1 = x1.max(x);
+                y1 = y1.max(y);
+            }
+        }
+        (x0 != u32::MAX).then(|| (x0, y0, x1 - x0 + 1, y1 - y0 + 1))
+    };
+    match bounds {
+        Some((x, y, w, h)) if (w, h) != (img.width(), img.height()) => img.crop_imm(x, y, w, h),
+        _ => img,
+    }
+}
+
+/// Blocks of `block` px: shrink with nearest-neighbour, then grow back the same way.
+fn pixelate(img: DynamicImage, block: u32) -> DynamicImage {
+    let (w, h) = (img.width(), img.height());
+    let small = img.resize_exact(
+        w.div_ceil(block).max(1),
+        h.div_ceil(block).max(1),
+        FilterType::Nearest,
+    );
+    small.resize_exact(w, h, FilterType::Nearest)
+}
+
+fn scale(img: DynamicImage, percent: u32) -> Result<DynamicImage> {
+    let size = |v: u32| ((u64::from(v) * u64::from(percent) + 50) / 100).max(1);
+    let (nw, nh) = (size(img.width()), size(img.height()));
+    if nw * nh > MAX_PIXELS {
+        return Err(Error::TooLarge(format!(
+            "result would be {nw}x{nh}, limit is 200 megapixels"
+        )));
+    }
+    let (nw, nh) = (nw as u32, nh as u32);
+    Ok(if (nw, nh) == (img.width(), img.height()) {
+        img
+    } else {
+        img.resize_exact(nw, nh, FilterType::Lanczos3)
+    })
+}
+
+/// Centred rectangle `(x, y, width, height)` with aspect `aw:ah` inside `w x h`, as large as
+/// possible. `aw`/`ah` of 0 count as 1.
+pub(crate) fn aspect_rect(w: u32, h: u32, aw: u32, ah: u32) -> (u32, u32, u32, u32) {
+    let (w64, h64) = (u64::from(w), u64::from(h));
+    let (aw, ah) = (u64::from(aw.max(1)), u64::from(ah.max(1)));
+    let rect = if w64 * ah > h64 * aw {
+        let cw = ((h64 * aw + ah / 2) / ah).clamp(1, w64.max(1));
+        ((w64 - cw.min(w64)) / 2, 0, cw, h64)
+    } else {
+        let ch = ((w64 * ah + aw / 2) / aw).clamp(1, h64.max(1));
+        (0, (h64 - ch.min(h64)) / 2, w64, ch)
+    };
+    // Every value is <= w or h, so it fits back into u32.
+    (rect.0 as u32, rect.1 as u32, rect.2 as u32, rect.3 as u32)
+}
+
+/// Centre crop to the aspect ratio `w:h`. The output format follows `output`'s extension
+/// (falling back to the input's).
+pub fn crop_aspect(
+    input: &Path,
+    output: &Path,
+    w: u32,
+    h: u32,
+    options: &ConvertOptions,
+) -> Result<()> {
+    let img = decode(input)?;
+    let (x, y, cw, ch) = aspect_rect(img.width(), img.height(), w, h);
+    let cropped = img.crop_imm(x, y, cw, ch);
+    drop(img);
+    let to = super::ext_of(output)
+        .or_else(|| super::ext_of(input))
+        .unwrap_or_else(|| "png".into());
+    write_as(&cropped, &to, output, options)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn aspect_rect_is_centred_and_maximal() {
+        assert_eq!(aspect_rect(400, 200, 1, 1), (100, 0, 200, 200));
+        assert_eq!(aspect_rect(400, 200, 16, 9), (22, 0, 356, 200));
+        assert_eq!(aspect_rect(200, 400, 16, 9), (0, 143, 200, 113));
+        assert_eq!(aspect_rect(160, 90, 16, 9), (0, 0, 160, 90));
+        assert_eq!(aspect_rect(1, 1, 9, 16), (0, 0, 1, 1));
+    }
 
     #[test]
     fn pixel_limit_is_enforced() {

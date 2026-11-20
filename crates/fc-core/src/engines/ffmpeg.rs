@@ -44,6 +44,7 @@ fn container_of(path: &Path) -> Option<&'static str> {
         "ogg" | "oga" => "ogg",
         "flac" => "flac",
         "wav" => "wav",
+        "m4r" => "m4r",
         _ => return None,
     })
 }
@@ -61,7 +62,7 @@ fn muxer(id: &str) -> &'static str {
         "avi" => "avi",
         "gif" => "gif",
         "mp3" => "mp3",
-        "m4a" => "ipod",
+        "m4a" | "m4r" => "ipod",
         "opus" => "opus",
         "ogg" => "ogg",
         "flac" => "flac",
@@ -134,7 +135,7 @@ fn audio_codec_args(id: &str, bitrate_k: Option<u32>) -> Vec<String> {
     let br = |default: u32| format!("{}k", bitrate_k.unwrap_or(default));
     match id {
         "mp4" | "mov" | "mkv" => vec!["-c:a".into(), "aac".into(), "-b:a".into(), br(160)],
-        "m4a" => vec!["-c:a".into(), "aac".into(), "-b:a".into(), br(192)],
+        "m4a" | "m4r" => vec!["-c:a".into(), "aac".into(), "-b:a".into(), br(192)],
         "webm" | "opus" | "ogg" => {
             vec!["-c:a".into(), "libopus".into(), "-b:a".into(), br(128)]
         }
@@ -217,6 +218,9 @@ fn assemble(
 
 const MAP_AV: [&str; 4] = ["-map", "0:v:0", "-map", "0:a:0?"];
 
+/// iPhone ringtones may be at most 40 seconds long.
+pub const RINGTONE_MAX_SECS: u32 = 40;
+
 /// Arguments for a re-encoding format conversion to `to`.
 fn convert_args(input: &Path, to: &str, output: &Path, options: &ConvertOptions) -> Vec<OsString> {
     let mut body = Vec::new();
@@ -228,9 +232,31 @@ fn convert_args(input: &Path, to: &str, output: &Path, options: &ConvertOptions)
         body.extend(audio_codec_args(to, None));
     } else {
         body.extend(strs(&["-vn", "-map", "0:a:0"]));
+        if to == "m4r" {
+            body.push("-t".into());
+            body.push(RINGTONE_MAX_SECS.to_string());
+        }
         body.extend(audio_codec_args(to, None));
     }
     assemble(Vec::new(), input, body, muxer(to), output)
+}
+
+/// First subtitle stream (ASS/SSA input) -> SubRip or WebVTT.
+/// `legacy_8bit`: the file has no BOM and is not UTF-8, so it is read as Windows-1254 (as the
+/// in-process SRT/VTT reader does); ffmpeg otherwise assumes UTF-8.
+fn subtitle_args(input: &Path, to: &str, output: &Path, legacy_8bit: bool) -> Vec<OsString> {
+    let (codec, mux) = if to == "vtt" {
+        ("webvtt", "webvtt")
+    } else {
+        ("srt", "srt")
+    };
+    let pre = if legacy_8bit {
+        strs(&["-sub_charenc", "CP1254"])
+    } else {
+        Vec::new()
+    };
+    let body = strs(&["-map", "0:s:0", "-c:s", codec]);
+    assemble(pre, input, body, mux, output)
 }
 
 /// Stream copy into mp4/mov/mkv (no re-encode).
@@ -386,6 +412,18 @@ fn crop_args(
     let mut body = strs(&MAP_AV);
     body.push("-vf".into());
     body.push(format!("crop={}:{}:{}:{}", w & !1, h & !1, x & !1, y & !1));
+    body.extend(video_codec_args(id, None, None));
+    body.extend(strs(&["-c:a", "copy"]));
+    assemble(Vec::new(), input, body, muxer(id), output)
+}
+
+/// Centre crop to `w:h`, as large as fits, even sizes (the crop filter centres by default).
+fn crop_aspect_args(input: &Path, id: &str, output: &Path, w: u32, h: u32) -> Vec<OsString> {
+    let mut body = strs(&MAP_AV);
+    body.push("-vf".into());
+    body.push(format!(
+        "crop=w='trunc(min(iw,ih*{w}/{h})/2)*2':h='trunc(min(ih,iw*{h}/{w})/2)*2'"
+    ));
     body.extend(video_codec_args(id, None, None));
     body.extend(strs(&["-c:a", "copy"]));
     assemble(Vec::new(), input, body, muxer(id), output)
@@ -555,7 +593,8 @@ impl Ffmpeg {
     /// mp4/mov -> libx264 (CRF from quality, default 23, preset veryfast, yuv420p, +faststart) + aac 160k;
     /// mkv -> libx264 + aac; webm -> libvpx-vp9 (CRF 32, -b:v 0, row-mt) + libopus 128k; avi -> mpeg4 q:v 4 + mp3;
     /// gif -> real two-pass palette (palette PNG next to the output, deleted afterwards) (fps 15, width min(src,480), lanczos, max 60 s);
-    /// audio: mp3 libmp3lame q:a 2, m4a aac 192k, opus/ogg libopus 128k, flac, wav pcm_s16le; video->audio drops video (-vn).
+    /// audio: mp3 libmp3lame q:a 2, m4a aac 192k, opus/ogg libopus 128k, flac, wav pcm_s16le; video->audio drops video (-vn);
+    /// m4r (ringtone) = m4a cut to the first 40 s; srt/vtt from the first subtitle stream (ASS/SSA input).
     /// Try stream copy first when the target container accepts the source codecs (mp4<->mov<->mkv with h264/aac).
     /// Honors `max_width`/`max_height` with scale filter (even dimensions).
     ///
@@ -571,6 +610,16 @@ impl Ffmpeg {
         progress: &dyn Fn(f32),
     ) -> Result<()> {
         Self::require_input(input)?;
+        if matches!(to, "srt" | "vtt") {
+            let legacy = std::fs::read(input)
+                .is_ok_and(|b| super::subtitle::sniff(&b) == super::subtitle::TextEncoding::Cp1254);
+            return self.run(
+                subtitle_args(input, to, output, legacy),
+                None,
+                cancel,
+                progress,
+            );
+        }
         let probe = self.probe(input);
         let duration = probe
             .as_ref()
@@ -599,9 +648,15 @@ impl Ffmpeg {
                 | "ogg"
                 | "flac"
                 | "wav"
+                | "m4r"
         ) {
             return Err(Error::Unsupported(format!("ffmpeg target {to}")));
         }
+        let duration = if to == "m4r" {
+            duration.map(|d| d.min(f64::from(RINGTONE_MAX_SECS)))
+        } else {
+            duration
+        };
         if let (Some(p), Some(src)) = (&probe, container_of(input))
             && matches!(to, "mp4" | "mov" | "mkv")
             && matches!(src, "mp4" | "mov" | "mkv")
@@ -734,6 +789,33 @@ impl Ffmpeg {
         let total = self.duration(input);
         self.run(
             crop_args(input, id, output, x, y, width, height),
+            total,
+            cancel,
+            progress,
+        )
+    }
+
+    /// Centre crop to the aspect ratio `w:h` (even sizes), audio copied.
+    pub fn crop_aspect(
+        &self,
+        input: &Path,
+        output: &Path,
+        w: u32,
+        h: u32,
+        cancel: &CancelToken,
+        progress: &dyn Fn(f32),
+    ) -> Result<()> {
+        Self::require_input(input)?;
+        let id = Self::container_for(input)?;
+        if !is_video_container(id) {
+            return Err(Error::Unsupported("crop needs a video file".into()));
+        }
+        if w == 0 || h == 0 {
+            return Err(Error::Unsupported("empty aspect ratio".into()));
+        }
+        let total = self.duration(input);
+        self.run(
+            crop_aspect_args(input, id, output, w, h),
             total,
             cancel,
             progress,
@@ -975,6 +1057,47 @@ mod tests {
         ));
         assert!(a.contains("crop=100:50:2:4"));
         assert!(a.contains("-c:a copy"));
+    }
+
+    #[test]
+    fn ringtone_subtitle_and_aspect_args() {
+        let r = line(&convert_args(
+            Path::new("a.mp4"),
+            "m4r",
+            Path::new("o"),
+            &ConvertOptions::default(),
+        ));
+        assert!(r.contains("-vn -map 0:a:0 -t 40 -c:a aac -b:a 192k"), "{r}");
+        assert!(r.ends_with("-f ipod o"));
+        let s = line(&subtitle_args(
+            Path::new("a.ass"),
+            "vtt",
+            Path::new("o"),
+            false,
+        ));
+        assert_eq!(s, "-i a.ass -map 0:s:0 -c:s webvtt -f webvtt o");
+        let s = line(&subtitle_args(
+            Path::new("a.ass"),
+            "srt",
+            Path::new("o"),
+            true,
+        ));
+        assert_eq!(
+            s,
+            "-sub_charenc CP1254 -i a.ass -map 0:s:0 -c:s srt -f srt o"
+        );
+        let c = line(&crop_aspect_args(
+            Path::new("a.mp4"),
+            "mp4",
+            Path::new("o"),
+            9,
+            16,
+        ));
+        assert!(
+            c.contains("crop=w='trunc(min(iw,ih*9/16)/2)*2':h='trunc(min(ih,iw*16/9)/2)*2'"),
+            "{c}"
+        );
+        assert!(c.contains("-c:a copy") && c.contains("libx264"));
     }
 
     #[test]

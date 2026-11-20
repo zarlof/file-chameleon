@@ -201,6 +201,8 @@ pub fn submit(state: &AppState, mut req: JobRequest) -> CmdResult<Vec<JobId>> {
     if req.inputs.is_empty() {
         return Err(CmdError::new("unsupported", "no inputs"));
     }
+    // Annotate and folderless copy/move are resolved before submitting (code "invalid").
+    req.op.queueable()?;
     let s = state.settings();
     if req.options.output_dir.is_none() {
         req.options.output_dir = s.output_dir.clone();
@@ -230,7 +232,7 @@ pub fn submit(state: &AppState, mut req: JobRequest) -> CmdResult<Vec<JobId>> {
 
 /// Clipboard images live in the app's hidden store under meaningless names. With no output
 /// folder chosen, their results go to `dir` (the Downloads folder) named `name` (numbered when
-/// taken); other inputs keep their usual place. A PDF merge follows its first input.
+/// taken); other inputs keep their usual place. A PDF merge or a ZIP follows its first input.
 fn split_clipboard_inputs(
     req: JobRequest,
     is_clip: impl Fn(&Path) -> bool,
@@ -242,7 +244,7 @@ fn split_clipboard_inputs(
         output_name: Some(name.to_string()),
         ..req.options.clone()
     };
-    if req.op == Operation::MergePdf {
+    if matches!(req.op, Operation::MergePdf | Operation::Zip) {
         let first_is_clip = req.inputs.first().is_some_and(|p| is_clip(p));
         return vec![if first_is_clip {
             JobRequest {
@@ -598,5 +600,17 @@ mod tests {
             "Clipboard",
         );
         assert_eq!(merged[0].options.output_dir, None);
+        // So is a ZIP.
+        let zipped = split_clipboard_inputs(
+            req(
+                &["C:/x/a.png", "C:/data/clipboard/img/3.png"],
+                Operation::Zip,
+            ),
+            is_clip,
+            dl,
+            "Clipboard",
+        );
+        assert_eq!(zipped.len(), 1);
+        assert_eq!(zipped[0].inputs.len(), 2);
     }
 }
