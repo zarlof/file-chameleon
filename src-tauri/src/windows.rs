@@ -113,7 +113,7 @@ pub fn take_pending_nav() -> Option<NavPayload> {
     ctl().pending_nav.take()
 }
 
-fn main_is_active(app: &AppHandle) -> bool {
+pub(crate) fn main_is_active(app: &AppHandle) -> bool {
     app.get_webview_window(MAIN)
         .map(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false))
         .unwrap_or(false)

@@ -1,0 +1,11 @@
+{
+  "_type": "playlist",
+  "id": "C9z8Y7x6W5v",
+  "title": "Post by someone",
+  "extractor_key": "InstagramPost",
+  "uploader": "someone",
+  "entries": [
+    { "id": "1", "title": "Image 1", "ext": "jpg", "url": "https://scontent.cdninstagram.com/v/1.jpg", "thumbnail": "https://scontent.cdninstagram.com/v/1.jpg", "width": 1080, "height": 1350, "vcodec": "none", "acodec": "none" },
+    { "id": "2", "title": "Image 2", "ext": "jpg", "url": "https://scontent.cdninstagram.com/v/2.jpg", "thumbnail": "https://scontent.cdninstagram.com/v/2.jpg", "width": 1080, "height": 1350, "vcodec": "none", "acodec": "none" }
+  ]
+}
