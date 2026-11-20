@@ -13,8 +13,10 @@
 
 pub mod data;
 pub mod ffmpeg;
+pub mod files;
 pub mod image;
 pub mod pdf;
+pub mod subtitle;
 pub mod svg;
 
 use crate::jobs::{ConvertOptions, Operation};
@@ -54,7 +56,18 @@ pub trait Executor: Send + Sync {
 /// - `Compress` -> by input kind: image -> `image::compress`, video/audio -> `ffmpeg`
 ///   `compress`, pdf -> `pdf::compress`; suffix " (compressed)".
 /// - `Trim`/`Mute`/`Speed` -> ffmpeg; suffixes " (trimmed)", " (muted)", " (speed)".
-/// - `Crop` -> image or ffmpeg by kind; suffix " (cropped)".
+/// - `Crop` / `CropAspect` -> image or ffmpeg by kind; suffix " (cropped)".
+/// - `Edit` -> `image::edit` (raster input), output format `to` or the input's;
+///   suffix " (edited)".
+/// - `Zip` -> `files::zip`, all inputs (files and folders) into `<first stem>.zip` (one output;
+///   a folder's whole name is its stem).
+/// - `Extract` -> `files::extract` into a unique folder named after the archive; the output
+///   is that folder.
+/// - `CopyTo` -> copy (temp + commit, " (1)" on collisions; folders recursively into a new
+///   folder) or `files::move_into`; moved items are never removed on a later failure.
+///   Without a folder -> `Error::Invalid`.
+/// - Only `Zip` and `CopyTo` accept folders as inputs; everything else wants files.
+/// - `Annotate` -> `Error::Invalid` (the shell opens the editor instead).
 /// - Any panic inside an engine is caught (`catch_unwind`) and reported as `Error::Failed`.
 /// - On error or cancel, temp/partial files are removed.
 pub struct DefaultExecutor {
@@ -98,8 +111,12 @@ pub fn ext_of(path: &Path) -> Option<String> {
 
 /// Executor internals: routing, temp files, cleanup.
 mod run {
-    use super::{ConvertOptions, Operation, ToolLocator, data, ffmpeg::Ffmpeg, image, pdf, svg};
+    use super::{
+        ConvertOptions, Operation, ToolLocator, data, ffmpeg::Ffmpeg, files, image, pdf, subtitle,
+        svg,
+    };
     use crate::formats::{self, Kind, planner, registry::EngineId};
+    use crate::jobs::ImageOp;
     use crate::jobs::naming;
     use crate::{CancelToken, Error, Result};
     use std::fs::{self, OpenOptions};
@@ -294,18 +311,39 @@ mod run {
             if inputs.is_empty() {
                 return Err(Error::Failed("no input files".to_string()));
             }
+            // ZIP and copy/move also take folders (dragged from Explorer).
+            let folders_ok = matches!(op, Operation::Zip | Operation::CopyTo { .. });
             for p in inputs {
-                if !p.is_file() {
+                if !(p.is_file() || (folders_ok && p.is_dir())) {
                     return Err(Error::NotFound(p.clone()));
                 }
             }
-            if let Operation::MergePdf = op {
+            // Same rule as the queue: these are resolved by the shell first.
+            op.queueable()?;
+            // Parameters of the v2 operations come straight from presets and IPC.
+            if let Operation::Edit { .. } | Operation::CropAspect { .. } = op {
+                op.validate()?;
+            }
+            if let Operation::MergePdf | Operation::Zip = op {
                 let out_dir = self.options.output_dir.as_deref();
-                let base = self.naming_input(&inputs[0]);
-                let out = naming::output_path(&base, "pdf", out_dir, Some(" (merged)"));
+                let first = &inputs[0];
+                let base = if first.is_dir() && self.options.output_name.is_none() {
+                    // A folder's whole name is the stem: "my.album" -> "my.album.zip"
+                    // (naming takes the stem of "my.album.folder").
+                    let mut name = first.file_name().unwrap_or_default().to_os_string();
+                    name.push(".folder");
+                    first.with_file_name(name)
+                } else {
+                    self.naming_input(first)
+                };
                 let cancel = self.cancel;
-                let done =
-                    self.produce(g, &out, |tmp| pdf::merge(inputs, tmp, cancel, progress))?;
+                let done = if let Operation::Zip = op {
+                    let out = naming::output_path(&base, "zip", out_dir, None);
+                    self.produce(g, &out, |tmp| files::zip(inputs, tmp, cancel, progress))?
+                } else {
+                    let out = naming::output_path(&base, "pdf", out_dir, Some(" (merged)"));
+                    self.produce(g, &out, |tmp| pdf::merge(inputs, tmp, cancel, progress))?
+                };
                 return Ok(vec![done]);
             }
             let n = inputs.len() as f32;
@@ -315,6 +353,14 @@ mod run {
                 let mut outs = match op {
                     Operation::Convert { to } => self.convert_one(input, to, &sub, g)?,
                     Operation::SplitPdf => self.split_one(input, &sub, g)?,
+                    Operation::Extract => vec![self.extract_one(input, &sub, g)?],
+                    Operation::Edit { ops, to } => {
+                        vec![self.edit_one(input, ops, to.as_deref(), g)?]
+                    }
+                    Operation::CopyTo {
+                        dir: Some(dir),
+                        move_files,
+                    } => vec![self.copy_one(input, dir, *move_files, g)?],
                     other => vec![self.tool_one(input, other, &sub, g)?],
                 };
                 all.append(&mut outs);
@@ -461,6 +507,7 @@ mod run {
                             EngineId::Pdfium => {
                                 Err(Error::Failed("unexpected pdfium step".to_string()))
                             }
+                            EngineId::Subtitle => subtitle::convert(src, step.from, step.to, tmp),
                         }
                     };
                     if last {
@@ -496,7 +543,76 @@ mod run {
             Ok(files)
         }
 
-        /// Compress / Trim / Mute / Speed / Crop on one input.
+        fn extract_one(
+            &self,
+            input: &Path,
+            progress: &dyn Fn(f32),
+            g: &mut Guard,
+        ) -> Result<PathBuf> {
+            if formats::detect_path(input).map(|f| f.kind) != Some(Kind::Archive) {
+                return Err(Error::Unsupported(
+                    "extract needs a ZIP archive".to_string(),
+                ));
+            }
+            self.check_cancel()?;
+            let out_dir = self.options.output_dir.as_deref();
+            let base = self.naming_input(input);
+            let dir = naming::unique_dir(&naming::dir_for(&base, out_dir), &stem_of(&base))?;
+            g.dirs.push(dir.clone());
+            guarded(|| files::extract(input, &dir, self.cancel, progress))?;
+            self.check_cancel()?;
+            Ok(dir)
+        }
+
+        fn edit_one(
+            &self,
+            input: &Path,
+            ops: &[ImageOp],
+            to: Option<&str>,
+            g: &mut Guard,
+        ) -> Result<PathBuf> {
+            let fmt = formats::detect_path(input)
+                .filter(|f| f.kind == Kind::Image)
+                .ok_or_else(|| Error::Unsupported("edits need a raster image".to_string()))?;
+            let to = to.unwrap_or(fmt.id);
+            let ext = formats::output_ext(to).unwrap_or(to);
+            let out_dir = self.options.output_dir.as_deref();
+            let out =
+                naming::output_path(&self.naming_input(input), ext, out_dir, Some(" (edited)"));
+            let (options, cancel) = (self.options, self.cancel);
+            self.produce(g, &out, |tmp| {
+                image::edit(input, ops, to, tmp, options, cancel)
+            })
+        }
+
+        fn copy_one(
+            &self,
+            input: &Path,
+            dir: &Path,
+            move_files: bool,
+            g: &mut Guard,
+        ) -> Result<PathBuf> {
+            if move_files {
+                // Not registered as an output: a moved file is the user's, never cleaned up.
+                return guarded(|| files::move_into(input, dir, self.cancel));
+            }
+            if input.is_dir() {
+                let copy = guarded(|| files::copy_dir_into(input, dir, self.cancel))?;
+                g.dirs.push(copy.clone());
+                return Ok(copy);
+            }
+            self.check_cancel()?;
+            fs::create_dir_all(dir)?;
+            let base = self.naming_input(input);
+            let ext = base
+                .extension()
+                .map(|e| e.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let out = naming::output_path(&base, &ext, Some(dir), None);
+            self.produce(g, &out, |tmp| files::copy_file(input, tmp))
+        }
+
+        /// Compress / Trim / Mute / Speed / Crop / CropAspect on one input.
         fn tool_one(
             &self,
             input: &Path,
@@ -517,7 +633,7 @@ mod run {
                 Operation::Trim { .. } => (" (trimmed)", media),
                 Operation::Mute => (" (muted)", fmt.kind == Kind::Video),
                 Operation::Speed { .. } => (" (speed)", media),
-                Operation::Crop { .. } => {
+                Operation::Crop { .. } | Operation::CropAspect { .. } => {
                     (" (cropped)", matches!(fmt.kind, Kind::Image | Kind::Video))
                 }
                 _ => return Err(unsupported()),
@@ -564,6 +680,12 @@ mod run {
                     },
                     _,
                 ) => ff()?.crop(input, tmp, *x, *y, *width, *height, cancel, progress),
+                (Operation::CropAspect { w, h }, Kind::Image) => {
+                    image::crop_aspect(input, tmp, *w, *h, self.options)
+                }
+                (Operation::CropAspect { w, h }, _) => {
+                    ff()?.crop_aspect(input, tmp, *w, *h, cancel, progress)
+                }
                 _ => Err(Error::Unsupported("operation".to_string())),
             })
         }

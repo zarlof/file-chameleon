@@ -241,6 +241,42 @@ fn merge_is_one_job_other_ops_are_per_input() {
     assert!(q.submit(convert(&[], "png")).is_empty());
 }
 
+#[test]
+fn zip_is_one_job_and_shell_only_ops_are_never_queued() {
+    let rec = Arc::new(Recorder(Mutex::default()));
+    let (q, log) = recording_queue(rec);
+    let req = |op: Operation| JobRequest {
+        inputs: vec!["a.png".into(), "b.txt".into()],
+        op,
+        options: ConvertOptions::default(),
+    };
+    assert_eq!(q.submit(req(Operation::Zip)).len(), 1);
+    let dir = Some(PathBuf::from("out"));
+    let copies = q.submit(req(Operation::CopyTo {
+        dir,
+        move_files: false,
+    }));
+    assert_eq!(copies.len(), 2);
+    for op in [
+        Operation::Annotate,
+        Operation::CopyTo {
+            dir: None,
+            move_files: true,
+        },
+    ] {
+        assert!(matches!(op.queueable(), Err(Error::Invalid(_))));
+        assert!(q.submit(req(op)).is_empty());
+    }
+    wait_until("all done", || {
+        q.snapshot().iter().all(|s| s.state.is_finished())
+    });
+    assert_eq!(q.snapshot().len(), 3);
+    assert!(log.lock().unwrap().iter().all(|s| !matches!(
+        s.op,
+        Operation::Annotate | Operation::CopyTo { dir: None, .. }
+    )));
+}
+
 /// Loops until cancelled.
 struct Spinner;
 impl Executor for Spinner {

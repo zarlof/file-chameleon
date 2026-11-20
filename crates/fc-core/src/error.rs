@@ -21,6 +21,10 @@ pub enum Error {
     Checksum(String),
     #[error("tool failed: {0}")]
     ToolFailed(String),
+    /// A request or configuration that breaks a rule (limits, unknown references, an operation
+    /// the queue cannot run).
+    #[error("invalid: {0}")]
+    Invalid(String),
     #[error("{0}")]
     Failed(String),
     #[error(transparent)]
@@ -39,6 +43,7 @@ impl Error {
             Error::Network(_) => "network",
             Error::Checksum(_) => "checksum",
             Error::ToolFailed(_) => "toolFailed",
+            Error::Invalid(_) => "invalid",
             Error::Failed(_) => "failed",
             Error::Io(_) => "io",
         }

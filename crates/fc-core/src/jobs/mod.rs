@@ -3,6 +3,7 @@
 pub mod naming;
 pub mod queue;
 
+use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -46,6 +47,146 @@ pub enum Operation {
         width: u32,
         height: u32,
     },
+    /// Raster image edits applied in order, then `options` max size. `to` = output format id,
+    /// `None` = keep the input format. One job per input.
+    Edit {
+        ops: Vec<ImageOp>,
+        to: Option<String>,
+    },
+    /// Centre crop to the aspect ratio `w:h` (images in-process, video with ffmpeg).
+    CropAspect { w: u32, h: u32 },
+    /// Copy (or move) each input into `dir`. `None` = the shell asks for a folder first; such a
+    /// request is never queued.
+    CopyTo {
+        dir: Option<PathBuf>,
+        move_files: bool,
+    },
+    /// All inputs -> one `.zip` next to the first input. One job total.
+    Zip,
+    /// `.zip` -> a new folder named after the archive.
+    Extract,
+    /// Opens the image editor in the shell. Never queued.
+    Annotate,
+}
+
+/// One image edit step (`Operation::Edit`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum ImageOp {
+    Grayscale,
+    RotateLeft,
+    RotateRight,
+    Rotate180,
+    FlipH,
+    FlipV,
+    /// Crop away fully transparent borders (no-op when there are none).
+    Trim,
+    /// Square blocks of `block` px, 2..=256.
+    Pixelate {
+        block: u32,
+    },
+    /// Gaussian blur, sigma 0.5..=50.
+    Blur {
+        sigma: f32,
+    },
+    /// Resize to `percent` of the size, 1..=400.
+    Scale {
+        percent: u32,
+    },
+}
+
+fn invalid(msg: impl Into<String>) -> Error {
+    Error::Invalid(msg.into())
+}
+
+impl ImageOp {
+    /// Parameter ranges.
+    pub fn validate(&self) -> Result<()> {
+        match *self {
+            ImageOp::Pixelate { block } if !(2..=256).contains(&block) => {
+                Err(invalid(format!("pixelate block {block} (2..=256)")))
+            }
+            ImageOp::Blur { sigma } if !(0.5..=50.0).contains(&sigma) => {
+                Err(invalid(format!("blur sigma {sigma} (0.5..=50)")))
+            }
+            ImageOp::Scale { percent } if !(1..=400).contains(&percent) => {
+                Err(invalid(format!("scale {percent}% (1..=400)")))
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
+/// Raster formats `Operation::Edit` can write.
+fn is_raster(id: &str) -> bool {
+    crate::formats::by_id(id).is_some_and(|f| f.kind == crate::formats::Kind::Image)
+}
+
+impl Operation {
+    /// Whether the queue can run this operation. `Annotate` (opens the editor) and `CopyTo`
+    /// without a folder (needs a folder picker) are resolved by the shell first and are
+    /// never queued.
+    pub fn queueable(&self) -> Result<()> {
+        match self {
+            Operation::Annotate => Err(invalid("annotate opens the image editor")),
+            Operation::CopyTo { dir: None, .. } => Err(invalid("no target folder chosen")),
+            _ => Ok(()),
+        }
+    }
+
+    /// Parameter ranges and known format ids (used for user presets before they are saved).
+    pub fn validate(&self) -> Result<()> {
+        match self {
+            Operation::Convert { to } if crate::formats::by_id(to).is_none() => {
+                Err(invalid(format!("unknown format {to}")))
+            }
+            Operation::Edit { ops, to } => {
+                if let Some(to) = to
+                    && !is_raster(to)
+                {
+                    return Err(invalid(format!("edit output must be an image, not {to}")));
+                }
+                ops.iter().try_for_each(ImageOp::validate)
+            }
+            Operation::CropAspect { w, h }
+                if !(1..=1000).contains(w) || !(1..=1000).contains(h) =>
+            {
+                Err(invalid(format!("aspect {w}:{h}")))
+            }
+            Operation::Speed { factor } if !(0.25..=4.0).contains(factor) => {
+                Err(invalid(format!("speed {factor} (0.25..=4)")))
+            }
+            Operation::Trim { start_ms, end_ms } if end_ms <= start_ms => {
+                Err(invalid("empty trim range"))
+            }
+            Operation::Crop { width, height, .. } if *width == 0 || *height == 0 => {
+                Err(invalid("empty crop rectangle"))
+            }
+            Operation::CopyTo { dir: Some(d), .. } if d.as_os_str().is_empty() => {
+                Err(invalid("empty folder"))
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
+impl ConvertOptions {
+    /// quality 1..=100, max sizes at least 1 px.
+    pub fn validate(&self) -> Result<()> {
+        if let Some(q) = self.quality
+            && !(1..=100).contains(&q)
+        {
+            return Err(invalid(format!("quality {q} (1..=100)")));
+        }
+        if self.max_width == Some(0) || self.max_height == Some(0) {
+            return Err(invalid("max size 0"));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

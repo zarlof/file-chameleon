@@ -128,7 +128,7 @@ fn fix_reserved(name: &str) -> String {
 }
 
 /// Windows reserves these names regardless of extension (the part before the first dot).
-fn is_reserved(stem: &str) -> bool {
+pub(crate) fn is_reserved(stem: &str) -> bool {
     let base = stem.split('.').next().unwrap_or(stem).trim_end();
     let up = base.to_ascii_uppercase();
     matches!(up.as_str(), "CON" | "PRN" | "AUX" | "NUL")

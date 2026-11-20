@@ -45,7 +45,8 @@ fn pool_for(inputs: &[PathBuf], op: &Operation) -> Pool {
             | Operation::Trim { .. }
             | Operation::Mute
             | Operation::Speed { .. }
-            | Operation::Crop { .. },
+            | Operation::Crop { .. }
+            | Operation::CropAspect { .. },
             Some((_, Kind::Video | Kind::Audio)),
         ) => Pool::Single,
         _ => Pool::Cpu,
@@ -113,13 +114,16 @@ impl JobQueue {
         }
     }
 
-    /// Split a request into jobs: `Convert`/`Compress`/`Trim`/`Mute`/`Speed`/`Crop`/`SplitPdf`
-    /// -> one job per input; `MergePdf` -> one job with all inputs. Returns ids in input order.
+    /// Split a request into jobs: `MergePdf` and `Zip` -> one job with all inputs; every other
+    /// operation -> one job per input. Returns ids in input order.
+    ///
+    /// Operations that [`Operation::queueable`] rejects (`Annotate`, `CopyTo` without a folder)
+    /// are never queued: the result is empty. Callers report the reason from `queueable`.
     pub fn submit(&self, req: JobRequest) -> Vec<JobId> {
-        if req.inputs.is_empty() {
+        if req.inputs.is_empty() || req.op.queueable().is_err() {
             return Vec::new();
         }
-        let groups: Vec<Vec<PathBuf>> = if req.op == Operation::MergePdf {
+        let groups: Vec<Vec<PathBuf>> = if matches!(req.op, Operation::MergePdf | Operation::Zip) {
             vec![req.inputs.clone()]
         } else {
             req.inputs.iter().map(|p| vec![p.clone()]).collect()

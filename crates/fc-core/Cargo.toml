@@ -9,6 +9,7 @@ license.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+base64 = "0.22"
 
 # Engines (minimal feature sets to keep the binary small)
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "tiff", "ico", "webp"] }

@@ -85,11 +85,13 @@ fn kind_rank(k: Kind) -> u8 {
         Kind::Audio => 3,
         Kind::Pdf => 4,
         Kind::Data => 5,
+        Kind::Subtitle => 6,
+        Kind::Archive => 7,
     }
 }
 
 /// Targets valid for *every* input format, in a stable UI order:
-/// grouped by `Kind` in the order Image, Vector, Video, Audio, Pdf, Data,
+/// grouped by `Kind` in the order Image, Vector, Video, Audio, Pdf, Data, Subtitle, Archive,
 /// then by the order of `FORMATS`.
 /// A target is valid when each input either already is that format or has a route to it,
 /// and at least one input differs from it. Empty or unknown inputs -> empty list.
