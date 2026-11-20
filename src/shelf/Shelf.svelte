@@ -20,6 +20,12 @@
   let pinnedOnly = $state(false);
   let cursor = $state<Pos>({ row: 0, col: 0 });
   let selected = $state<number[]>([]);
+  /** Fixed end of a Shift range; moves on plain navigation and plain / Ctrl clicks. */
+  let anchor: number | null = null;
+  /** false until the first list after (re)open is in: nothing stale is ever shown. */
+  let ready = $state(false);
+  /** Set by a refresh that wants the cursor on the first card; survives a superseding refresh. */
+  let resetPending = false;
   let preview = $state<ClipItem | null>(null);
   let toast = $state<{ text: string; undo: boolean } | null>(null);
   let openCount = $state(0);
@@ -65,7 +71,15 @@
     return firstSelectable(g) ?? { row: 0, col: 0 };
   }
 
+  function markReady() {
+    if (!ready) {
+      ready = true;
+      openCount++;
+    }
+  }
+
   async function refresh(resetCursor = false) {
+    if (resetCursor) resetPending = true;
     const my = ++seq;
     const wanted = rows;
     const text = query.trim() || null;
@@ -74,10 +88,13 @@
       lists = await Promise.all(wanted.map((shelf) => api.clipList({ shelf, text, pinned: pinnedOnly || undefined, limit: LIMIT })));
     } catch (e) {
       console.error(e);
+      if (my === seq) markReady();
       return;
     }
     if (my !== seq) return;
-    const keepId = resetCursor ? null : cursorId;
+    const reset = resetPending;
+    resetPending = false;
+    const keepId = reset ? null : cursorId;
     const next = { images: [], texts: [], links: [] } as Record<ClipShelf, ClipItem[]>;
     wanted.forEach((shelf, i) => (next[shelf] = lists[i]));
     data = next;
@@ -87,9 +104,11 @@
       const row = g.findIndex((ids) => ids.includes(keepId));
       if (row >= 0) pos = { row, col: g[row].indexOf(keepId) };
     }
-    cursor = pos ?? (resetCursor ? (firstSelectable(g) ?? { row: 0, col: 0 }) : clampPos(g, cursor));
+    cursor = pos ?? (reset ? (firstSelectable(g) ?? { row: 0, col: 0 }) : clampPos(g, cursor));
     const live = new Set(g.flat());
     selected = selected.filter((id) => live.has(id));
+    if (reset || (anchor !== null && !live.has(anchor))) anchor = cursorId;
+    markReady();
   }
 
   function scheduleSearch() {
@@ -98,12 +117,15 @@
   }
 
   async function reopen() {
+    clearTimeout(searchTimer);
+    ready = false;
     query = '';
+    pinnedOnly = false;
     preview = null;
     selected = [];
+    anchor = null;
     toast = null;
-    openCount++;
-    searchEl?.blur();
+    data = { images: [], texts: [], links: [] };
     window.focus();
     await refresh(true);
     await tick();
@@ -186,10 +208,11 @@
   }
 
   async function undo() {
-    const ids = undoStack.pop();
+    const ids = undoStack[undoStack.length - 1];
     if (!ids) return;
     try {
       await api.clipRestore(ids);
+      undoStack.pop();
       showToast(t('restored'));
       await refresh();
     } catch (e) {
@@ -212,7 +235,8 @@
       void copyAndClose([item.id]);
       return;
     }
-    selected = toggleSelect(selected, item.id, mods, grid[row]);
+    selected = toggleSelect(selected, item.id, mods, grid[row], anchor);
+    if (!mods.shift) anchor = item.id;
   }
 
   function focusSearch(initial = '') {
@@ -225,9 +249,11 @@
 
   function onkeydown(e: KeyboardEvent) {
     const inInput = document.activeElement === searchEl;
-    const editing = inInput && query.length > 0;
-    const ctrl = e.ctrlKey || e.metaKey;
-    const plain = !ctrl && !e.altKey;
+    // AltGr (reported as Ctrl+Alt on Windows) only produces characters: treat as plain typing.
+    const altGr = e.getModifierState('AltGraph');
+    const ctrl = !altGr && (e.ctrlKey || e.metaKey);
+    const alt = !altGr && e.altKey;
+    const plain = !ctrl && !alt;
 
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -247,47 +273,50 @@
     }
     if (e.key === 'Enter') {
       e.preventDefault();
+      if (e.repeat || e.isComposing) return;
       if (ctrl) void pasteInto(targets());
       else void copyAndClose(targets());
       return;
     }
-    if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || (!editing && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End'))) {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || (!inInput && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End'))) {
       e.preventDefault();
       if (inInput && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) searchEl?.blur();
       const next = moveSelection(grid, cursor, e.key as NavKey);
       const nextId = grid[next.row]?.[next.col];
       if (e.shiftKey && next.row === cursor.row && nextId !== undefined) {
-        const base = selected.length > 0 ? selected : cursorId !== null ? [cursorId] : [];
-        selected = toggleSelect(base, nextId, { shift: true }, grid[next.row]);
+        anchor ??= cursorId;
+        selected = toggleSelect([], nextId, { shift: true }, grid[next.row], anchor);
       } else {
         selected = [];
+        anchor = nextId ?? null;
       }
       cursor = next;
       return;
     }
-    if (ctrl && !e.altKey && e.key.toLowerCase() === 'c') {
+    if (ctrl && !alt && e.key.toLowerCase() === 'c') {
       if (inInput && searchEl && searchEl.selectionStart !== searchEl.selectionEnd) return;
       e.preventDefault();
       void copyStay();
       return;
     }
-    if (ctrl && !e.altKey && e.key.toLowerCase() === 'z' && !editing) {
+    if (ctrl && !alt && e.key.toLowerCase() === 'z' && !inInput) {
       e.preventDefault();
       void undo();
       return;
     }
-    if (editing) return;
+    if (inInput) return;
     if (plain && e.key === 'Delete') {
       e.preventDefault();
-      void trash();
+      if (!e.repeat) void trash();
       return;
     }
     if (plain && !e.shiftKey && /^[1-9]$/.test(e.key)) {
       e.preventDefault();
       const id = numberPick(grid[cursor.row] ?? [], Number(e.key));
-      if (id !== null) {
+      if (id !== null && !e.repeat) {
         cursor = { row: cursor.row, col: grid[cursor.row].indexOf(id) };
         selected = [];
+        void copyAndClose([id]);
       }
       return;
     }
@@ -298,12 +327,12 @@
     }
     if (plain && (e.key === 'p' || e.key === 'P')) {
       e.preventDefault();
-      void togglePin();
+      if (!e.repeat) void togglePin();
       return;
     }
     if (plain && (e.key === 'f' || e.key === 'F')) {
       e.preventDefault();
-      setPin(!pinnedOnly);
+      if (!e.repeat) setPin(!pinnedOnly);
       return;
     }
     if (plain && e.key === '/') {
@@ -353,6 +382,7 @@
 
 <svelte:window {onkeydown} onblur={() => void hide()} />
 
+{#if ready}
 {#key openCount}
   <div class="panel" style:--card-w="{size.w}px" style:--card-h="{size.h}px">
     <header>
@@ -401,6 +431,7 @@
     {#if preview}<Preview item={preview} onclose={() => (preview = null)} />{/if}
   </div>
 {/key}
+{/if}
 
 <style>
   .panel {

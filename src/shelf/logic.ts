@@ -48,14 +48,21 @@ export function numberPick(row: number[], n: number): number | null {
   return row[n - 1] ?? null;
 }
 
-/** Selection after a click. Shift = range from the last selected id, Ctrl = toggle, plain = just it.
- *  `order` is the display order of the ids the range runs over (usually one row). */
-export function toggleSelect(sel: number[], id: number, mods: { shift?: boolean; ctrl?: boolean }, order: number[]): number[] {
-  if (mods.shift && sel.length > 0) {
-    const anchor = order.indexOf(sel[sel.length - 1]);
+/** Selection after a click or Shift+arrow. Shift = range between `anchor` (default: the last selected id)
+ *  and `id`, ascending in `order`; Ctrl = toggle; plain = just it. `order` is the display order of the
+ *  ids the range runs over (usually one row). Keep `anchor` fixed while extending a range. */
+export function toggleSelect(
+  sel: number[],
+  id: number,
+  mods: { shift?: boolean; ctrl?: boolean },
+  order: number[],
+  anchor?: number | null,
+): number[] {
+  if (mods.shift) {
+    const from = order.indexOf(anchor ?? sel[sel.length - 1] ?? NaN);
     const to = order.indexOf(id);
-    if (anchor >= 0 && to >= 0) {
-      const [a, b] = anchor <= to ? [anchor, to] : [to, anchor];
+    if (from >= 0 && to >= 0) {
+      const [a, b] = from <= to ? [from, to] : [to, from];
       return order.slice(a, b + 1);
     }
   }
