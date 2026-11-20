@@ -59,11 +59,14 @@ pub trait Executor: Send + Sync {
 /// - `Crop` / `CropAspect` -> image or ffmpeg by kind; suffix " (cropped)".
 /// - `Edit` -> `image::edit` (raster input), output format `to` or the input's;
 ///   suffix " (edited)".
-/// - `Zip` -> `files::zip`, all inputs into `<first stem>.zip` (one output).
+/// - `Zip` -> `files::zip`, all inputs (files and folders) into `<first stem>.zip` (one output;
+///   a folder's whole name is its stem).
 /// - `Extract` -> `files::extract` into a unique folder named after the archive; the output
 ///   is that folder.
-/// - `CopyTo` -> copy (temp + commit, " (1)" on collisions) or `files::move_into`; moved
-///   files are never removed on a later failure. Without a folder -> `Error::Invalid`.
+/// - `CopyTo` -> copy (temp + commit, " (1)" on collisions; folders recursively into a new
+///   folder) or `files::move_into`; moved items are never removed on a later failure.
+///   Without a folder -> `Error::Invalid`.
+/// - Only `Zip` and `CopyTo` accept folders as inputs; everything else wants files.
 /// - `Annotate` -> `Error::Invalid` (the shell opens the editor instead).
 /// - Any panic inside an engine is caught (`catch_unwind`) and reported as `Error::Failed`.
 /// - On error or cancel, temp/partial files are removed.
@@ -308,8 +311,10 @@ mod run {
             if inputs.is_empty() {
                 return Err(Error::Failed("no input files".to_string()));
             }
+            // ZIP and copy/move also take folders (dragged from Explorer).
+            let folders_ok = matches!(op, Operation::Zip | Operation::CopyTo { .. });
             for p in inputs {
-                if !p.is_file() {
+                if !(p.is_file() || (folders_ok && p.is_dir())) {
                     return Err(Error::NotFound(p.clone()));
                 }
             }
@@ -321,7 +326,16 @@ mod run {
             }
             if let Operation::MergePdf | Operation::Zip = op {
                 let out_dir = self.options.output_dir.as_deref();
-                let base = self.naming_input(&inputs[0]);
+                let first = &inputs[0];
+                let base = if first.is_dir() && self.options.output_name.is_none() {
+                    // A folder's whole name is the stem: "my.album" -> "my.album.zip"
+                    // (naming takes the stem of "my.album.folder").
+                    let mut name = first.file_name().unwrap_or_default().to_os_string();
+                    name.push(".folder");
+                    first.with_file_name(name)
+                } else {
+                    self.naming_input(first)
+                };
                 let cancel = self.cancel;
                 let done = if let Operation::Zip = op {
                     let out = naming::output_path(&base, "zip", out_dir, None);
@@ -581,6 +595,11 @@ mod run {
             if move_files {
                 // Not registered as an output: a moved file is the user's, never cleaned up.
                 return guarded(|| files::move_into(input, dir, self.cancel));
+            }
+            if input.is_dir() {
+                let copy = guarded(|| files::copy_dir_into(input, dir, self.cancel))?;
+                g.dirs.push(copy.clone());
+                return Ok(copy);
             }
             self.check_cancel()?;
             fs::create_dir_all(dir)?;

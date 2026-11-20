@@ -63,7 +63,7 @@ fn page(title: &str, body: &str) -> String {
     )
 }
 
-pub(crate) fn read_text(path: &Path) -> Result<String> {
+fn read_text(path: &Path) -> Result<String> {
     let meta = std::fs::metadata(path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             Error::NotFound(path.to_path_buf())

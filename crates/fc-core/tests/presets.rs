@@ -641,10 +641,94 @@ fn applicable_ids_for_extensions() {
         cfg.applicable_ids(&["docx".to_string()])
             .contains(&"zip".to_string())
     );
-    assert!(cfg.applicable_ids(&[]).is_empty());
+    // No extensions (the "other" and mixed profiles) = an unknown file: the file operations.
+    assert_eq!(cfg.applicable_ids(&[]), ["zip", "copy-to", "move-to"]);
+    assert_eq!(
+        cfg.applicable_ids(&[" ".to_string()]),
+        ["zip", "copy-to", "move-to"]
+    );
 
     let extract = cfg.preset("extract").unwrap();
     assert!(applicable(extract, &paths(&["a.ZIP"])));
     assert!(!applicable(extract, &paths(&["a.png"])));
     assert!(!applicable(cfg.preset("zip").unwrap(), &[]));
+}
+
+#[test]
+fn every_known_extension_gets_a_front_face() {
+    let cfg = WheelConfig::builtin();
+    let mut exts: Vec<String> = fc_core::formats::FORMATS
+        .iter()
+        .flat_map(|f| f.extensions.iter().map(|e| e.to_string()))
+        .collect();
+    exts.push("docx".into());
+    for ext in exts {
+        for name in [format!("a.{ext}"), format!("A.{}", ext.to_uppercase())] {
+            let sel = paths(&[&name]);
+            let prof = cfg.profile_for(&sel);
+            assert!(
+                !cfg.slots(prof, Face::Front, &sel).is_empty(),
+                "{name}: empty front in profile {}",
+                prof.id
+            );
+        }
+    }
+    let html = cfg.slots(profile(&cfg, "text"), Face::Front, &paths(&["page.html"]));
+    assert_eq!(ids(&html), ["zip", "copy-to", "move-to"]);
+}
+
+#[test]
+fn folders_only_get_file_operations() {
+    let cfg = WheelConfig::builtin();
+    let d = tempfile::tempdir().unwrap();
+    // Named like an image on purpose: a folder is never converted.
+    let folder = d.path().join("pics.png");
+    std::fs::create_dir_all(&folder).unwrap();
+    let sel = vec![folder.clone()];
+    let prof = cfg.profile_for(&sel);
+    assert_eq!(prof.id, "other");
+    assert_eq!(
+        ids(&cfg.slots(prof, Face::Front, &sel)),
+        ["zip", "copy-to", "move-to"]
+    );
+    for p in &cfg.presets {
+        let file_op = matches!(p.op, Operation::Zip | Operation::CopyTo { .. });
+        assert_eq!(applicable(p, &sel), file_op, "{}", p.id);
+    }
+    // A folder and an image: mixed, file operations only.
+    let image = d.path().join("a.png");
+    std::fs::write(&image, b"x").unwrap();
+    let both = vec![folder, image];
+    let prof = cfg.profile_for(&both);
+    assert_eq!(prof.id, "mixed");
+    assert_eq!(
+        ids(&cfg.slots(prof, Face::Front, &both)),
+        ["zip", "copy-to", "move-to"]
+    );
+}
+
+#[test]
+fn builtin_presets_are_read_only() {
+    let read_only = |cfg: WheelConfig| match cfg.validate() {
+        Err(Error::Invalid(msg)) => msg.contains("read-only"),
+        _ => false,
+    };
+    let edit = |id: &str, f: &dyn Fn(&mut Preset)| {
+        let mut cfg = WheelConfig::builtin();
+        f(cfg.presets.iter_mut().find(|p| p.id == id).unwrap());
+        cfg
+    };
+    assert!(read_only(
+        edit("to-jpg-70", &|p| p.options.quality = Some(80))
+    ));
+    assert!(read_only(edit("grayscale", &|p| p.name = "Gray".into())));
+    assert!(read_only(edit("zip", &|p| p.op = Operation::Extract)));
+    // A user preset with a built-in id is no way around it.
+    assert!(read_only(edit("to-png", &|p| {
+        p.builtin = false;
+        p.op = Operation::Convert { to: "webp".into() };
+    })));
+    // Unchanged built-ins (even with a wrong flag) are fine; the flag is normalized.
+    let cfg = edit("to-png", &|p| p.builtin = false).validate().unwrap();
+    assert!(cfg.preset("to-png").unwrap().builtin);
 }

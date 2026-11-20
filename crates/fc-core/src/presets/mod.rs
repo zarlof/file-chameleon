@@ -275,7 +275,8 @@ impl WheelConfig {
     }
 
     /// Strict check before saving: unique non-empty ids, faces and groups within their limits,
-    /// no slot twice on one face, every reference resolves, every preset's parameters valid.
+    /// no slot twice on one face, every reference resolves, every preset's parameters valid,
+    /// built-in presets unchanged (they are read-only: the UI duplicates them instead).
     /// Normalizes `version`, the `builtin` flags and extension spelling.
     pub fn validate(mut self) -> Result<Self> {
         let base = builtin_config();
@@ -286,6 +287,15 @@ impl WheelConfig {
             }
             if !ids.insert(p.id.as_str()) {
                 return Err(invalid(format!("duplicate preset id {}", p.id)));
+            }
+            // Loading always restores the build's built-ins, so an edit would be lost silently.
+            if let Some(b) = base.presets.iter().find(|b| b.id == p.id)
+                && (b.op != p.op || b.options != p.options || b.name != p.name)
+            {
+                return Err(invalid(format!(
+                    "built-in presets are read-only; duplicate it: {}",
+                    p.id
+                )));
             }
             p.op.validate()
                 .and_then(|()| p.options.validate())
@@ -401,6 +411,9 @@ impl WheelConfig {
 
     /// The first profile listing the file's extension.
     fn owner(&self, path: &Path) -> Option<&Profile> {
+        if path.is_dir() {
+            return None; // a folder is "other", even when named like "photos.png"
+        }
         let ext = crate::engines::ext_of(path)?;
         self.profiles.iter().find(|p| p.extensions.contains(&ext))
     }
@@ -459,12 +472,19 @@ impl WheelConfig {
 
     /// Ids of presets that fit a file with at least one of these extensions (the wheel editor
     /// dims the others). Merging counts as fitting when it fits two such files. An empty list
-    /// matches nothing.
+    /// (the "other" and mixed profiles) means an unknown file: the file operations.
     pub fn applicable_ids(&self, extensions: &[String]) -> Vec<String> {
-        let samples: Vec<[Vec<PathBuf>; 2]> = extensions
+        let mut exts: Vec<String> = extensions
             .iter()
             .map(|e| normalize_ext(e))
             .filter(|e| !e.is_empty())
+            .collect();
+        if exts.is_empty() {
+            // No format claims this extension, so the sample is an unknown file.
+            exts.push("fc-unknown".into());
+        }
+        let samples: Vec<[Vec<PathBuf>; 2]> = exts
+            .iter()
             .map(|e| {
                 let one = PathBuf::from(format!("a.{e}"));
                 let two = PathBuf::from(format!("b.{e}"));
@@ -528,18 +548,24 @@ fn check_list(list: &[String], what: &str, known: impl Fn(&str) -> bool) -> Resu
 /// Whether `preset` can handle *every* file in `paths` (empty -> false):
 /// convert needs a route for each file that is not already the target (and one that is not);
 /// edits need raster images; crops images or video; merging two or more pdf/images; the
-/// editor exactly one image; file operations take anything.
+/// editor exactly one image; file operations (zip, copy, move) take anything, and are all
+/// that folders and unknown files get.
 pub fn applicable(preset: &Preset, paths: &[PathBuf]) -> bool {
     if paths.is_empty() {
         return false;
+    }
+    let file_op = matches!(preset.op, Operation::CopyTo { .. } | Operation::Zip);
+    // Folders (whatever their name looks like) only take the file operations.
+    if paths.iter().any(|p| p.is_dir()) {
+        return file_op;
     }
     let Some(fmts) = paths
         .iter()
         .map(|p| formats::detect_path(p))
         .collect::<Option<Vec<&FormatInfo>>>()
     else {
-        // Unknown files only take file operations.
-        return matches!(preset.op, Operation::CopyTo { .. } | Operation::Zip);
+        // So do unknown files.
+        return file_op;
     };
     let all = |ok: fn(Kind) -> bool| fmts.iter().all(|f| ok(f.kind));
     match &preset.op {

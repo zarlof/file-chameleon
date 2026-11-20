@@ -242,14 +242,21 @@ fn convert_args(input: &Path, to: &str, output: &Path, options: &ConvertOptions)
 }
 
 /// First subtitle stream (ASS/SSA input) -> SubRip or WebVTT.
-fn subtitle_args(input: &Path, to: &str, output: &Path) -> Vec<OsString> {
+/// `legacy_8bit`: the file has no BOM and is not UTF-8, so it is read as Windows-1254 (as the
+/// in-process SRT/VTT reader does); ffmpeg otherwise assumes UTF-8.
+fn subtitle_args(input: &Path, to: &str, output: &Path, legacy_8bit: bool) -> Vec<OsString> {
     let (codec, mux) = if to == "vtt" {
         ("webvtt", "webvtt")
     } else {
         ("srt", "srt")
     };
+    let pre = if legacy_8bit {
+        strs(&["-sub_charenc", "CP1254"])
+    } else {
+        Vec::new()
+    };
     let body = strs(&["-map", "0:s:0", "-c:s", codec]);
-    assemble(Vec::new(), input, body, mux, output)
+    assemble(pre, input, body, mux, output)
 }
 
 /// Stream copy into mp4/mov/mkv (no re-encode).
@@ -604,7 +611,14 @@ impl Ffmpeg {
     ) -> Result<()> {
         Self::require_input(input)?;
         if matches!(to, "srt" | "vtt") {
-            return self.run(subtitle_args(input, to, output), None, cancel, progress);
+            let legacy = std::fs::read(input)
+                .is_ok_and(|b| super::subtitle::sniff(&b) == super::subtitle::TextEncoding::Cp1254);
+            return self.run(
+                subtitle_args(input, to, output, legacy),
+                None,
+                cancel,
+                progress,
+            );
         }
         let probe = self.probe(input);
         let duration = probe
@@ -1055,8 +1069,23 @@ mod tests {
         ));
         assert!(r.contains("-vn -map 0:a:0 -t 40 -c:a aac -b:a 192k"), "{r}");
         assert!(r.ends_with("-f ipod o"));
-        let s = line(&subtitle_args(Path::new("a.ass"), "vtt", Path::new("o")));
+        let s = line(&subtitle_args(
+            Path::new("a.ass"),
+            "vtt",
+            Path::new("o"),
+            false,
+        ));
         assert_eq!(s, "-i a.ass -map 0:s:0 -c:s webvtt -f webvtt o");
+        let s = line(&subtitle_args(
+            Path::new("a.ass"),
+            "srt",
+            Path::new("o"),
+            true,
+        ));
+        assert_eq!(
+            s,
+            "-sub_charenc CP1254 -i a.ass -map 0:s:0 -c:s srt -f srt o"
+        );
         let c = line(&crop_aspect_args(
             Path::new("a.mp4"),
             "mp4",

@@ -242,12 +242,13 @@ pub(super) fn profiles() -> Vec<Profile> {
             ],
             &["copy-to", "move-to"],
         ),
-        // md and txt only convert to HTML; there is no route to plain text.
+        // md and txt only convert to HTML (no route to plain text); HTML itself has no
+        // conversion, so the file actions sit on the front too.
         profile(
             "text",
             extensions(&["md", "txt", "html"]),
-            &["to-html"],
-            &FILES,
+            &["to-html", "zip", "copy-to", "move-to"],
+            &[],
         ),
         profile(
             "data",

@@ -275,7 +275,7 @@ fn extract_rejects_zip_slip() {
         let archive = inner.join("bad.zip");
         write_zip(&archive, &[("fine.txt", b"ok"), (evil, b"pwned")]);
         let err = run(&[archive], Operation::Extract).unwrap_err();
-        assert!(!matches!(err, Error::Cancelled), "{evil}: {err}");
+        assert!(matches!(err, Error::Invalid(_)), "{evil}: {err}");
         assert!(!d.path().join("evil.txt").exists(), "{evil}");
         assert!(
             !inner.join("bad").exists(),
@@ -333,6 +333,90 @@ fn copy_and_move() {
     ));
 }
 
+/// `photos/a.txt`, `photos/sub/b.txt`, empty `photos/empty/`.
+fn photo_folder(parent: &Path) -> PathBuf {
+    let photos = parent.join("photos");
+    fs::create_dir_all(photos.join("sub")).unwrap();
+    fs::create_dir_all(photos.join("empty")).unwrap();
+    fs::write(photos.join("a.txt"), b"top").unwrap();
+    fs::write(photos.join("sub").join("b.txt"), b"nested").unwrap();
+    photos
+}
+
+fn assert_photo_tree(dir: &Path) {
+    assert_eq!(fs::read(dir.join("a.txt")).unwrap(), b"top");
+    assert_eq!(fs::read(dir.join("sub").join("b.txt")).unwrap(), b"nested");
+    assert!(dir.join("empty").is_dir());
+}
+
+#[test]
+fn zip_copy_and_move_folders() {
+    let d = tempfile::tempdir().unwrap();
+    let photos = photo_folder(d.path());
+    let note = d.path().join("note.txt");
+    fs::write(&note, b"n").unwrap();
+
+    // ZIP: the folder name is the top entry, nested paths and empty folders are kept.
+    let archive = only(run(&[photos.clone(), note.clone()], Operation::Zip).unwrap());
+    assert_eq!(archive, d.path().join("photos.zip"));
+    assert_eq!(
+        zip_names(&archive),
+        [
+            "photos/",
+            "photos/a.txt",
+            "photos/empty/",
+            "photos/sub/",
+            "photos/sub/b.txt",
+            "note.txt"
+        ]
+    );
+    let album = d.path().join("my.album");
+    fs::create_dir_all(&album).unwrap();
+    let album_zip = only(run_one(&album, Operation::Zip).unwrap());
+    assert_eq!(album_zip, d.path().join("my.album.zip"));
+    assert_eq!(zip_names(&album_zip), ["my.album/"]);
+    let extracted = only(run_one(&archive, Operation::Extract).unwrap());
+    assert_eq!(
+        extracted,
+        d.path().join("photos (1)"),
+        "never over the source"
+    );
+    assert_photo_tree(&extracted.join("photos"));
+
+    // Copy: recursive, a unique name when the folder exists there already.
+    let dest = d.path().join("dest");
+    fs::create_dir_all(dest.join("photos")).unwrap();
+    let to = |dir: &Path, move_files: bool| Operation::CopyTo {
+        dir: Some(dir.to_path_buf()),
+        move_files,
+    };
+    let copied = only(run_one(&photos, to(&dest, false)).unwrap());
+    assert_eq!(copied, dest.join("photos (1)"));
+    assert_photo_tree(&copied);
+    assert_photo_tree(&photos);
+    assert!(matches!(
+        run_one(&photos, to(&photos.join("sub"), false)),
+        Err(Error::Invalid(_))
+    ));
+    assert!(matches!(
+        run_one(&photos, to(&photos, true)),
+        Err(Error::Invalid(_))
+    ));
+
+    // Move: same parent is a no-op; elsewhere the folder moves with everything in it.
+    assert_eq!(only(run_one(&photos, to(d.path(), true)).unwrap()), photos);
+    let moved = only(run_one(&photos, to(&dest, true)).unwrap());
+    assert_eq!(moved, dest.join("photos (2)"));
+    assert_photo_tree(&moved);
+    assert!(!photos.exists());
+
+    // Other operations still want files.
+    assert!(matches!(
+        run_one(&moved, Operation::Convert { to: "png".into() }),
+        Err(Error::NotFound(_))
+    ));
+}
+
 const SRT: &str = "1\n00:00:01,000 --> 00:00:02,500\n{\\an8}<i>Hi</i>\n";
 
 fn convert_text(dir: &Path, name: &str, content: &str, from: &str, to: &str) -> String {
@@ -383,6 +467,56 @@ fn subtitles_convert() {
     fs::write(&input, SRT).unwrap();
     let out = only(run(&[input], Operation::Convert { to: "vtt".into() }).unwrap());
     assert_eq!(out.file_name().unwrap(), "movie.vtt");
+}
+
+/// "Gün ışığı: Şİ Ğğ “tırnak”" in Windows-1254 ("ANSI" on Turkish Windows).
+const CP1254_LINE: &[u8] = b"G\xFCn \xFD\xFE\xFD\xF0\xFD: \xDE\xDD \xD0\xF0 \x93t\xFDrnak\x94";
+const TURKISH_LINE: &str = "Gün ışığı: Şİ Ğğ “tırnak”";
+
+fn convert_bytes(dir: &Path, name: &str, bytes: &[u8], from: &str, to: &str) -> String {
+    let input = dir.join(name);
+    fs::write(&input, bytes).unwrap();
+    let out = dir.join(format!("{name}.{to}"));
+    subtitle::convert(&input, from, to, &out).unwrap();
+    fs::read_to_string(out).expect("output is UTF-8")
+}
+
+#[test]
+fn subtitles_in_legacy_and_utf16_encodings() {
+    let d = tempfile::tempdir().unwrap();
+    let mut ansi = b"1\r\n00:00:01,000 --> 00:00:02,000\r\n".to_vec();
+    ansi.extend_from_slice(CP1254_LINE);
+    ansi.extend_from_slice(b"\r\n");
+    assert!(std::str::from_utf8(&ansi).is_err(), "really not UTF-8");
+    assert_eq!(
+        convert_bytes(d.path(), "ansi.srt", &ansi, "srt", "txt"),
+        format!("{TURKISH_LINE}\n")
+    );
+    let vtt = convert_bytes(d.path(), "ansi2.srt", &ansi, "srt", "vtt");
+    assert!(vtt.contains(TURKISH_LINE), "{vtt}");
+
+    // Notepad's "Unicode": UTF-16 LE with a BOM.
+    let text = format!("1\r\n00:00:03,000 --> 00:00:04,500\r\n{TURKISH_LINE}\r\n");
+    let mut utf16 = vec![0xFF, 0xFE];
+    for unit in text.encode_utf16() {
+        utf16.extend_from_slice(&unit.to_le_bytes());
+    }
+    let vtt = convert_bytes(d.path(), "wide.srt", &utf16, "srt", "vtt");
+    assert!(vtt.contains("00:00:03.000 --> 00:00:04.500"), "{vtt}");
+    assert!(vtt.contains(TURKISH_LINE), "{vtt}");
+
+    // UTF-16 BE with a BOM, and UTF-8 with a BOM.
+    let mut be = vec![0xFE, 0xFF];
+    for unit in text.encode_utf16() {
+        be.extend_from_slice(&unit.to_be_bytes());
+    }
+    assert!(convert_bytes(d.path(), "be.srt", &be, "srt", "txt").contains(TURKISH_LINE));
+    let mut bom = vec![0xEF, 0xBB, 0xBF];
+    bom.extend_from_slice(text.as_bytes());
+    assert_eq!(
+        convert_bytes(d.path(), "bom.srt", &bom, "srt", "txt"),
+        format!("{TURKISH_LINE}\n")
+    );
 }
 
 #[test]
@@ -521,13 +655,31 @@ fn ass_converts_with_ffmpeg() {
         text.contains("00:00:01,000 --> 00:00:02,500") && text.contains("Merhaba"),
         "{text}"
     );
-    let vtt = only(run_with(tools, &[ass], Operation::Convert { to: "vtt".into() }).unwrap());
+    let vtt = only(
+        run_with(
+            tools.clone(),
+            std::slice::from_ref(&ass),
+            Operation::Convert { to: "vtt".into() },
+        )
+        .unwrap(),
+    );
     let mut s = String::new();
     fs::File::open(&vtt)
         .unwrap()
         .read_to_string(&mut s)
         .unwrap();
     assert!(s.starts_with("WEBVTT") && s.contains("Merhaba"), "{s}");
+
+    // The same script saved as Windows-1254 ("ANSI"): read with -sub_charenc CP1254.
+    let utf8 = fs::read_to_string(&ass).unwrap();
+    let mut ansi = utf8.replace("Merhaba\n", "").into_bytes();
+    ansi.extend_from_slice(CP1254_LINE);
+    ansi.push(b'\n');
+    let ass_ansi = d.path().join("ansi.ass");
+    fs::write(&ass_ansi, &ansi).unwrap();
+    let srt = only(run_with(tools, &[ass_ansi], Operation::Convert { to: "srt".into() }).unwrap());
+    let text = fs::read_to_string(&srt).expect("UTF-8 output");
+    assert!(text.contains(TURKISH_LINE), "{text}");
 }
 
 #[test]
