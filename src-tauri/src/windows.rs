@@ -52,6 +52,18 @@ fn ctl() -> std::sync::MutexGuard<'static, OverlayCtl> {
 
 // ------------------------------------------------------------------ main window
 
+/// WebView2 flags shared by every webview. All webviews share one browser process, so the flags
+/// must be identical for each of them. They are Tauri's defaults plus software rendering:
+/// the UI is light enough for CPU raster, and dropping the GPU process roughly halves idle
+/// memory (measured on the release build in the tray: ~160 MB -> ~97 MB in total).
+/// `FC_WEBVIEW_ARGS` overrides them, which is useful when measuring memory or debugging rendering.
+const BROWSER_ARGS: &str =
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-gpu --in-process-gpu";
+
+fn browser_args() -> String {
+    std::env::var("FC_WEBVIEW_ARGS").unwrap_or_else(|_| BROWSER_ARGS.to_string())
+}
+
 pub fn show_main(app: &AppHandle, nav: Option<NavPayload>) {
     if let Some(w) = app.get_webview_window(MAIN) {
         let _ = w.unminimize();
@@ -74,6 +86,7 @@ pub fn show_main(app: &AppHandle, nav: Option<NavPayload>) {
         .shadow(true)
         .visible(false)
         .data_directory(state.paths.webview_dir())
+        .additional_browser_args(&browser_args())
         .effects(
             tauri::window::EffectsBuilder::new()
                 .effect(tauri::window::Effect::Mica)
@@ -125,6 +138,7 @@ pub fn create_overlay(app: &AppHandle) -> tauri::Result<()> {
         .focused(false)
         .focusable(false)
         .data_directory(state.paths.webview_dir())
+        .additional_browser_args(&browser_args())
         .build()?;
     #[cfg(windows)]
     if let Ok(hwnd) = w.hwnd() {
