@@ -92,7 +92,7 @@ pub fn import_paths(app: &AppHandle, paths: Vec<String>) {
 fn import_one(app: &AppHandle, path: &Path) {
     use std::io::Read;
     let Ok(meta) = std::fs::metadata(path) else {
-        return;
+        return reject(app);
     };
     let mut head = Vec::new();
     if let Ok(f) = std::fs::File::open(path) {
@@ -101,23 +101,44 @@ fn import_one(app: &AppHandle, path: &Path) {
     let now = fc_core::now_ms();
     let state = app.state::<AppState>();
     let added = match classify(path, meta.len(), &head) {
-        HangKind::Reject => return,
+        HangKind::Reject => return reject(app),
         HangKind::Image => {
             let Some((png, w, h)) = crate::platform::clipboard::image_file_as_png(path) else {
-                return;
+                return reject(app);
             };
             let mut store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
             store.add_image_png(&png, w, h, now)
         }
         HangKind::Text => {
             let Ok(text) = std::fs::read_to_string(path) else {
-                return;
+                return reject(app);
             };
             let mut store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
             store.add_text(&text, now)
         }
     };
     announce(app, added);
+}
+
+/// The toast text for a file that cannot be hung, in the UI language.
+fn reject_message(lang: &str) -> &'static str {
+    if lang == "tr" {
+        "Bu dosya ipe asılamaz"
+    } else {
+        "This file can't be hung on the line"
+    }
+}
+
+/// A rejected file is not silent: a short toast (the overlay shows an unknown toast kind as its
+/// title, so the kind carries the localized message).
+fn reject(app: &AppHandle) {
+    let lang = crate::platform::ui_language(&app.state::<AppState>().settings().language);
+    crate::windows::show_toast(
+        app,
+        reject_message(&lang),
+        serde_json::json!({}),
+        Some(4000),
+    );
 }
 
 /// Tell the webviews about a new item and let the line peek.
@@ -198,6 +219,12 @@ mod tests {
 
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().map(|a| a.to_string()).collect()
+    }
+
+    #[test]
+    fn reject_message_follows_the_language() {
+        assert_eq!(reject_message("tr"), "Bu dosya ipe asılamaz");
+        assert_eq!(reject_message("en"), "This file can't be hung on the line");
     }
 
     #[test]

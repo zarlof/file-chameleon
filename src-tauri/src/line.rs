@@ -275,9 +275,14 @@ fn get_or_create(app: &AppHandle) -> Option<(WebviewWindow, bool)> {
 
 /// How many ropes the window needs right now (see [`rope_count_of`]).
 fn rope_count(app: &AppHandle) -> usize {
+    let ropes = app.state::<AppState>().settings().line_ropes;
+    rope_count_with(app, &ropes)
+}
+
+/// Like [`rope_count`] for rope switches that are not saved yet.
+fn rope_count_with(app: &AppHandle, r: &fc_core::settings::LineRopes) -> usize {
     use fc_core::clip::{ClipQuery, Shelf};
     let state = app.state::<AppState>();
-    let r = state.settings().line_ropes;
     let enabled = [r.images, r.text, r.links];
     if !enabled.iter().any(|on| *on) {
         return 1;
@@ -347,32 +352,44 @@ fn place(app: &AppHandle, w: &WebviewWindow, point: (i32, i32)) {
 /// Re-fit the height of the (placed) window to the ropes and size now, keeping its x, y and
 /// width. Used for a peek that arrives while the line is already up and when the size changes.
 #[cfg(windows)]
-fn resize(app: &AppHandle, w: &WebviewWindow) {
+fn resize(app: &AppHandle, w: &WebviewWindow, s: &fc_core::settings::Settings) {
     let (Ok(pos), Ok(cur)) = (w.outer_position(), w.outer_size()) else {
         return;
     };
     let scale = w.scale_factor().unwrap_or(1.0);
-    let work = crate::platform::win::work_area_at(pos.x, pos.y);
-    let size = app.state::<AppState>().settings().line_size;
-    let mut height = (window_height(rope_count(app), &size) * scale).round() as i32;
-    if let Some((_, top, _, bottom)) = work {
-        height = height.min((bottom - top).max(1));
-    }
+    let work_h = crate::platform::win::work_area_at(pos.x, pos.y).map(|(_, t, _, b)| b - t);
+    let height = fit_height(
+        rope_count_with(app, &s.line_ropes),
+        &s.line_size,
+        scale,
+        work_h,
+    );
     if height != cur.height as i32 {
-        let _ = w.set_size(PhysicalSize::new(cur.width, height.max(1) as u32));
+        let _ = w.set_size(PhysicalSize::new(cur.width, height as u32));
     }
 }
 
-/// The size setting changed: re-fit the window when it is up.
-pub fn apply_size(app: &AppHandle) {
+/// Physical window height for `ropes` ropes of `size` at DPI `scale`, at most the work area's
+/// height `work_h`.
+pub fn fit_height(ropes: usize, size: &str, scale: f64, work_h: Option<i32>) -> i32 {
+    let mut height = (window_height(ropes, size) * scale).round() as i32;
+    if let Some(h) = work_h {
+        height = height.min(h.max(1));
+    }
+    height.max(1)
+}
+
+/// The size or rope settings changed (`s` = the NEW, not yet saved settings): re-fit the window
+/// when it is up.
+pub fn apply_size(app: &AppHandle, s: &fc_core::settings::Settings) {
     #[cfg(windows)]
     if let Some(w) = app.get_webview_window(LINE)
         && hwnd_of(&w).is_some_and(crate::platform::win::is_visible)
     {
-        resize(app, &w);
+        resize(app, &w, s);
     }
     #[cfg(not(windows))]
-    let _ = app;
+    let _ = (app, s);
 }
 
 /// Remember the foreground window so `line_paste` can paste into it. `force` (the hotkey) also
@@ -430,7 +447,7 @@ pub fn show_at(app: &AppHandle, mode: &str, at: Option<(i32, i32)>) {
         if !flags.activate && win::is_visible(h) {
             // Already up (maybe in use): do not touch its focus style or place, but the rope
             // count may have changed, so resize; tell the page so it keeps itself open.
-            resize(app, &w);
+            resize(app, &w, &app.state::<AppState>().settings());
             let _ = app.emit_to(LINE, events::LINE_SHOW, LineShow { mode: merged });
             return;
         }
@@ -478,8 +495,9 @@ pub fn destroy(app: &AppHandle) {
     }
 }
 
-/// The search hotkey: hide the line when it is in front, otherwise show it in `search` mode
-/// (activated, the page focuses its search field).
+/// The search hotkey: show the line in `search` mode (activated, the page focuses its search
+/// field). When it is already in front: in `search` mode it hides again, in any other mode it
+/// switches to `search` instead of closing.
 pub fn toggle_search(app: &AppHandle) {
     #[cfg(windows)]
     {
@@ -491,7 +509,19 @@ pub fn toggle_search(app: &AppHandle) {
                     && h == crate::platform::win::foreground_window()
             });
         if in_front {
-            hide(app);
+            let current = MODE.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            if current.as_deref() == Some("search") {
+                hide(app);
+            } else {
+                *MODE.lock().unwrap_or_else(|e| e.into_inner()) = Some("search".into());
+                let _ = app.emit_to(
+                    LINE,
+                    events::LINE_SHOW,
+                    LineShow {
+                        mode: "search".into(),
+                    },
+                );
+            }
             return;
         }
     }
@@ -757,6 +787,15 @@ mod tests {
         );
         // Never taller than the work area.
         assert_eq!(line_rect((0, 0, 800, 300), 1.0, 3, m).3, 300);
+    }
+
+    #[test]
+    fn fit_height_follows_the_passed_size() {
+        // The height comes from the size argument, not from any stored setting.
+        assert_eq!(fit_height(2, "small", 1.0, None), 312);
+        assert_eq!(fit_height(2, "large", 1.0, None), 468);
+        assert_eq!(fit_height(2, "large", 1.5, Some(600)), 600);
+        assert_eq!(fit_height(0, "medium", 1.0, None), 190);
     }
 
     #[test]

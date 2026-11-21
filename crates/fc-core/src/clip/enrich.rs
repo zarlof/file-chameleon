@@ -285,13 +285,16 @@ pub fn fetch_link_title(url: &str) -> Option<String> {
 /// Largest YouTube thumbnail that is kept.
 const MAX_THUMB: u64 = 200 * 1024;
 
+/// An 11-character id at the start of `s`; the next character must end it (`&`, `?`, `/`, `#`)
+/// or `s` must end there.
 fn valid_youtube_id(s: &str) -> Option<String> {
     let id: String = s.chars().take(11).collect();
-    (id.len() == 11
+    let ok = id.len() == 11
         && id
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'))
-    .then_some(id)
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        && matches!(s[11..].chars().next(), None | Some('&' | '?' | '/' | '#'));
+    ok.then_some(id)
 }
 
 /// The 11-character video id of a YouTube link (`watch?v=`, `youtu.be/`, `shorts/`).
@@ -360,6 +363,13 @@ mod tests {
         assert_eq!(youtube_id("https://youtube.com/shorts/dQw4w9WgXcQ"), id);
         assert_eq!(youtube_id("https://example.com/?v=dQw4w9WgXcQ"), None);
         assert_eq!(youtube_id("https://youtube.com/watch?v=short"), None);
+        // Longer than 11 characters: not an id.
+        assert_eq!(youtube_id("https://youtu.be/dQw4w9WgXcQextra"), None);
+        assert_eq!(
+            youtube_id("https://youtube.com/watch?v=dQw4w9WgXcQx&t=1"),
+            None
+        );
+        assert_eq!(youtube_id("https://youtu.be/dQw4w9WgXcQ?t=5"), id);
     }
 
     #[test]

@@ -10,8 +10,7 @@ use std::path::Path;
 /// Command-line switch: the paths after it open the wheel.
 pub const WHEEL_ARG: &str = "--wheel";
 
-/// Command-line switch of the second verb: the paths after it hang on the clothesline.
-pub const HANG_ARG: &str = "--hang";
+use crate::hang::HANG_ARG;
 
 #[cfg(windows)]
 const KEY: &str = r"Software\Classes\*\shell\FileChameleon";

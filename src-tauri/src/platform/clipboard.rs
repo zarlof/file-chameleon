@@ -182,84 +182,188 @@ pub(crate) fn enrich(app: &AppHandle, item: &fc_core::clip::ClipItem, s: &Settin
 
 /// Link items whose title was requested in this session (fetched or failed).
 static TITLE_ATTEMPTED: LazyLock<Mutex<HashSet<u64>>> = LazyLock::new(Default::default);
+/// Link items whose YouTube thumbnail was requested in this session.
+static THUMB_ATTEMPTED: LazyLock<Mutex<HashSet<u64>>> = LazyLock::new(Default::default);
 
-/// Queue a page-title fetch for `item` when [`title_url`] says so. Titles are fetched one at a
-/// time on one lazily started worker thread.
-fn fetch_title_later(app: &AppHandle, item: &fc_core::clip::ClipItem, s: &Settings) {
-    let url = {
-        let mut tried = TITLE_ATTEMPTED.lock().unwrap_or_else(|e| e.into_inner());
-        let Some(url) = title_url(item, s, &tried) else {
-            return;
-        };
-        if tried.len() >= 10_000 {
-            tried.clear();
-        }
-        tried.insert(item.id);
-        url
-    };
-    static QUEUE: OnceLock<Sender<(u64, String)>> = OnceLock::new();
-    let queue = QUEUE.get_or_init(|| {
-        let (tx, rx) = channel::<(u64, String)>();
+/// The YouTube video id whose thumbnail `item` still needs: link titles on (the same network
+/// switch), a link without a thumb, a YouTube id, not tried before, and not a private address.
+fn thumb_video(
+    item: &fc_core::clip::ClipItem,
+    s: &Settings,
+    attempted: &HashSet<u64>,
+) -> Option<String> {
+    use fc_core::clip::ClipKind;
+    if !s.clipboard_link_titles
+        || item.thumb.is_some()
+        || item.trashed_at.is_some()
+        || attempted.contains(&item.id)
+        || !matches!(item.kind, ClipKind::Link | ClipKind::MediaLink)
+    {
+        return None;
+    }
+    let url = fc_core::download::classify_url(item.text.as_deref()?)?.url;
+    if fc_core::clip::enrich::is_private_or_secret(&url) {
+        return None;
+    }
+    fc_core::clip::enrich::youtube_id(&url)
+}
+
+/// One unit of background work for a link.
+struct LinkJob {
+    id: u64,
+    /// Page-title fetch (`Some(url)`), skipped when the link already has a title.
+    title: Option<String>,
+    /// YouTube thumbnail fetch.
+    video: Option<String>,
+}
+
+fn link_queue(app: &AppHandle) -> &'static Sender<LinkJob> {
+    static QUEUE: OnceLock<Sender<LinkJob>> = OnceLock::new();
+    QUEUE.get_or_init(|| {
+        let (tx, rx) = channel::<LinkJob>();
         let app = app.clone();
         let _ = std::thread::Builder::new()
             .name("fc-link-titles".into())
             .spawn(move || {
-                for (id, url) in rx {
-                    let state = app.state::<AppState>();
-                    // Turned off while waiting in the queue: skip, and forget it, so it is fetched
-                    // when the link is copied again with titles back on.
-                    if !state.settings().clipboard_link_titles {
-                        TITLE_ATTEMPTED
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .remove(&id);
-                        continue;
-                    }
-                    // Deleted meanwhile: nothing to do.
-                    let Some(current) = state
-                        .clips()
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .get(id)
-                        .cloned()
-                    else {
-                        continue;
-                    };
-                    if current.link_title.is_none()
-                        && let Some(title) = fc_core::clip::enrich::fetch_link_title(&url)
-                    {
-                        let updated = {
-                            let mut store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
-                            store
-                                .set_link_title(id, title)
-                                .ok()
-                                .and_then(|()| store.get(id).cloned())
-                        };
-                        if let Some(item) = updated {
-                            let _ = app.emit(events::CLIP_UPDATED, &item);
-                        }
-                    }
-                    // A YouTube link also gets the video's thumbnail (same switch as titles).
-                    if current.thumb.is_none()
-                        && let Some(vid) = fc_core::clip::enrich::youtube_id(&url)
-                        && let Some(jpeg) = fc_core::clip::enrich::fetch_youtube_thumb(&vid)
-                    {
-                        let updated = {
-                            let mut store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
-                            store
-                                .set_link_thumb(id, &jpeg)
-                                .ok()
-                                .and_then(|()| store.get(id).cloned())
-                        };
-                        if let Some(item) = updated {
-                            let _ = app.emit(events::CLIP_UPDATED, &item);
-                        }
-                    }
+                for job in rx {
+                    run_link_job(&app, job);
                 }
             });
         tx
-    });
-    let _ = queue.send((item.id, url));
+    })
+}
+
+fn run_link_job(app: &AppHandle, job: LinkJob) {
+    let state = app.state::<AppState>();
+    let id = job.id;
+    // Turned off while waiting in the queue: skip, and forget it, so it is fetched when the link
+    // is copied again with titles back on.
+    if !state.settings().clipboard_link_titles {
+        TITLE_ATTEMPTED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&id);
+        THUMB_ATTEMPTED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&id);
+        return;
+    }
+    // Deleted meanwhile: nothing to do.
+    let Some(current) = state
+        .clips()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(id)
+        .cloned()
+    else {
+        return;
+    };
+    if let Some(url) = &job.title
+        && current.link_title.is_none()
+        && let Some(title) = fc_core::clip::enrich::fetch_link_title(url)
+    {
+        let updated = {
+            let mut store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
+            store
+                .set_link_title(id, title)
+                .ok()
+                .and_then(|()| store.get(id).cloned())
+        };
+        if let Some(item) = updated {
+            let _ = app.emit(events::CLIP_UPDATED, &item);
+        }
+    }
+    if let Some(vid) = &job.video
+        && current.thumb.is_none()
+        && let Some(jpeg) = fc_core::clip::enrich::fetch_youtube_thumb(vid)
+    {
+        let updated = {
+            let mut store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
+            store
+                .set_link_thumb(id, &jpeg)
+                .ok()
+                .and_then(|()| store.get(id).cloned())
+        };
+        if let Some(item) = updated {
+            let _ = app.emit(events::CLIP_UPDATED, &item);
+        }
+    }
+}
+
+/// Queue the background work `item` needs: a page title (when `title_url` says so) and/or a
+/// YouTube thumbnail (independent of the title). Everything runs one job at a time on one
+/// lazily started worker thread.
+fn fetch_title_later(app: &AppHandle, item: &fc_core::clip::ClipItem, s: &Settings) {
+    let title = {
+        let mut tried = TITLE_ATTEMPTED.lock().unwrap_or_else(|e| e.into_inner());
+        let url = title_url(item, s, &tried);
+        if url.is_some() {
+            if tried.len() >= 10_000 {
+                tried.clear();
+            }
+            tried.insert(item.id);
+        }
+        url
+    };
+    let video = {
+        let mut tried = THUMB_ATTEMPTED.lock().unwrap_or_else(|e| e.into_inner());
+        let vid = thumb_video(item, s, &tried);
+        if vid.is_some() {
+            if tried.len() >= 10_000 {
+                tried.clear();
+            }
+            tried.insert(item.id);
+        }
+        vid
+    };
+    if title.is_some() || video.is_some() {
+        let _ = link_queue(app).send(LinkJob {
+            id: item.id,
+            title,
+            video,
+        });
+    }
+}
+
+/// How many existing links one backfill looks at.
+const THUMB_BACKFILL_MAX: usize = 50;
+
+/// One-time catch-up (startup, link titles turned on): YouTube links that have no thumbnail yet,
+/// newest first, at most 50, served serially by the link worker.
+pub fn backfill_thumbs(app: &AppHandle, s: &Settings) {
+    if !s.clipboard_link_titles {
+        return;
+    }
+    let items: Vec<fc_core::clip::ClipItem> = app
+        .state::<AppState>()
+        .clips()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .items()
+        .to_vec();
+    let mut queued = 0;
+    for item in &items {
+        if queued >= THUMB_BACKFILL_MAX {
+            break;
+        }
+        let video = {
+            let mut tried = THUMB_ATTEMPTED.lock().unwrap_or_else(|e| e.into_inner());
+            let vid = thumb_video(item, s, &tried);
+            if vid.is_some() {
+                tried.insert(item.id);
+            }
+            vid
+        };
+        if video.is_some() {
+            queued += 1;
+            let _ = link_queue(app).send(LinkJob {
+                id: item.id,
+                title: None,
+                video,
+            });
+        }
+    }
 }
 
 // ---------------------------------------------------------------- retention
@@ -297,6 +401,9 @@ pub fn start_maintenance(app: &AppHandle) {
                     prune(&app, &s);
                     if first && s.clipboard_ocr {
                         super::ocr::backfill(&app);
+                    }
+                    if first {
+                        backfill_thumbs(&app, &s);
                     }
                 }
                 first = false;

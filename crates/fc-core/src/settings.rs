@@ -249,8 +249,8 @@ impl Settings {
             .clamped()
     }
 
-    /// Pull out-of-range wave-2 line values back into their ranges.
-    fn clamped(mut self) -> Self {
+    /// Pull out-of-range wave-2 line values back into their ranges (on load and on save).
+    pub fn clamped(mut self) -> Self {
         self.line_thickness = self.line_thickness.clamp(1, 6);
         self.line_opacity = self.line_opacity.clamp(30, 100);
         self

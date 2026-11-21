@@ -189,8 +189,15 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
         crate::line::destroy(app);
     }
     // The window is resized when the size setting changes while it is up.
-    if old.line_size != new.line_size {
-        crate::line::apply_size(app);
+    if old.line_size != new.line_size || old.line_ropes != new.line_ropes {
+        crate::line::apply_size(app, &new);
+    }
+    // Link titles just turned on: catch up on thumbnails of existing YouTube links.
+    if !old.clipboard_link_titles && new.clipboard_link_titles && new.clipboard_enabled {
+        let (app, new) = (app.clone(), new.clone());
+        let _ = std::thread::Builder::new()
+            .name("fc-thumb-backfill".into())
+            .spawn(move || clipboard::backfill_thumbs(&app, &new));
     }
     if old.clipboard_ocr != new.clipboard_ocr {
         ocr::set_enabled(new.clipboard_ocr);

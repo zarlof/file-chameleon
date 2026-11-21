@@ -94,7 +94,7 @@ pub async fn set_settings(app: AppHandle, settings: Settings) -> CmdResult<Setti
         let state = app.state::<AppState>();
         let _tx = state.settings_transaction();
         let old = state.settings();
-        let mut new = settings;
+        let mut new = settings.clamped();
         new.clipboard_paused = old.clipboard_paused;
         let applied = crate::platform::apply_settings(&app, &old, new);
         state.save_settings(applied.clone());
