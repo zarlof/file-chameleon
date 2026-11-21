@@ -187,8 +187,15 @@ fn tools_for(inputs: &[InputInfo]) -> Vec<String> {
     t.into_iter().map(String::from).collect()
 }
 
+/// The Convert view calls this for every file set it gets (drop or pick): they join the files
+/// rope.
 #[tauri::command]
-pub fn list_targets(paths: Vec<String>) -> TargetsResponse {
+pub fn list_targets(app: AppHandle, paths: Vec<String>) -> TargetsResponse {
+    crate::files::record(
+        &app,
+        paths.iter().map(PathBuf::from).collect(),
+        fc_core::files::FileSource::Added,
+    );
     let (inputs, targets) = targets_for_paths(&paths);
     let tools = tools_for(&inputs);
     TargetsResponse {
@@ -208,6 +215,14 @@ pub fn submit(state: &AppState, req: JobRequest) -> CmdResult<Vec<JobId>> {
 pub fn submit_with(state: &AppState, mut req: JobRequest, remember: bool) -> CmdResult<Vec<JobId>> {
     if req.inputs.is_empty() {
         return Err(CmdError::new("unsupported", "no inputs"));
+    }
+    if remember {
+        // Files the user put into a conversion by hand (not watch-folder runs).
+        crate::files::record(
+            &state.app,
+            req.inputs.clone(),
+            fc_core::files::FileSource::Added,
+        );
     }
     // Annotate and folderless copy/move are resolved before submitting (code "invalid").
     req.op.queueable()?;
@@ -309,6 +324,13 @@ pub fn clear_jobs(state: State<'_, AppState>) {
 /// Job listener: forward to the UI and, when the main window is not visible, toast results.
 pub fn on_job_update(app: &AppHandle, snap: &JobSnapshot) {
     let _ = app.emit(events::JOB_UPDATE, snap);
+    if snap.state == fc_core::jobs::JobState::Done {
+        crate::files::record(
+            app,
+            snap.outputs.clone(),
+            fc_core::files::FileSource::Converted,
+        );
+    }
     if snap.state.is_finished() {
         windows::toast_job_finished(app, snap);
     }

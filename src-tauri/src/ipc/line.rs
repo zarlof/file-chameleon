@@ -39,6 +39,47 @@ pub async fn line_paste(app: AppHandle, ids: Vec<u64>) -> CmdResult<()> {
     super::blocking(move || crate::line::paste(&app, &ids)).await?
 }
 
+/// The files rope: its files (newest first, thumbnails made lazily). Async: stats every file
+/// and decodes the thumbnails that are not cached yet.
+#[tauri::command]
+pub async fn line_files(app: AppHandle) -> CmdResult<Vec<crate::files::LineFile>> {
+    super::blocking(move || crate::files::list(&app)).await
+}
+
+/// Put the files on the clipboard as a file list (paste in Explorer or a chat app).
+#[tauri::command]
+pub async fn line_file_copy(app: AppHandle, paths: Vec<String>) -> CmdResult<()> {
+    super::blocking(move || crate::line::copy_files(&app, &paths)).await?
+}
+
+/// Open a file with its default app.
+#[tauri::command(async)]
+pub fn line_file_open(app: AppHandle, path: String) -> CmdResult<()> {
+    crate::line::open_file(&app, &path)
+}
+
+/// Show a file in Explorer.
+#[tauri::command(async)]
+pub fn line_file_reveal(app: AppHandle, path: String) -> CmdResult<()> {
+    crate::line::reveal_file(&app, &path)
+}
+
+/// Take files off the rope (the files themselves stay).
+#[tauri::command]
+pub async fn line_file_remove(app: AppHandle, paths: Vec<String>) -> CmdResult<()> {
+    super::blocking(move || {
+        let paths: Vec<std::path::PathBuf> = paths.into_iter().map(Into::into).collect();
+        crate::files::remove(&app, &paths).map_err(super::CmdError::from)
+    })
+    .await?
+}
+
+/// Start an OLE drag of a file of the rope; returns when the drop ends.
+#[tauri::command]
+pub async fn line_file_drag_out(app: AppHandle, path: String) -> CmdResult<()> {
+    crate::line::drag_out_file(&app, path.into()).await
+}
+
 /// Open a web link in the default browser (http and https only).
 #[tauri::command(async)]
 pub fn open_url(url: String) -> CmdResult<()> {

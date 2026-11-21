@@ -1,10 +1,10 @@
 //! The clothesline window (`line.html`, label `line`) and the file actions of the wheel.
 //! OWNER: clothesline Task 2.
 //!
-//! Created on first use, then only hidden and shown again, like the shelf. Three show modes:
+//! Created on first use, then only hidden and shown again. Show modes:
 //! - `hotkey`: activates the window; the foreground window before it is remembered so
 //!   `line_paste` can paste there.
-//! - `peek` (after a copy) and `reveal` (pointer dwelling at the top edge): never take focus
+//! - `peek` (after a copy) and `reveal` (pointer dwelling at the screen edge): never take focus
 //!   (`SW_SHOWNOACTIVATE` + `WS_EX_NOACTIVATE`) and never appear over a full-screen window. A
 //!   click inside the page calls `line_activate`.
 //!
@@ -29,13 +29,10 @@ use tauri::{
 
 pub const LINE: &str = "line";
 
-/// Logical metrics: free space left and right, and the gap per band (6 above and 6 below, so
-/// the window is `n × (band + 12)` high). These must equal the layout table the page uses
-/// (`src/line/layout.ts`), so nothing transparent hangs under the last rope.
-const SIDE_SPACE: f64 = 24.0;
+/// Logical metrics: the gap per band (6 above and 6 below, so the window is `n × (band + 12)`
+/// high). These must equal the layout table the page uses (`src/line/layout.ts`), so nothing
+/// transparent hangs under the last rope. The window spans the whole work-area width.
 const BAND_GAP: f64 = 12.0;
-/// The pointer must stay in the top-edge zone this long before the line reveals itself.
-const DWELL: Duration = Duration::from_millis(350);
 /// How many folders "open a terminal here" opens at most.
 const MAX_TERMINALS: usize = 5;
 
@@ -54,14 +51,21 @@ pub fn window_height(ropes: usize, size: &str) -> f64 {
     ropes.max(1) as f64 * (band_height(size) + BAND_GAP)
 }
 
+/// How long the pointer must stay in the edge zone before the line reveals itself.
+pub fn dwell(ms: u32) -> Duration {
+    Duration::from_millis(u64::from(ms))
+}
+
 /// Physical `(x, y, width, height)` of the line in the work area `(left, top, right, bottom)`
-/// (physical pixels) of a monitor with DPI `scale`: 24 px logical free on each side, height
-/// [`window_height`] (at least one rope), at the top, never taller than the work area.
+/// (physical pixels) of a monitor with DPI `scale`: the full work-area width, height
+/// [`window_height`] (at least one rope, never taller than the work area), at the top of the
+/// work area, or on its bottom when `edge` is "bottom".
 pub fn line_rect(
     work: (i32, i32, i32, i32),
     scale: f64,
     ropes: usize,
     size: &str,
+    edge: &str,
 ) -> (i32, i32, i32, i32) {
     let (left, top, right, bottom) = work;
     let scale = if scale.is_finite() && scale > 0.0 {
@@ -70,10 +74,13 @@ pub fn line_rect(
         1.0
     };
     let (work_w, work_h) = ((right - left).max(1), (bottom - top).max(1));
-    let side = (SIDE_SPACE * scale).round() as i32;
-    let width = (work_w - 2 * side).clamp(1, work_w);
-    let height = (window_height(ropes, size) * scale).round() as i32;
-    (left + side, top, width, height.clamp(1, work_h))
+    let height = fit_height(ropes, size, scale, Some(work_h));
+    let y = if edge == "bottom" {
+        bottom - height
+    } else {
+        top
+    };
+    (left, y, work_w, height)
 }
 
 /// Does the foreground window count as "full screen"? Its rectangle equals its monitor's and it
@@ -212,8 +219,9 @@ static MODE: Mutex<Option<String>> = Mutex::new(None);
 static SHOW: Mutex<()> = Mutex::new(());
 
 /// Number of ropes the window has room for: those enabled in the settings AND holding at least
-/// one live clip (`present`, in the order images, text, links). At least 1 (the empty message).
-pub fn rope_count_of(enabled: [bool; 3], present: [bool; 3]) -> usize {
+/// one live item (`present`, in the order images, text, links, files). At least 1 (the empty
+/// message).
+pub fn rope_count_of(enabled: [bool; 4], present: [bool; 4]) -> usize {
     enabled
         .iter()
         .zip(present)
@@ -234,7 +242,8 @@ fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let state = app.state::<AppState>();
     let ropes = rope_count(app);
     let work = (0, 0, 1920, 1040);
-    let (_, _, w, h) = line_rect(work, 1.0, ropes, &state.settings().line_size);
+    let s = state.settings();
+    let (_, _, w, h) = line_rect(work, 1.0, ropes, &s.line_size, &s.line_edge);
     WebviewWindowBuilder::new(app, LINE, WebviewUrl::App(LINE_PAGE.into()))
         .title("File Chameleon Line")
         .inner_size(f64::from(w), f64::from(h))
@@ -283,25 +292,28 @@ fn rope_count(app: &AppHandle) -> usize {
 fn rope_count_with(app: &AppHandle, r: &fc_core::settings::LineRopes) -> usize {
     use fc_core::clip::{ClipQuery, Shelf};
     let state = app.state::<AppState>();
-    let enabled = [r.images, r.text, r.links];
+    let enabled = [r.images, r.text, r.links, r.files];
     if !enabled.iter().any(|on| *on) {
         return 1;
     }
-    let store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
-    let has = |on: bool, shelf: Shelf| {
-        on && !store
-            .query(&ClipQuery {
-                shelf: Some(shelf),
-                limit: Some(1),
-                ..Default::default()
-            })
-            .is_empty()
+    let present = {
+        let store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
+        let has = |on: bool, shelf: Shelf| {
+            on && !store
+                .query(&ClipQuery {
+                    shelf: Some(shelf),
+                    limit: Some(1),
+                    ..Default::default()
+                })
+                .is_empty()
+        };
+        [
+            has(enabled[0], Shelf::Images),
+            has(enabled[1], Shelf::Texts),
+            has(enabled[2], Shelf::Links),
+            enabled[3] && crate::files::any_listed(app),
+        ]
     };
-    let present = [
-        has(enabled[0], Shelf::Images),
-        has(enabled[1], Shelf::Texts),
-        has(enabled[2], Shelf::Links),
-    ];
     rope_count_of(enabled, present)
 }
 
@@ -342,30 +354,31 @@ fn place(app: &AppHandle, w: &WebviewWindow, point: (i32, i32)) {
         .map(|m| m.scale_factor())
         .unwrap_or(1.0);
     let ropes = rope_count(app);
-    let size = app.state::<AppState>().settings().line_size;
-    let (x, y, width, height) = line_rect(work, scale, ropes, &size);
+    let s = app.state::<AppState>().settings();
+    let (x, y, width, height) = line_rect(work, scale, ropes, &s.line_size, &s.line_edge);
     // Position first: moving to a monitor with another DPI may resize the window.
     let _ = w.set_position(PhysicalPosition::new(x, y));
     let _ = w.set_size(PhysicalSize::new(width as u32, height as u32));
 }
 
-/// Re-fit the height of the (placed) window to the ropes and size now, keeping its x, y and
-/// width. Used for a peek that arrives while the line is already up and when the size changes.
+/// Re-fit the (placed) window to the ropes, size and edge now, on the monitor it is on. Used for
+/// a peek that arrives while the line is already up and when the size or edge changes.
 #[cfg(windows)]
 fn resize(app: &AppHandle, w: &WebviewWindow, s: &fc_core::settings::Settings) {
     let (Ok(pos), Ok(cur)) = (w.outer_position(), w.outer_size()) else {
         return;
     };
     let scale = w.scale_factor().unwrap_or(1.0);
-    let work_h = crate::platform::win::work_area_at(pos.x, pos.y).map(|(_, t, _, b)| b - t);
-    let height = fit_height(
-        rope_count_with(app, &s.line_ropes),
-        &s.line_size,
-        scale,
-        work_h,
-    );
-    if height != cur.height as i32 {
-        let _ = w.set_size(PhysicalSize::new(cur.width, height as u32));
+    let Some(work) = crate::platform::win::work_area_at(pos.x, pos.y) else {
+        return;
+    };
+    let ropes = rope_count_with(app, &s.line_ropes);
+    let (x, y, width, height) = line_rect(work, scale, ropes, &s.line_size, &s.line_edge);
+    if (x, y) != (pos.x, pos.y) {
+        let _ = w.set_position(PhysicalPosition::new(x, y));
+    }
+    if (width, height) != (cur.width as i32, cur.height as i32) {
+        let _ = w.set_size(PhysicalSize::new(width as u32, height as u32));
     }
 }
 
@@ -403,9 +416,7 @@ pub fn refit(app: &AppHandle) {
 fn remember_foreground(app: &AppHandle, force: bool) {
     use crate::platform::win;
     let fg = win::foreground_window();
-    let usable = fg != 0
-        && !win::is_own_window(fg)
-        && !crate::shelf::is_taskbar_class(&win::window_class(fg));
+    let usable = fg != 0 && !win::is_own_window(fg) && !is_taskbar_class(&win::window_class(fg));
     if usable || force {
         app.state::<AppState>()
             .line_prev
@@ -621,12 +632,13 @@ pub fn edge_enter(app: &AppHandle, x: i32, y: i32) {
     if !(s.line_enabled && s.line_edge_reveal) {
         return;
     }
+    let wait = dwell(s.line_reveal_dwell_ms);
     let armed = DWELL_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     let app = app.clone();
     let _ = std::thread::Builder::new()
         .name("fc-line-dwell".into())
         .spawn(move || {
-            std::thread::sleep(DWELL);
+            std::thread::sleep(wait);
             if DWELL_GEN.load(Ordering::SeqCst) != armed {
                 return;
             }
@@ -649,6 +661,88 @@ pub fn edge_leave() {
     DWELL_GEN.fetch_add(1, Ordering::SeqCst);
 }
 
+const VK_CONTROL: u16 = 0x11;
+const VK_V: u16 = 0x56;
+/// Left/right Shift, left/right Alt, left/right Win: still held, they turn our Ctrl+V into
+/// Ctrl+Shift+V, Ctrl+Alt+V (our own line hotkey, Paste Special in Word) or a Win shortcut.
+const PASTE_BLOCKERS: [u16; 6] = [0xA0, 0xA1, 0xA4, 0xA5, 0x5B, 0x5C];
+/// An unassigned virtual key. Pressed before a lone Alt or Win key-up so the target app does not
+/// open its menu bar (or Windows the Start menu).
+const VK_MASK: u16 = 0xE8;
+/// How long the user gets to let go of Shift/Alt/Win before their key-ups are injected.
+const RELEASE_WAIT: std::time::Duration = std::time::Duration::from_millis(300);
+
+fn is_alt_or_win(vk: u16) -> bool {
+    matches!(vk, 0xA4 | 0xA5 | 0x5B | 0x5C)
+}
+
+/// The masking key press, needed when Alt or Win is among `held`.
+fn mask_strokes(held: &[u16]) -> Vec<(u16, bool)> {
+    if held.iter().any(|&k| is_alt_or_win(k)) {
+        vec![(VK_MASK, false), (VK_MASK, true)]
+    } else {
+        Vec::new()
+    }
+}
+
+/// Keystrokes `(virtual key, key up)` for the paste into the previous app: key-ups for the paste
+/// blockers in `held` (after a masking key when Alt or Win is among them), then Ctrl+V. When the
+/// user still holds Ctrl (Ctrl+Enter in the line), Ctrl is left alone and only V is typed.
+fn paste_sequence(held: &[u16], ctrl_held: bool) -> Vec<(u16, bool)> {
+    let held: Vec<u16> = held
+        .iter()
+        .copied()
+        .filter(|k| PASTE_BLOCKERS.contains(k))
+        .collect();
+    let mut out = mask_strokes(&held);
+    out.extend(held.iter().map(|&k| (k, true)));
+    if !ctrl_held {
+        out.push((VK_CONTROL, false));
+    }
+    out.extend([(VK_V, false), (VK_V, true)]);
+    if !ctrl_held {
+        out.push((VK_CONTROL, true));
+    }
+    out
+}
+
+/// Shell chrome that takes focus when the line is opened from the tray (the taskbar, the
+/// hidden-icons flyout): pasting "back" into it is meaningless, so it counts as no window.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn is_taskbar_class(class: &str) -> bool {
+    matches!(
+        class,
+        "Shell_TrayWnd"
+            | "Shell_SecondaryTrayWnd"
+            | "NotifyIconOverflowWindow"
+            | "TopLevelWindowForOverflowXamlIsland"
+    )
+}
+
+/// Bring `prev` (an HWND, 0 = none) to the front and type Ctrl+V into it. Used by the
+/// clothesline; the caller hides its own window first.
+pub fn paste_keys_into(prev: isize) {
+    #[cfg(not(windows))]
+    let _ = prev;
+    #[cfg(windows)]
+    {
+        use crate::platform::win;
+        if prev != 0 && win::is_window(prev) && win::set_foreground(prev) {
+            std::thread::sleep(std::time::Duration::from_millis(60));
+            // Mask right away: Alt or Win released by hand while we wait must not open a menu.
+            win::send_keys(&mask_strokes(&win::keys_down(&PASTE_BLOCKERS)));
+            let deadline = std::time::Instant::now() + RELEASE_WAIT;
+            let mut held = win::keys_down(&PASTE_BLOCKERS);
+            while !held.is_empty() && std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(15));
+                held = win::keys_down(&PASTE_BLOCKERS);
+            }
+            let ctrl_held = !win::keys_down(&[VK_CONTROL]).is_empty();
+            win::send_keys(&paste_sequence(&held, ctrl_held));
+        }
+    }
+}
+
 // ---------------------------------------------------------------- commands' work
 
 /// `line_paste`: copy the items, hide the line and paste into the window it came from.
@@ -656,7 +750,7 @@ pub fn paste(app: &AppHandle, ids: &[u64]) -> CmdResult<()> {
     crate::ipc::clipboard::copy_items(&app.state::<AppState>(), ids)?;
     hide(app);
     let prev = app.state::<AppState>().line_prev.load(Ordering::SeqCst);
-    crate::shelf::paste_keys_into(prev);
+    paste_keys_into(prev);
     Ok(())
 }
 
@@ -678,7 +772,19 @@ pub fn open_item(app: &AppHandle, id: u64) {
 /// drag runs on the main (UI) thread, which blocks inside `SHDoDragDrop` until then.
 pub async fn drag_out(app: &AppHandle, id: u64) -> CmdResult<()> {
     let item = crate::ipc::clipboard::find(&app.state::<AppState>(), id)?;
-    let plan = drag_plan(&item);
+    run_drag(app, drag_plan(&item)).await
+}
+
+/// `line_file_drag_out`: the same drag for a file of the files rope.
+pub async fn drag_out_file(app: &AppHandle, path: PathBuf) -> CmdResult<()> {
+    if !path.is_file() {
+        crate::files::forget_missing(app);
+        return Err(CmdError::new("notFound", "the file is gone"));
+    }
+    run_drag(app, DragPlan::File(path)).await
+}
+
+async fn run_drag(app: &AppHandle, plan: DragPlan) -> CmdResult<()> {
     if plan == DragPlan::Nothing {
         return Err(CmdError::new("notFound", "nothing to drag"));
     }
@@ -710,6 +816,55 @@ pub async fn drag_out(app: &AppHandle, id: u64) -> CmdResult<()> {
             .map_err(|e| CmdError::new("failed", e.to_string()))?
             .map_err(|e| CmdError::new("drag", e))
     }
+}
+
+/// The existing files of `paths`; `notFound` (and the rope forgets them) when none exists.
+fn existing_files(app: &AppHandle, paths: &[String]) -> CmdResult<Vec<PathBuf>> {
+    let found: Vec<PathBuf> = paths
+        .iter()
+        .map(PathBuf::from)
+        .filter(|p| p.exists())
+        .collect();
+    if found.len() < paths.len() {
+        crate::files::forget_missing(app);
+    }
+    if found.is_empty() {
+        return Err(CmdError::new("notFound", "the file is gone"));
+    }
+    Ok(found)
+}
+
+/// `line_file_copy`: the files as a file list on the clipboard (copy). Our own write is not
+/// recorded as a new clip.
+pub fn copy_files(app: &AppHandle, paths: &[String]) -> CmdResult<()> {
+    let files = existing_files(app, paths)?;
+    match crate::platform::clipboard::write_files(&files) {
+        Ok(seq) => {
+            app.state::<AppState>()
+                .clip_self_write
+                .store(seq, Ordering::SeqCst);
+            Ok(())
+        }
+        Err(e) => Err(CmdError::new("clipboard", e)),
+    }
+}
+
+/// `line_file_open`: the file in its default app.
+pub fn open_file(app: &AppHandle, path: &str) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    existing_files(app, &[path.to_string()])?;
+    app.opener()
+        .open_path(path, None::<&str>)
+        .map_err(|e| CmdError::new("io", e.to_string()))
+}
+
+/// `line_file_reveal`: the file selected in Explorer.
+pub fn reveal_file(app: &AppHandle, path: &str) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    existing_files(app, &[path.to_string()])?;
+    app.opener()
+        .reveal_item_in_dir(path)
+        .map_err(|e| CmdError::new("io", e.to_string()))
 }
 
 /// `open_url`: web links only.
@@ -792,15 +947,51 @@ mod tests {
     #[test]
     fn line_rect_spans_work_area() {
         let m = "medium";
-        assert_eq!(line_rect((0, 0, 1920, 1040), 1.0, 3, m), (24, 0, 1872, 570));
-        assert_eq!(line_rect((0, 0, 2880, 1560), 1.5, 2, m), (36, 0, 2808, 570));
+        assert_eq!(
+            line_rect((0, 0, 1920, 1040), 1.0, 3, m, "top"),
+            (0, 0, 1920, 570)
+        );
+        assert_eq!(
+            line_rect((0, 0, 2880, 1560), 1.5, 2, m, "top"),
+            (0, 0, 2880, 570)
+        );
         // Second monitor below a top taskbar; no ropes still gives one rope's height.
         assert_eq!(
-            line_rect((1920, 40, 3840, 1080), 1.0, 0, m),
-            (1944, 40, 1872, 190)
+            line_rect((1920, 40, 3840, 1080), 1.0, 0, m, "top"),
+            (1920, 40, 1920, 190)
         );
         // Never taller than the work area.
-        assert_eq!(line_rect((0, 0, 800, 300), 1.0, 3, m).3, 300);
+        assert_eq!(line_rect((0, 0, 800, 300), 1.0, 3, m, "top").3, 300);
+    }
+
+    #[test]
+    fn line_rect_bottom_edge() {
+        // Above the taskbar: the work area ends at 1040, the window sits on its bottom.
+        assert_eq!(
+            line_rect((0, 0, 1920, 1040), 1.0, 3, "medium", "bottom"),
+            (0, 470, 1920, 570)
+        );
+        // A clamped window fills the work area from its top.
+        assert_eq!(
+            line_rect((0, 40, 800, 340), 1.0, 3, "medium", "bottom"),
+            (0, 40, 800, 300)
+        );
+        // An unknown edge is the top.
+        assert_eq!(line_rect((0, 0, 1920, 1040), 1.0, 3, "medium", "left").1, 0);
+    }
+
+    #[test]
+    fn fit_height_clamps_4_large() {
+        assert_eq!(window_height(4, "large"), 936.0);
+        assert_eq!(fit_height(4, "large", 1.0, Some(900)), 900);
+        assert_eq!(fit_height(4, "large", 1.0, Some(1040)), 936);
+        assert_eq!(line_rect((0, 0, 1600, 900), 1.0, 4, "large", "top").3, 900);
+    }
+
+    #[test]
+    fn dwell_comes_from_the_setting() {
+        assert_eq!(dwell(350), Duration::from_millis(350));
+        assert_eq!(dwell(150), Duration::from_millis(150));
     }
 
     #[test]
@@ -851,11 +1042,14 @@ mod tests {
     #[test]
     fn rope_count_from_ropes_and_clips() {
         // Enabled and non-empty only; never fewer than one (the empty message).
-        assert_eq!(rope_count_of([true; 3], [true; 3]), 3);
-        assert_eq!(rope_count_of([true; 3], [true, false, true]), 2);
-        assert_eq!(rope_count_of([true, false, true], [true, true, false]), 1);
-        assert_eq!(rope_count_of([true; 3], [false; 3]), 1);
-        assert_eq!(rope_count_of([false; 3], [true; 3]), 1);
+        assert_eq!(rope_count_of([true; 4], [true; 4]), 4);
+        assert_eq!(rope_count_of([true; 4], [true, false, true, true]), 3);
+        assert_eq!(
+            rope_count_of([true, false, true, true], [true, true, false, false]),
+            1
+        );
+        assert_eq!(rope_count_of([true; 4], [false; 4]), 1);
+        assert_eq!(rope_count_of([false; 4], [true; 4]), 1);
     }
 
     #[test]
@@ -961,5 +1155,53 @@ mod tests {
         assert!(!is_web_url(r"C:\Windows\notepad.exe"));
         assert!(!is_web_url("https://a.com b"));
         assert!(!is_web_url(""));
+    }
+}
+
+#[cfg(test)]
+mod paste_tests {
+    use super::{is_taskbar_class, paste_sequence};
+
+    #[test]
+    fn taskbar_windows_are_not_a_paste_target() {
+        for c in [
+            "Shell_TrayWnd",
+            "NotifyIconOverflowWindow",
+            "TopLevelWindowForOverflowXamlIsland",
+        ] {
+            assert!(is_taskbar_class(c), "{c}");
+        }
+        assert!(!is_taskbar_class("Notepad"));
+        assert!(!is_taskbar_class("Chrome_WidgetWin_1"));
+    }
+
+    #[test]
+    fn paste_releases_held_modifiers_first() {
+        const MASK: u16 = 0xE8;
+        let ctrl_v = |held_ctrl: bool| {
+            if held_ctrl {
+                vec![(0x56, false), (0x56, true)]
+            } else {
+                vec![(0x11, false), (0x56, false), (0x56, true), (0x11, true)]
+            }
+        };
+        // Nothing held: plain Ctrl+V.
+        assert_eq!(paste_sequence(&[], false), ctrl_v(false));
+        // Ctrl still held (Ctrl+Enter in the line): only V, Ctrl stays as the user holds it.
+        assert_eq!(paste_sequence(&[], true), ctrl_v(true));
+        // Shift held: released first, no mask needed.
+        let mut want = vec![(0xA0, true)];
+        want.extend(ctrl_v(true));
+        assert_eq!(paste_sequence(&[0xA0], true), want);
+        // Ctrl+Alt held after Ctrl+Alt+V, Enter: a masking key, then Alt up, then V.
+        let mut want = vec![(MASK, false), (MASK, true), (0xA4, true)];
+        want.extend(ctrl_v(true));
+        assert_eq!(paste_sequence(&[0xA4], true), want);
+        // Right Win + right Shift: masked (Start menu), both released.
+        let mut want = vec![(MASK, false), (MASK, true), (0xA1, true), (0x5C, true)];
+        want.extend(ctrl_v(false));
+        assert_eq!(paste_sequence(&[0xA1, 0x5C], false), want);
+        // Keys that are not paste blockers are ignored.
+        assert_eq!(paste_sequence(&[0x41], false), ctrl_v(false));
     }
 }

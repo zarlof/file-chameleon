@@ -97,6 +97,44 @@ pub fn wheel_thumbnail(path: &str) -> Option<String> {
     png_data_url(&img.thumbnail(THUMB_SIDE, THUMB_SIDE)).ok()
 }
 
+/// Make the files-rope thumbnail of `src` (longest side `side`, never upscaled) at `dst`, as a
+/// PNG. Only raster images up to `THUMB_MAX_BYTES` and `THUMB_MAX_PIXELS` get one; returns
+/// whether `dst` now exists. Written through a temp file so a half-written PNG is never served.
+pub fn write_file_thumbnail(src: &Path, dst: &Path, side: u32) -> bool {
+    if formats::detect_path(src).map(|f| f.kind) != Some(Kind::Image) {
+        return false;
+    }
+    let ok = (|| {
+        let meta = std::fs::metadata(src).ok()?;
+        if !meta.is_file() || meta.len() > THUMB_MAX_BYTES {
+            return None;
+        }
+        let (w, h) = ImageReader::open(src)
+            .ok()?
+            .with_guessed_format()
+            .ok()?
+            .into_dimensions()
+            .ok()?;
+        if u64::from(w) * u64::from(h) > THUMB_MAX_PIXELS {
+            return None;
+        }
+        let img = open_image(src).ok()?.thumbnail(side, side);
+        if let Some(dir) = dst.parent() {
+            std::fs::create_dir_all(dir).ok()?;
+        }
+        let tmp = dst.with_extension("png.tmp");
+        let saved = img
+            .to_rgba8()
+            .save_with_format(&tmp, image::ImageFormat::Png);
+        if saved.is_err() || std::fs::rename(&tmp, dst).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+            return None;
+        }
+        Some(())
+    })();
+    ok.is_some()
+}
+
 /// Editor: the image at `path` as a PNG data URL, longest side ≤ `max_side` (≤ 8192).
 /// Async: decodes and encodes the image.
 #[tauri::command]

@@ -5,6 +5,7 @@ use crate::events;
 use fc_core::clip::ClipStore;
 use fc_core::engine_mgr::{EngineManager, Manifest};
 use fc_core::engines::DefaultExecutor;
+use fc_core::files::FileStore;
 use fc_core::jobs::queue::JobQueue;
 use fc_core::presets::WheelConfig;
 use fc_core::settings::Settings;
@@ -44,6 +45,10 @@ impl Paths {
     pub fn staging_dir(&self) -> PathBuf {
         self.data.join("staging")
     }
+    /// Cached 256 px thumbnails of the files rope (`<hash>.png`).
+    pub fn files_thumbs_dir(&self) -> PathBuf {
+        self.data.join("files-thumbs")
+    }
     /// Presets, groups and wheel profiles (Task 6).
     pub fn wheel_file(&self) -> PathBuf {
         self.config.join("wheel.json")
@@ -59,6 +64,8 @@ pub struct AppState {
     engines: OnceLock<Arc<EngineManager>>,
     jobs: OnceLock<JobQueue>,
     clips: OnceLock<Mutex<ClipStore>>,
+    /// The files rope's list (`files.json`), loaded on first use.
+    files: OnceLock<Mutex<FileStore>>,
     pub downloads: crate::ipc::downloads::Downloads,
     /// Clipboard capture paused from the tray or the Clipboard view.
     pub clip_paused: AtomicBool,
@@ -67,10 +74,9 @@ pub struct AppState {
     toast_seq: AtomicU64,
     /// Wheel config (`wheel.json`), loaded on first use (Task 6).
     wheel: OnceLock<Mutex<WheelConfig>>,
-    // ---- clipboard v2 and shelf (Task 9)
-    /// Foreground window (HWND as isize, 0 = none) when the shelf was opened; `shelf_paste` pastes there.
-    pub shelf_prev: AtomicIsize,
-    /// Same for the clothesline (`line_paste` pastes there).
+    // ---- clipboard v2 (Task 9)
+    /// Foreground window (HWND as isize, 0 = none) when the clothesline was opened; `line_paste`
+    /// pastes there.
     pub line_prev: AtomicIsize,
     /// Watcher of `clipboard_watch_folders` (only while some are set and the clipboard is on).
     pub clip_watcher: Mutex<Option<fc_core::watch::Watcher>>,
@@ -99,12 +105,12 @@ impl AppState {
             engines: OnceLock::new(),
             jobs: OnceLock::new(),
             clips: OnceLock::new(),
+            files: OnceLock::new(),
             downloads: Default::default(),
             clip_paused: AtomicBool::new(paused),
             clip_self_write: AtomicU32::new(0),
             toast_seq: AtomicU64::new(1),
             wheel: OnceLock::new(),
-            shelf_prev: AtomicIsize::new(0),
             line_prev: AtomicIsize::new(0),
             clip_watcher: Mutex::new(None),
             watch: Default::default(),
@@ -188,6 +194,15 @@ impl AppState {
                 &fc_core::clip::Retention::from_settings(&s),
             );
             Mutex::new(store)
+        })
+    }
+
+    /// The files rope's store. A broken or missing `files.json` is an empty list.
+    pub fn files(&self) -> &Mutex<FileStore> {
+        self.files.get_or_init(|| {
+            Mutex::new(FileStore::open(&self.paths.data).unwrap_or_else(|_| {
+                FileStore::open(&self.paths.data.join("files-fallback")).expect("files store")
+            }))
         })
     }
 

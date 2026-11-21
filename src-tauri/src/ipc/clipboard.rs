@@ -1,4 +1,4 @@
-//! Clipboard, shelf and hotkey commands (v2). OWNER: Task 9. Mirrored by `src/lib/ipc.ts`.
+//! Clipboard and hotkey commands (v2). OWNER: Task 9. Mirrored by `src/lib/ipc.ts`.
 //!
 //! Single-item changes emit `clip://updated` (the item), bulk changes `clip://changed`, so the
 //! main window and the shelf stay in sync whichever one made the change.
@@ -443,30 +443,7 @@ pub fn clip_get_paused(state: State<'_, AppState>) -> bool {
     state.clip_paused.load(Ordering::SeqCst)
 }
 
-// ---------------------------------------------------------------- shelf and hotkeys
-
-/// Async: the first call creates the shelf webview.
-#[tauri::command(async)]
-pub fn show_shelf(app: AppHandle) {
-    crate::shelf::show_shelf(&app);
-}
-
-#[tauri::command(async)]
-pub fn shelf_hide(app: AppHandle) {
-    crate::shelf::hide(&app);
-}
-
-/// Copy the items, hide the shelf and paste (Ctrl+V) into the app that was active before; when
-/// that app is gone the items just stay on the clipboard.
-#[tauri::command]
-pub async fn shelf_paste(app: AppHandle, ids: Vec<u64>) -> CmdResult<()> {
-    super::blocking(move || {
-        copy_items(&app.state::<AppState>(), &ids)?;
-        crate::shelf::paste_into_previous(&app);
-        Ok(())
-    })
-    .await?
-}
+// ---------------------------------------------------------------- hotkeys
 
 /// Async: waits (at most 0.5 s) for a re-registration that is still running.
 #[tauri::command(async)]

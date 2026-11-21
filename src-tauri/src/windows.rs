@@ -447,6 +447,12 @@ pub fn wheel_close(app: &AppHandle) {
 /// Build the slots for `paths` off the main thread (file checks for every preset) and send
 /// them, then the first file's thumbnail when it is an image, to wheel `wheel_id`.
 fn send_slots(app: &AppHandle, wheel_id: u64, paths: Vec<String>, shift: bool, click: bool) {
+    // Files that reach the wheel (Ctrl+drag, the Explorer verb) join the files rope.
+    crate::files::record(
+        app,
+        paths.iter().map(std::path::PathBuf::from).collect(),
+        fc_core::files::FileSource::Added,
+    );
     let app = app.clone();
     std::thread::spawn(move || {
         let first = paths.first().cloned();

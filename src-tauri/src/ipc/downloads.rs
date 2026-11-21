@@ -291,6 +291,11 @@ fn run(app: AppHandle, id: u64, req: DownloadRequest, uses_ytdlp: bool, cancel: 
                 s.title = title.clone();
                 s.output = Some(path.clone());
             });
+            crate::files::record(
+                &app,
+                vec![path.clone()],
+                fc_core::files::FileSource::Downloaded,
+            );
             if !windows::main_is_active(&app) {
                 // Runs on the main thread (show_toast dispatches there itself).
                 windows::show_toast(

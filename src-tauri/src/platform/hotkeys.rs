@@ -2,8 +2,8 @@
 //!
 //! One thread owns the hotkeys and runs a message loop: `WM_HOTKEY` only sends the action to a
 //! second thread (so the loop never blocks), `WM_APP` re-registers after a settings change.
-//! Hotkeys: 1 = clipboard shelf, 2 = clipboard library, 3 = download the copied link, 4 = clothesline, 5 = clothesline search, 6 = screen capture,
-//! 7 = copy the latest image.
+//! Hotkeys: 1 = clipboard library, 2 = download the copied link, 3 = clothesline, 4 = clothesline
+//! search, 5 = screen capture, 6 = copy the latest image. (The shelf hotkey is gone since wave 3.)
 //! A combination another app already owns (or one Windows reserves) is reported as `ok: false`
 //! by [`status`]; the app keeps running.
 
@@ -19,7 +19,7 @@ pub const MOD_WIN: u32 = 0x8;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HotkeyStatus {
-    /// "shelf" | "library" | "downloadLink" | "line" | "lineSearch" | "capture" | "copyLatestImage"
+    /// "library" | "downloadLink" | "line" | "lineSearch" | "capture" | "copyLatestImage"
     pub name: String,
     pub keys: String,
     /// false = could not register (another app owns it, or invalid). An empty (off) hotkey is ok.
@@ -27,8 +27,7 @@ pub struct HotkeyStatus {
 }
 
 /// Hotkey names in id order (id = index + 1).
-const NAMES: [&str; 7] = [
-    "shelf",
+const NAMES: [&str; 6] = [
     "library",
     "downloadLink",
     "line",
@@ -112,11 +111,10 @@ pub fn parse_hotkey(s: &str) -> Option<(u32, u32)> {
     (mods & !MOD_SHIFT != 0 || f_key).then_some((mods, vk))
 }
 
-/// Keys to register in id order, each with whether it is active: the shelf and library hotkeys
-/// are not registered while the clipboard is off (the download-link hotkey still works).
-fn wanted_hotkeys(s: &fc_core::settings::Settings) -> [(String, bool); 7] {
+/// Keys to register in id order, each with whether it is active: the library, capture and copy
+/// hotkeys are not registered while the clipboard is off (the download-link hotkey still works).
+fn wanted_hotkeys(s: &fc_core::settings::Settings) -> [(String, bool); 6] {
     [
-        (s.hotkey_shelf.clone(), s.clipboard_enabled),
         (s.hotkey_library.clone(), s.clipboard_enabled),
         (s.hotkey_download_link.clone(), true),
         (s.hotkey_line.clone(), s.line_enabled),
@@ -165,7 +163,7 @@ mod imp {
 
     struct Shared {
         /// Wanted key strings in id order, with whether each is active.
-        wanted: [(String, bool); 7],
+        wanted: [(String, bool); 6],
         wanted_gen: u64,
         done_gen: u64,
         status: Vec<HotkeyStatus>,
@@ -173,7 +171,6 @@ mod imp {
 
     static SHARED: Mutex<Shared> = Mutex::new(Shared {
         wanted: [
-            (String::new(), false),
             (String::new(), false),
             (String::new(), false),
             (String::new(), false),
@@ -192,7 +189,7 @@ mod imp {
         SHARED.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    pub fn configure(app: &AppHandle, wanted: [(String, bool); 7]) {
+    pub fn configure(app: &AppHandle, wanted: [(String, bool); 6]) {
         {
             let mut s = shared();
             s.wanted = wanted;
@@ -218,7 +215,6 @@ mod imp {
 
     #[derive(Clone, Copy)]
     enum Action {
-        Shelf,
         Library,
         DownloadLink,
         Line,
@@ -262,13 +258,12 @@ mod imp {
             match msg.message {
                 WM_HOTKEY => {
                     let action = match msg.wParam.0 {
-                        1 => Action::Shelf,
-                        2 => Action::Library,
-                        3 => Action::DownloadLink,
-                        4 => Action::Line,
-                        5 => Action::LineSearch,
-                        6 => Action::Capture,
-                        7 => Action::CopyLatestImage,
+                        1 => Action::Library,
+                        2 => Action::DownloadLink,
+                        3 => Action::Line,
+                        4 => Action::LineSearch,
+                        5 => Action::Capture,
+                        6 => Action::CopyLatestImage,
                         _ => continue,
                     };
                     let _ = tx.send(action);
@@ -316,7 +311,6 @@ mod imp {
 
     fn run(app: &AppHandle, action: Action) {
         match action {
-            Action::Shelf => crate::shelf::toggle(app),
             Action::Library => crate::windows::show_main(
                 app,
                 Some(NavPayload {
@@ -393,7 +387,6 @@ mod tests {
             wanted_hotkeys(&s),
             [
                 (String::new(), true),
-                (String::new(), true),
                 ("Ctrl+Alt+D".to_string(), true),
                 ("Ctrl+Alt+L".to_string(), true),
                 ("Ctrl+Alt+F".to_string(), true),
@@ -406,7 +399,6 @@ mod tests {
         assert_eq!(
             wanted_hotkeys(&s),
             [
-                (String::new(), false),
                 ("Ctrl+Alt+L".to_string(), false),
                 ("Ctrl+Alt+D".to_string(), true),
                 ("Ctrl+Alt+L".to_string(), true),
@@ -417,7 +409,19 @@ mod tests {
         );
         // The clothesline hotkey follows its own switch, not the clipboard's.
         s.line_enabled = false;
-        assert_eq!(wanted_hotkeys(&s)[3], ("Ctrl+Alt+L".to_string(), false));
+        assert_eq!(wanted_hotkeys(&s)[2], ("Ctrl+Alt+L".to_string(), false));
+    }
+
+    #[test]
+    fn shelf_hotkey_not_registered() {
+        assert!(!NAMES.contains(&"shelf"));
+        assert_eq!(NAMES.len(), 6);
+        // A leftover shelf hotkey in old settings registers nothing.
+        let s = fc_core::settings::Settings {
+            hotkey_shelf: "Ctrl+1".into(),
+            ..Default::default()
+        };
+        assert!(wanted_hotkeys(&s).iter().all(|(k, _)| k != "Ctrl+1"));
     }
 
     #[test]
@@ -426,7 +430,7 @@ mod tests {
             super::parse_hotkey("Ctrl+Alt+L"),
             Some((MOD_CONTROL | MOD_ALT, 0x4c))
         );
-        assert_eq!(NAMES[3], "line");
+        assert_eq!(NAMES[2], "line");
     }
 
     #[test]
@@ -435,7 +439,7 @@ mod tests {
             super::parse_hotkey("Ctrl+Alt+F"),
             Some((MOD_CONTROL | MOD_ALT, 0x46))
         );
-        assert_eq!(&NAMES[4..], ["lineSearch", "capture", "copyLatestImage"]);
+        assert_eq!(&NAMES[3..], ["lineSearch", "capture", "copyLatestImage"]);
     }
 
     #[cfg(windows)]

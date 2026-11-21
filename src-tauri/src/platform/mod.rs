@@ -55,7 +55,7 @@ fn configure_hooks(app: &AppHandle, s: &Settings) {
         if edge {
             hook::set_monitors(&win::monitors(), win::display_signature());
         }
-        hook::set_line_edge(edge);
+        hook::set_line_edge(edge, s.line_edge == "bottom");
         if s.wheel_enabled || edge {
             ensure_hooks(app);
         }
@@ -143,6 +143,7 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
         || old.wheel_flip_tab != new.wheel_flip_tab
         || old.line_enabled != new.line_enabled
         || old.line_edge_reveal != new.line_edge_reveal
+        || old.line_edge != new.line_edge
     {
         configure_hooks(app, &new);
     }
@@ -172,8 +173,7 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
         clipboard::prune(app, &new);
     }
     // Clipboard v2 (Task 9).
-    if old.hotkey_shelf != new.hotkey_shelf
-        || old.hotkey_library != new.hotkey_library
+    if old.hotkey_library != new.hotkey_library
         || old.hotkey_download_link != new.hotkey_download_link
         || old.hotkey_line != new.hotkey_line
         || old.hotkey_line_search != new.hotkey_line_search
@@ -189,7 +189,10 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
         crate::line::destroy(app);
     }
     // The window is resized when the size setting changes while it is up.
-    if old.line_size != new.line_size || old.line_ropes != new.line_ropes {
+    if old.line_size != new.line_size
+        || old.line_ropes != new.line_ropes
+        || old.line_edge != new.line_edge
+    {
         crate::line::apply_size(app, &new);
     }
     // Link titles just turned on: catch up on thumbnails of existing YouTube links.
@@ -227,7 +230,7 @@ pub fn system_language() -> String {
     "en".into()
 }
 
-/// Is the pointer in the clothesline's top-edge reveal zone (as of the last mouse move)?
+/// Is the pointer in the clothesline's edge reveal zone (as of the last mouse move)?
 pub fn hook_pointer_in_zone() -> bool {
     #[cfg(windows)]
     return hook::pointer_in_zone();

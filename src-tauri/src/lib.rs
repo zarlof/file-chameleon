@@ -3,12 +3,12 @@
 //! kept tiny (overlay), to keep memory low.
 
 mod events;
+mod files;
 mod float;
 mod hang;
 mod ipc;
 mod line;
 mod platform;
-mod shelf;
 mod state;
 mod tray;
 mod watchfolders;
@@ -51,6 +51,13 @@ pub fn run() {
         .setup(move |app| {
             let handle = app.handle().clone();
             let state = state::AppState::init(&handle)?;
+            // The files rope's thumbnails are shown through the asset protocol; the static
+            // scope pattern never matches a Windows path, so allow the folder itself.
+            let thumbs = state.paths.files_thumbs_dir();
+            let _ = std::fs::create_dir_all(&thumbs);
+            if let Err(e) = app.asset_protocol_scope().allow_directory(&thumbs, true) {
+                eprintln!("asset scope for files thumbs: {e}");
+            }
             app.manage(state);
             tray::create(&handle)?;
             windows::create_overlay(&handle)?;
@@ -94,7 +101,7 @@ pub fn run() {
             ipc::downloads::start_download,
             ipc::downloads::cancel_download,
             ipc::downloads::list_downloads,
-            // Clipboard v2, shelf and hotkeys (Task 9).
+            // Clipboard v2 and hotkeys (Task 9).
             ipc::clipboard::clip_list,
             ipc::clipboard::clip_get,
             ipc::clipboard::clip_set_field,
@@ -120,9 +127,6 @@ pub fn run() {
             ipc::clipboard::clip_stats,
             ipc::clipboard::clip_set_paused,
             ipc::clipboard::clip_get_paused,
-            ipc::clipboard::show_shelf,
-            ipc::clipboard::shelf_hide,
-            ipc::clipboard::shelf_paste,
             ipc::clipboard::hotkey_status,
             ipc::reveal_path,
             ipc::open_path,
@@ -137,6 +141,12 @@ pub fn run() {
             ipc::line::line_drag_out,
             ipc::line::line_open_item,
             ipc::line::line_paste,
+            ipc::line::line_files,
+            ipc::line::line_file_copy,
+            ipc::line::line_file_open,
+            ipc::line::line_file_reveal,
+            ipc::line::line_file_remove,
+            ipc::line::line_file_drag_out,
             ipc::line::open_url,
             ipc::line::float_open,
             ipc::overlay_hide,

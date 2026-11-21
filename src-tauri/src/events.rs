@@ -23,13 +23,13 @@ pub const OVERLAY_TOAST: &str = "overlay://toast";
 /// Overlay: hide everything.
 pub const OVERLAY_HIDE: &str = "overlay://hide";
 
-// ---- clipboard v2 and shelf (Task 9)
+// ---- clipboard v2 (Task 9)
 /// One clipboard item changed (OCR done, link title, edit, field): payload `ClipItem`.
 pub const CLIP_UPDATED: &str = "clip://updated";
 /// Bulk clipboard change (trash, restore, pins, folders, tags, retention): no payload, refetch.
 pub const CLIP_CHANGED: &str = "clip://changed";
-/// Shelf window: it was just shown (no payload).
-pub const SHELF_OPEN: &str = "shelf://open";
+/// The files rope changed (recorded, removed, pruned, thumbnails made): no payload, refetch.
+pub const FILES_CHANGED: &str = "files://changed";
 
 // ---- clothesline
 /// Line window: it was shown (`LineShow`).

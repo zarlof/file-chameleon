@@ -52,7 +52,7 @@ pub enum HookEvent {
     Displays,
 }
 
-/// Height of the reveal zone at the top of a monitor, in physical pixels.
+/// Height of the reveal zone at the top (or bottom) of a monitor, in physical pixels.
 const EDGE_PX: i32 = 2;
 /// The zone spans the middle 60 % of the monitor's width (20 % to 80 %).
 const EDGE_FROM: i32 = 20;
@@ -60,16 +60,22 @@ const EDGE_TO: i32 = 80;
 /// Cached monitors the hook looks at (more are ignored).
 const MAX_MONITORS: usize = 8;
 
-/// Is the point in the reveal zone of this monitor `(left, top, right, bottom)`?
-fn edge_zone_in(x: i32, y: i32, (l, t, r, _b): (i32, i32, i32, i32)) -> bool {
+/// Is the point in the reveal zone of this monitor `(left, top, right, bottom)`: its top two
+/// rows, or its bottom two when `bottom`?
+fn edge_zone_in(x: i32, y: i32, (l, t, r, b): (i32, i32, i32, i32), bottom: bool) -> bool {
     let w = r - l;
-    y >= t && y < t + EDGE_PX && x >= l + w * EDGE_FROM / 100 && x < l + w * EDGE_TO / 100
+    let rows = if bottom {
+        y >= b - EDGE_PX && y < b
+    } else {
+        y >= t && y < t + EDGE_PX
+    };
+    rows && x >= l + w * EDGE_FROM / 100 && x < l + w * EDGE_TO / 100
 }
 
 /// Is the point in the reveal zone of any of the monitors?
 #[cfg(test)]
-fn edge_zone(x: i32, y: i32, monitors: &[(i32, i32, i32, i32)]) -> bool {
-    monitors.iter().any(|&m| edge_zone_in(x, y, m))
+fn edge_zone(x: i32, y: i32, monitors: &[(i32, i32, i32, i32)], bottom: bool) -> bool {
+    monitors.iter().any(|&m| edge_zone_in(x, y, m, bottom))
 }
 
 /// One mouse-wheel gesture flips once: after a flip, wheel events are ignored until this long
@@ -113,14 +119,18 @@ static OPEN_FG: AtomicIsize = AtomicIsize::new(0);
 // Clothesline edge reveal: its own flag, the cached monitor rectangles (atomics, so the hook
 // never calls a monitor API) and the layout fingerprint they were read for.
 static LINE_EDGE: AtomicBool = AtomicBool::new(false);
+/// The reveal zone is at the bottom of the monitors instead of the top.
+static LINE_EDGE_BOTTOM: AtomicBool = AtomicBool::new(false);
 static IN_ZONE: AtomicBool = AtomicBool::new(false);
 static MON_COUNT: AtomicUsize = AtomicUsize::new(0);
 static MON_RECTS: [AtomicI32; MAX_MONITORS * 4] = [const { AtomicI32::new(0) }; MAX_MONITORS * 4];
 static DISPLAY_SIG: [AtomicI32; 5] = [const { AtomicI32::new(0) }; 5];
 
-/// Turn the edge-zone check on or off (the clothesline's "reveal at the top edge").
-pub fn set_line_edge(on: bool) {
+/// Turn the edge-zone check on or off (the clothesline's "reveal at the edge"); `bottom` puts
+/// the zone at the bottom edge instead of the top.
+pub fn set_line_edge(on: bool, bottom: bool) {
     LINE_EDGE.store(on, Relaxed);
+    LINE_EDGE_BOTTOM.store(bottom, Relaxed);
     IN_ZONE.store(false, Relaxed);
 }
 
@@ -140,6 +150,7 @@ pub fn set_monitors(rects: &[(i32, i32, i32, i32)], signature: [i32; 5]) {
 }
 
 fn in_edge_zone(x: i32, y: i32) -> bool {
+    let bottom = LINE_EDGE_BOTTOM.load(Relaxed);
     (0..MON_COUNT.load(Relaxed).min(MAX_MONITORS)).any(|i| {
         edge_zone_in(
             x,
@@ -150,6 +161,7 @@ fn in_edge_zone(x: i32, y: i32) -> bool {
                 MON_RECTS[i * 4 + 2].load(Relaxed),
                 MON_RECTS[i * 4 + 3].load(Relaxed),
             ),
+            bottom,
         )
     })
 }
@@ -635,22 +647,35 @@ mod tests {
     }
 
     #[test]
+    fn edge_zone_bottom() {
+        let m = [(0, 0, 1920, 1080)];
+        assert!(edge_zone(960, 1079, &m, true));
+        assert!(edge_zone(960, 1078, &m, true));
+        assert!(!edge_zone(960, 1077, &m, true));
+        assert!(!edge_zone(960, 0, &m, true));
+        assert!(!edge_zone(960, 1079, &m, false));
+        assert!(!edge_zone(100, 1079, &m, true));
+        // A monitor arranged lower: its own bottom row.
+        assert!(edge_zone(2880, 1279, &[(1920, 200, 3840, 1280)], true));
+    }
+
+    #[test]
     fn edge_zone_cases() {
         let m = [(0, 0, 1920, 1080)];
-        assert!(edge_zone(960, 0, &m));
-        assert!(edge_zone(960, 1, &m));
-        assert!(!edge_zone(960, 3, &m));
+        assert!(edge_zone(960, 0, &m, false));
+        assert!(edge_zone(960, 1, &m, false));
+        assert!(!edge_zone(960, 3, &m, false));
         // Outside the middle 60 %.
-        assert!(!edge_zone(100, 0, &m));
-        assert!(!edge_zone(1800, 0, &m));
+        assert!(!edge_zone(100, 0, &m, false));
+        assert!(!edge_zone(1800, 0, &m, false));
         // A second monitor to the right.
         let two = [(0, 0, 1920, 1080), (1920, 0, 3840, 1080)];
-        assert!(edge_zone(2880, 0, &two));
-        assert!(!edge_zone(1930, 0, &two));
+        assert!(edge_zone(2880, 0, &two, false));
+        assert!(!edge_zone(1930, 0, &two, false));
         // A monitor whose top is not 0 (arranged lower).
-        assert!(edge_zone(2880, 200, &[(1920, 200, 3840, 1280)]));
-        assert!(!edge_zone(2880, 0, &[(1920, 200, 3840, 1280)]));
-        assert!(!edge_zone(960, 0, &[]));
+        assert!(edge_zone(2880, 200, &[(1920, 200, 3840, 1280)], false));
+        assert!(!edge_zone(2880, 0, &[(1920, 200, 3840, 1280)], false));
+        assert!(!edge_zone(960, 0, &[], false));
     }
 
     #[test]

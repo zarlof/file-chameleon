@@ -816,6 +816,9 @@ mod imp {
         Ok(seq())
     }
 
+    /// `DROPEFFECT_COPY`, the value of the "Preferred DropEffect" format.
+    const DROPEFFECT_COPY: u32 = 1;
+
     pub fn write_files(paths: &[std::path::PathBuf]) -> Result<u32, String> {
         let names: Vec<String> = paths
             .iter()
@@ -825,6 +828,10 @@ mod imp {
             let _guard = Clipboard::new_attempts(10).map_err(|e| e.to_string())?;
             raw::set_file_list_with(&names, clipboard_win::options::DoClear)
                 .map_err(|e| e.to_string())?;
+            // Say "copy" (not "move") to the app that pastes the files.
+            if let Some(effect) = raw::register_format("Preferred DropEffect") {
+                let _ = raw::set_without_clear(effect.get(), &DROPEFFECT_COPY.to_le_bytes());
+            }
         }
         Ok(seq())
     }
