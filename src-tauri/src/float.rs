@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
-/// At most this many windows per call.
+/// At most this many float windows are open at once.
 const MAX_WINDOWS: usize = 6;
 /// Share of the work area a window may fill.
 const WORK_SHARE: f64 = 0.4;
@@ -52,6 +52,11 @@ pub fn url_encode(s: &str) -> String {
     out
 }
 
+/// How many more float windows may open when `existing` are already open.
+pub fn slots_left(existing: usize) -> usize {
+    MAX_WINDOWS.saturating_sub(existing)
+}
+
 /// Pixel size of an image file without decoding it.
 fn image_size(path: &std::path::Path) -> Option<(u32, u32)> {
     image::ImageReader::open(path)
@@ -62,13 +67,18 @@ fn image_size(path: &std::path::Path) -> Option<(u32, u32)> {
         .ok()
 }
 
-/// Open a floating window for each of the first six images in `paths` (others are skipped).
+/// Open floating windows for `paths`, up to six open in total (the rest are skipped).
 pub fn open(app: &AppHandle, paths: Vec<PathBuf>) {
     let app = app.clone();
     let spawned = std::thread::Builder::new()
         .name("fc-float".into())
         .spawn(move || {
-            for (i, path) in paths.iter().take(MAX_WINDOWS).enumerate() {
+            let existing = app
+                .webview_windows()
+                .keys()
+                .filter(|l| l.starts_with("float-"))
+                .count();
+            for (i, path) in paths.iter().take(slots_left(existing)).enumerate() {
                 if let Err(e) = open_one(&app, path, i) {
                     eprintln!("float window: {e}");
                 }
@@ -140,6 +150,14 @@ mod tests {
         // A tiny box still wins over the minimum; zero sizes do not divide by zero.
         assert_eq!(fit_size((16, 16), (100.0, 100.0)), (100, 100));
         assert_eq!(fit_size((0, 0), (100.0, 100.0)).0, 100);
+    }
+
+    #[test]
+    fn float_cap_is_total() {
+        assert_eq!(slots_left(0), 6);
+        assert_eq!(slots_left(4), 2);
+        assert_eq!(slots_left(6), 0);
+        assert_eq!(slots_left(9), 0);
     }
 
     #[test]

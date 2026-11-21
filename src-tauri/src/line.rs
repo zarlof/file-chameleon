@@ -20,7 +20,7 @@ use crate::ipc::{CmdError, CmdResult};
 use crate::state::AppState;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
@@ -110,6 +110,19 @@ pub fn terminal_dirs(paths: &[PathBuf]) -> Vec<PathBuf> {
     out
 }
 
+/// The folder argument for `wt -d`: a trailing backslash is dropped (it would escape the closing
+/// quote of `"D:\My Dir\"`), except for a drive root such as `C:\`.
+pub fn terminal_arg(dir: &Path) -> PathBuf {
+    let s = dir.to_string_lossy();
+    let trimmed = s.trim_end_matches('\\');
+    let is_root = trimmed.len() == 2 && trimmed.ends_with(':');
+    if trimmed.len() < s.len() && !is_root && !trimmed.is_empty() {
+        PathBuf::from(trimmed)
+    } else {
+        dir.to_path_buf()
+    }
+}
+
 /// What dragging a clip out of the line carries.
 #[derive(Debug, PartialEq)]
 pub enum DragPlan {
@@ -148,12 +161,30 @@ pub fn is_web_url(url: &str) -> bool {
 /// together on the first use.
 static CREATE: Mutex<()> = Mutex::new(());
 
-fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+/// The page URL for a new window: the page reads `mode` at mount and shows itself in it (the
+/// `line://show` event would fire before the page listens). Unknown modes count as a peek.
+pub fn line_url(mode: &str) -> String {
+    let mode = match mode {
+        "hotkey" | "peek" | "reveal" => mode,
+        _ => "peek",
+    };
+    format!("line.html?mode={mode}")
+}
+
+/// Hide on focus loss? Only a line that was activated (hotkey, or a click on a peek).
+pub fn should_hide_on_blur(active: bool, focused: bool) -> bool {
+    active && !focused
+}
+
+/// The line was activated (the hotkey or a click) and has not lost focus since.
+static ACTIVE: AtomicBool = AtomicBool::new(false);
+
+fn create(app: &AppHandle, mode: &str) -> tauri::Result<WebviewWindow> {
     let state = app.state::<AppState>();
     let ropes = rope_count(&state.settings());
     let work = (0, 0, 1920, 1040);
     let (_, _, w, h) = line_rect(work, 1.0, ropes);
-    WebviewWindowBuilder::new(app, LINE, WebviewUrl::App("line.html".into()))
+    WebviewWindowBuilder::new(app, LINE, WebviewUrl::App(line_url(mode).into()))
         .title("File Chameleon Line")
         .inner_size(f64::from(w), f64::from(h))
         .decorations(false)
@@ -171,16 +202,22 @@ fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .build()
 }
 
-fn get_or_create(app: &AppHandle) -> Option<WebviewWindow> {
+/// The window and whether this call created it. A destroyed window may keep its label for a
+/// moment, so a failed build is retried for up to 500 ms (reusing the old one if it is back).
+fn get_or_create(app: &AppHandle, mode: &str) -> Option<(WebviewWindow, bool)> {
     let _guard = CREATE.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(w) = app.get_webview_window(LINE) {
-        return Some(w);
-    }
-    match create(app) {
-        Ok(w) => Some(w),
-        Err(e) => {
-            eprintln!("line window: {e}");
-            None
+    let deadline = std::time::Instant::now() + Duration::from_millis(500);
+    loop {
+        if let Some(w) = app.get_webview_window(LINE) {
+            return Some((w, false));
+        }
+        match create(app, mode) {
+            Ok(w) => return Some((w, true)),
+            Err(e) if std::time::Instant::now() >= deadline => {
+                eprintln!("line window: {e}");
+                return None;
+            }
+            Err(_) => std::thread::sleep(Duration::from_millis(50)),
         }
     }
 }
@@ -255,7 +292,9 @@ pub fn show_at(app: &AppHandle, mode: &str, at: Option<(i32, i32)>) {
         if flags.activate {
             remember_foreground(app, true);
         }
-        let Some(w) = get_or_create(app) else { return };
+        let Some((w, created)) = get_or_create(app, mode) else {
+            return;
+        };
         let Some(h) = hwnd_of(&w) else { return };
         if !flags.activate && win::is_visible(h) {
             // Already up (maybe in use): do not touch its focus style, just tell the page so it
@@ -267,11 +306,14 @@ pub fn show_at(app: &AppHandle, mode: &str, at: Option<(i32, i32)>) {
             .or_else(|| (mode == "peek").then(win::foreground_point).flatten())
             .unwrap_or_else(win::cursor_pos);
         place(app, &w, point);
-        let _ = app.emit_to(LINE, events::LINE_SHOW, LineShow { mode: mode.into() });
+        if !created {
+            let _ = app.emit_to(LINE, events::LINE_SHOW, LineShow { mode: mode.into() });
+        }
         win::show_window(h, flags.activate);
         if flags.activate {
             win::set_foreground(h);
             let _ = w.set_focus();
+            ACTIVE.store(true, Ordering::SeqCst);
         }
     }
 }
@@ -281,6 +323,7 @@ pub fn hide(app: &AppHandle) {
     #[cfg(windows)]
     {
         edge_leave();
+        ACTIVE.store(false, Ordering::SeqCst);
         let Some(h) = app.get_webview_window(LINE).and_then(|w| hwnd_of(&w)) else {
             return;
         };
@@ -321,6 +364,13 @@ pub fn toggle_hotkey(app: &AppHandle) {
     show(app, "hotkey");
 }
 
+/// The line window lost focus: close it if it was active.
+pub fn on_blur(app: &AppHandle) {
+    if should_hide_on_blur(ACTIVE.load(Ordering::SeqCst), false) {
+        hide(app);
+    }
+}
+
 /// A click inside a peeking line: take focus from now on. The window we came from is remembered
 /// first (a foreign foreground window only), so paste still goes there.
 pub fn activate(app: &AppHandle) {
@@ -335,6 +385,7 @@ pub fn activate(app: &AppHandle) {
         win::set_no_activate(h, false);
         win::set_foreground(h);
         let _ = w.set_focus();
+        ACTIVE.store(true, Ordering::SeqCst);
     }
     #[cfg(not(windows))]
     let _ = app;
@@ -517,7 +568,7 @@ fn spawn_terminal(dir: &Path) -> std::io::Result<()> {
     // wt.exe makes its own window: no console flash for the launcher.
     let wt = Command::new("wt.exe")
         .arg("-d")
-        .arg(dir)
+        .arg(terminal_arg(dir))
         .creation_flags(CREATE_NO_WINDOW)
         .spawn();
     match wt {
@@ -575,6 +626,25 @@ mod tests {
         assert!(show_flags("hotkey").activate);
         // An unknown mode must never steal focus.
         assert!(!show_flags("whatever").activate);
+    }
+
+    #[test]
+    fn url_and_blur_rules() {
+        assert_eq!(line_url("peek"), "line.html?mode=peek");
+        assert_eq!(line_url("hotkey"), "line.html?mode=hotkey");
+        assert_eq!(line_url("reveal"), "line.html?mode=reveal");
+        assert_eq!(line_url("a&b"), "line.html?mode=peek");
+        assert!(should_hide_on_blur(true, false));
+        assert!(!should_hide_on_blur(true, true));
+        assert!(!should_hide_on_blur(false, false));
+    }
+
+    #[test]
+    fn terminal_arg_cases() {
+        let t = |s: &str| terminal_arg(Path::new(s));
+        assert_eq!(t("D:\\My Dir\\"), PathBuf::from("D:\\My Dir"));
+        assert_eq!(t("D:\\My Dir"), PathBuf::from("D:\\My Dir"));
+        assert_eq!(t("C:\\"), PathBuf::from("C:\\"));
     }
 
     #[test]

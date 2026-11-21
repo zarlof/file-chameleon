@@ -760,6 +760,12 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
         }
         return;
     }
+    if window.label() == crate::line::LINE {
+        if let WindowEvent::Focused(false) = event {
+            crate::line::on_blur(app);
+        }
+        return;
+    }
     if window.label() != OVERLAY {
         return;
     }

@@ -488,7 +488,7 @@ pub fn file_data_object(paths: &[std::path::PathBuf]) -> Result<IDataObject, Str
 
 /// A shell data object holding `text` as `CF_UNICODETEXT`.
 pub fn text_data_object(text: &str) -> Result<IDataObject, String> {
-    use windows::Win32::Foundation::HGLOBAL;
+    use windows::Win32::Foundation::{GlobalFree, HGLOBAL};
     use windows::Win32::System::Com::{
         DVASPECT_CONTENT, FORMATETC, STGMEDIUM, STGMEDIUM_0, TYMED_HGLOBAL,
     };
@@ -504,6 +504,7 @@ pub fn text_data_object(text: &str) -> Result<IDataObject, String> {
             GlobalAlloc(GMEM_MOVEABLE, wide.len() * 2).map_err(|e| e.to_string())?;
         let dst = GlobalLock(hmem) as *mut u16;
         if dst.is_null() {
+            let _ = GlobalFree(Some(hmem));
             return Err("GlobalLock failed".into());
         }
         std::ptr::copy_nonoverlapping(wide.as_ptr(), dst, wide.len());
@@ -521,8 +522,11 @@ pub fn text_data_object(text: &str) -> Result<IDataObject, String> {
             pUnkForRelease: std::mem::ManuallyDrop::new(None),
         };
         // The data object owns the memory from here on (`frelease`).
-        data.SetData(&fmt, &medium, true)
-            .map_err(|e| e.to_string())?;
+        if let Err(e) = data.SetData(&fmt, &medium, true) {
+            // Ownership did not transfer.
+            let _ = GlobalFree(Some(hmem));
+            return Err(e.to_string());
+        }
         Ok(data)
     }
 }

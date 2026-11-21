@@ -40,7 +40,7 @@ pub async fn line_paste(app: AppHandle, ids: Vec<u64>) -> CmdResult<()> {
 }
 
 /// Open a web link in the default browser (http and https only).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_url(url: String) -> CmdResult<()> {
     crate::line::open_url(&url)
 }
