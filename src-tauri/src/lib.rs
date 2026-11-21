@@ -3,7 +3,9 @@
 //! kept tiny (overlay), to keep memory low.
 
 mod events;
+mod float;
 mod ipc;
+mod line;
 mod platform;
 mod shelf;
 mod state;
@@ -119,6 +121,15 @@ pub fn run() {
             ipc::show_main,
             ipc::take_pending_nav,
             ipc::overlay_ready,
+            // clothesline and float windows
+            ipc::line::line_show,
+            ipc::line::line_hide,
+            ipc::line::line_activate,
+            ipc::line::line_drag_out,
+            ipc::line::line_open_item,
+            ipc::line::line_paste,
+            ipc::line::open_url,
+            ipc::line::float_open,
             ipc::overlay_hide,
             ipc::overlay_toast_action,
             ipc::wheel_drop,

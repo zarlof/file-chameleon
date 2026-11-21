@@ -70,6 +70,8 @@ pub struct AppState {
     // ---- clipboard v2 and shelf (Task 9)
     /// Foreground window (HWND as isize, 0 = none) when the shelf was opened; `shelf_paste` pastes there.
     pub shelf_prev: AtomicIsize,
+    /// Same for the clothesline (`line_paste` pastes there).
+    pub line_prev: AtomicIsize,
     /// Watcher of `clipboard_watch_folders` (only while some are set and the clipboard is on).
     pub clip_watcher: Mutex<Option<fc_core::watch::Watcher>>,
     // ---- watch folders (Task 10)
@@ -103,6 +105,7 @@ impl AppState {
             toast_seq: AtomicU64::new(1),
             wheel: OnceLock::new(),
             shelf_prev: AtomicIsize::new(0),
+            line_prev: AtomicIsize::new(0),
             clip_watcher: Mutex::new(None),
             watch: Default::default(),
         })

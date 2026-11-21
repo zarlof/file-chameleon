@@ -17,7 +17,7 @@ use tauri::{AppHandle, Manager};
 
 pub fn start(app: &AppHandle) {
     let s = app.state::<AppState>().settings();
-    configure_wheel(app, &s);
+    configure_hooks(app, &s);
     if s.clipboard_enabled {
         clipboard::start(app);
     }
@@ -46,12 +46,17 @@ pub fn start(app: &AppHandle) {
     }
 }
 
-fn configure_wheel(app: &AppHandle, s: &Settings) {
+fn configure_hooks(app: &AppHandle, s: &Settings) {
     #[cfg(windows)]
     {
         hook::set_config(s.wheel_enabled, s.wheel_any_app);
         hook::set_flip(s.wheel_flip_scroll, s.wheel_flip_tab);
-        if s.wheel_enabled {
+        let edge = s.line_enabled && s.line_edge_reveal;
+        if edge {
+            hook::set_monitors(&win::monitors(), win::display_signature());
+        }
+        hook::set_line_edge(edge);
+        if s.wheel_enabled || edge {
             ensure_hooks(app);
         }
     }
@@ -88,6 +93,11 @@ pub fn ensure_hooks(app: &AppHandle) {
             }
             hook::HookEvent::Flip => crate::windows::wheel_flip(&app),
             hook::HookEvent::Close => crate::windows::wheel_close(&app),
+            hook::HookEvent::EdgeEnter { x, y } => crate::line::edge_enter(&app, x, y),
+            hook::HookEvent::EdgeLeave => crate::line::edge_leave(),
+            hook::HookEvent::Displays => {
+                hook::set_monitors(&win::monitors(), win::display_signature());
+            }
         });
     }
     #[cfg(not(windows))]
@@ -131,8 +141,10 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
         || old.wheel_any_app != new.wheel_any_app
         || old.wheel_flip_scroll != new.wheel_flip_scroll
         || old.wheel_flip_tab != new.wheel_flip_tab
+        || old.line_enabled != new.line_enabled
+        || old.line_edge_reveal != new.line_edge_reveal
     {
-        configure_wheel(app, &new);
+        configure_hooks(app, &new);
     }
     // Explorer verb: written when turned on, removed when off, relabelled on a language change.
     // After a failure the setting says what the registry has: a failed write removed the key
@@ -163,9 +175,15 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
     if old.hotkey_shelf != new.hotkey_shelf
         || old.hotkey_library != new.hotkey_library
         || old.hotkey_download_link != new.hotkey_download_link
+        || old.hotkey_line != new.hotkey_line
+        || old.line_enabled != new.line_enabled
         || old.clipboard_enabled != new.clipboard_enabled
     {
         hotkeys::configure(app, &new);
+    }
+    // Clothesline: turning it off closes and frees its window.
+    if old.line_enabled && !new.line_enabled {
+        crate::line::destroy(app);
     }
     if old.clipboard_ocr != new.clipboard_ocr {
         ocr::set_enabled(new.clipboard_ocr);
@@ -193,4 +211,12 @@ pub fn system_language() -> String {
     return win::system_language();
     #[cfg(not(windows))]
     "en".into()
+}
+
+/// Is the pointer in the clothesline's top-edge reveal zone (as of the last mouse move)?
+pub fn hook_pointer_in_zone() -> bool {
+    #[cfg(windows)]
+    return hook::pointer_in_zone();
+    #[cfg(not(windows))]
+    false
 }

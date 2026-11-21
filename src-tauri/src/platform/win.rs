@@ -283,3 +283,299 @@ pub fn send_keys(strokes: &[(u16, bool)]) {
         }
     }
 }
+
+// ---------------------------------------------------------------- clothesline
+
+/// A screen rectangle `(left, top, right, bottom)` in physical pixels.
+pub type Rect = (i32, i32, i32, i32);
+
+fn rect_of(r: windows::Win32::Foundation::RECT) -> Rect {
+    (r.left, r.top, r.right, r.bottom)
+}
+
+pub fn is_visible(h: isize) -> bool {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(hwnd(h)).as_bool() }
+}
+
+/// Set or clear `WS_EX_NOACTIVATE`: a window with it never takes focus from a click.
+pub fn set_no_activate(h: isize, on: bool) {
+    unsafe {
+        let ex = GetWindowLongPtrW(hwnd(h), GWL_EXSTYLE);
+        let flag = WS_EX_NOACTIVATE.0 as isize;
+        let next = if on { ex | flag } else { ex & !flag };
+        if next != ex {
+            SetWindowLongPtrW(hwnd(h), GWL_EXSTYLE, next);
+        }
+    }
+}
+
+/// Show a window raw (tao is never told, so hide it with [`hide`] too). With `activate` false
+/// it is shown topmost without taking focus (`SW_SHOWNOACTIVATE` and `WS_EX_NOACTIVATE`); with
+/// `activate` true it is a normal show and the caller brings it to the front.
+pub fn show_window(h: isize, activate: bool) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SW_SHOW, SW_SHOWNOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    };
+    set_no_activate(h, !activate);
+    unsafe {
+        if activate {
+            let _ = ShowWindow(hwnd(h), SW_SHOW);
+            let _ = SetWindowPos(
+                hwnd(h),
+                Some(HWND_TOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE,
+            );
+        } else {
+            let _ = ShowWindow(hwnd(h), SW_SHOWNOACTIVATE);
+            let _ = SetWindowPos(
+                hwnd(h),
+                Some(HWND_TOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+    }
+}
+
+/// Full rectangles of all monitors (physical pixels).
+pub fn monitors() -> Vec<Rect> {
+    use windows::Win32::Foundation::{LPARAM, RECT};
+    use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, HDC, HMONITOR};
+    use windows::core::BOOL;
+
+    unsafe extern "system" fn collect(_m: HMONITOR, _dc: HDC, r: *mut RECT, l: LPARAM) -> BOOL {
+        let v = unsafe { &mut *(l.0 as *mut Vec<Rect>) };
+        if let Some(r) = unsafe { r.as_ref() } {
+            v.push(rect_of(*r));
+        }
+        true.into()
+    }
+
+    let mut out: Vec<Rect> = Vec::new();
+    unsafe {
+        let _ = EnumDisplayMonitors(
+            None,
+            None,
+            Some(collect),
+            LPARAM(&mut out as *mut Vec<Rect> as isize),
+        );
+    }
+    out
+}
+
+/// A cheap fingerprint of the monitor layout (count and virtual screen); it changes when a
+/// display is plugged, unplugged, moved or resized.
+pub fn display_signature() -> [i32; 5] {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, SM_CMONITORS, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN,
+    };
+    unsafe {
+        [
+            GetSystemMetrics(SM_CMONITORS),
+            GetSystemMetrics(SM_XVIRTUALSCREEN),
+            GetSystemMetrics(SM_YVIRTUALSCREEN),
+            GetSystemMetrics(SM_CXVIRTUALSCREEN),
+            GetSystemMetrics(SM_CYVIRTUALSCREEN),
+        ]
+    }
+}
+
+/// The foreground window's rectangle, its monitor's rectangle and its class name.
+fn foreground_geometry() -> Option<(Rect, Rect, String)> {
+    use windows::Win32::Graphics::Gdi::{MONITOR_DEFAULTTONEAREST, MonitorFromWindow};
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+    let fg = foreground_window();
+    if fg == 0 {
+        return None;
+    }
+    unsafe {
+        let mut wr = windows::Win32::Foundation::RECT::default();
+        GetWindowRect(hwnd(fg), &mut wr).ok()?;
+        let mon = MonitorFromWindow(hwnd(fg), MONITOR_DEFAULTTONEAREST);
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if !GetMonitorInfoW(mon, &mut info).as_bool() {
+            return None;
+        }
+        Some((rect_of(wr), rect_of(info.rcMonitor), window_class(fg)))
+    }
+}
+
+/// True when the foreground window covers a whole monitor (a game, a video): the clothesline must
+/// not pop up over it.
+pub fn fullscreen_foreground() -> bool {
+    foreground_geometry()
+        .is_some_and(|(win, mon, class)| crate::line::fullscreen_guard(win, mon, &class))
+}
+
+/// A point inside the foreground window (its centre): the monitor a peek appears on.
+pub fn foreground_point() -> Option<(i32, i32)> {
+    let (r, _, _) = foreground_geometry()?;
+    Some(((r.0 + r.2) / 2, (r.1 + r.3) / 2))
+}
+
+/// `ShellExecuteW "open"` for a URL (the caller checks the scheme).
+pub fn shell_open(url: &str) -> bool {
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use windows::core::{PCWSTR, w};
+    let wide: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
+    let r = unsafe {
+        ShellExecuteW(
+            None,
+            w!("open"),
+            PCWSTR(wide.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    // Values above 32 mean success.
+    r.0 as isize > 32
+}
+
+// ---- OLE drag-out
+
+use windows::Win32::System::Com::IDataObject;
+
+/// A shell data object holding the files (`CF_HDROP` and the shell's other file formats).
+pub fn file_data_object(paths: &[std::path::PathBuf]) -> Result<IDataObject, String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::Win32::System::Com::{CoTaskMemFree, IBindCtx};
+    use windows::Win32::UI::Shell::Common::ITEMIDLIST;
+    use windows::Win32::UI::Shell::{
+        BHID_DataObject, SHCreateShellItemArrayFromIDLists, SHParseDisplayName,
+    };
+    use windows::core::PCWSTR;
+
+    if paths.is_empty() {
+        return Err("no files".into());
+    }
+    let mut pidls: Vec<*mut ITEMIDLIST> = Vec::new();
+    let result = (|| unsafe {
+        for p in paths {
+            let wide: Vec<u16> = p
+                .as_os_str()
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+            let mut pidl: *mut ITEMIDLIST = std::ptr::null_mut();
+            SHParseDisplayName(PCWSTR(wide.as_ptr()), None::<&IBindCtx>, &mut pidl, 0, None)
+                .map_err(|e| e.to_string())?;
+            pidls.push(pidl);
+        }
+        let ptrs: Vec<*const ITEMIDLIST> = pidls.iter().map(|p| *p as *const _).collect();
+        let items = SHCreateShellItemArrayFromIDLists(&ptrs).map_err(|e| e.to_string())?;
+        items
+            .BindToHandler::<_, IDataObject>(None::<&IBindCtx>, &BHID_DataObject)
+            .map_err(|e| e.to_string())
+    })();
+    for p in pidls {
+        unsafe { CoTaskMemFree(Some(p as *const _)) };
+    }
+    result
+}
+
+/// A shell data object holding `text` as `CF_UNICODETEXT`.
+pub fn text_data_object(text: &str) -> Result<IDataObject, String> {
+    use windows::Win32::Foundation::HGLOBAL;
+    use windows::Win32::System::Com::{
+        DVASPECT_CONTENT, FORMATETC, STGMEDIUM, STGMEDIUM_0, TYMED_HGLOBAL,
+    };
+    use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
+    use windows::Win32::UI::Shell::SHCreateDataObject;
+
+    const CF_UNICODETEXT: u16 = 13;
+    let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        let data: IDataObject =
+            SHCreateDataObject(None, None, None::<&IDataObject>).map_err(|e| e.to_string())?;
+        let hmem: HGLOBAL =
+            GlobalAlloc(GMEM_MOVEABLE, wide.len() * 2).map_err(|e| e.to_string())?;
+        let dst = GlobalLock(hmem) as *mut u16;
+        if dst.is_null() {
+            return Err("GlobalLock failed".into());
+        }
+        std::ptr::copy_nonoverlapping(wide.as_ptr(), dst, wide.len());
+        let _ = GlobalUnlock(hmem);
+        let fmt = FORMATETC {
+            cfFormat: CF_UNICODETEXT,
+            ptd: std::ptr::null_mut(),
+            dwAspect: DVASPECT_CONTENT.0,
+            lindex: -1,
+            tymed: TYMED_HGLOBAL.0 as u32,
+        };
+        let medium = STGMEDIUM {
+            tymed: TYMED_HGLOBAL.0 as u32,
+            u: STGMEDIUM_0 { hGlobal: hmem },
+            pUnkForRelease: std::mem::ManuallyDrop::new(None),
+        };
+        // The data object owns the memory from here on (`frelease`).
+        data.SetData(&fmt, &medium, true)
+            .map_err(|e| e.to_string())?;
+        Ok(data)
+    }
+}
+
+/// Run an OLE drag with the shell's default drop source (copy only). Blocks until the drop ends
+/// or is cancelled. Must run on the UI thread, where OLE is initialised.
+pub fn do_drag(owner: isize, data: &IDataObject) -> Result<(), String> {
+    use windows::Win32::System::Ole::{DROPEFFECT_COPY, IDropSource};
+    use windows::Win32::UI::Shell::SHDoDragDrop;
+    unsafe {
+        SHDoDragDrop(
+            Some(hwnd(owner)),
+            data,
+            None::<&IDropSource>,
+            DROPEFFECT_COPY,
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod drag_tests {
+    use super::*;
+    use windows::Win32::System::Com::{
+        COINIT_APARTMENTTHREADED, CoInitializeEx, DVASPECT_CONTENT, FORMATETC, TYMED_HGLOBAL,
+    };
+
+    fn fmt(cf: u16) -> FORMATETC {
+        FORMATETC {
+            cfFormat: cf,
+            ptd: std::ptr::null_mut(),
+            dwAspect: DVASPECT_CONTENT.0,
+            lindex: -1,
+            tymed: TYMED_HGLOBAL.0 as u32,
+        }
+    }
+
+    #[test]
+    fn data_objects_carry_the_formats() {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        }
+        let text = text_data_object("merhaba").expect("text object");
+        assert!(
+            unsafe { text.QueryGetData(&fmt(13)) }.is_ok(),
+            "CF_UNICODETEXT"
+        );
+        let file = std::env::temp_dir().join(format!("fc-drag-{}.txt", std::process::id()));
+        std::fs::write(&file, b"x").unwrap();
+        let files = file_data_object(std::slice::from_ref(&file)).expect("file object");
+        assert!(unsafe { files.QueryGetData(&fmt(15)) }.is_ok(), "CF_HDROP");
+        let _ = std::fs::remove_file(&file);
+        assert!(file_data_object(&[]).is_err());
+    }
+}

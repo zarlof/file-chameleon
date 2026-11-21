@@ -10,6 +10,7 @@
 pub mod clipboard;
 pub mod downloads;
 pub mod images;
+pub mod line;
 pub mod presets;
 
 use crate::events::{self, NavPayload, ToolDone, ToolProgress};

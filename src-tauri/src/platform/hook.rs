@@ -9,7 +9,9 @@
 //! Win+number). Filtering (which app the drag started in) happens on the consumer thread.
 
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, AtomicU32, Ordering::Relaxed};
+use std::sync::atomic::{
+    AtomicBool, AtomicI32, AtomicIsize, AtomicU32, AtomicUsize, Ordering::Relaxed,
+};
 use std::sync::mpsc::{Sender, channel};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -42,6 +44,32 @@ pub enum HookEvent {
     Flip,
     /// Wheel open: close it (Esc, or a click outside it in click mode).
     Close,
+    /// The pointer reached the clothesline's reveal zone (top edge, middle of a monitor).
+    EdgeEnter { x: i32, y: i32 },
+    /// The pointer left the reveal zone.
+    EdgeLeave,
+    /// The monitor layout changed: refresh the cached rectangles (done off the hook thread).
+    Displays,
+}
+
+/// Height of the reveal zone at the top of a monitor, in physical pixels.
+const EDGE_PX: i32 = 2;
+/// The zone spans the middle 60 % of the monitor's width (20 % to 80 %).
+const EDGE_FROM: i32 = 20;
+const EDGE_TO: i32 = 80;
+/// Cached monitors the hook looks at (more are ignored).
+const MAX_MONITORS: usize = 8;
+
+/// Is the point in the reveal zone of this monitor `(left, top, right, bottom)`?
+fn edge_zone_in(x: i32, y: i32, (l, t, r, _b): (i32, i32, i32, i32)) -> bool {
+    let w = r - l;
+    y >= t && y < t + EDGE_PX && x >= l + w * EDGE_FROM / 100 && x < l + w * EDGE_TO / 100
+}
+
+/// Is the point in the reveal zone of any of the monitors?
+#[cfg(test)]
+fn edge_zone(x: i32, y: i32, monitors: &[(i32, i32, i32, i32)]) -> bool {
+    monitors.iter().any(|&m| edge_zone_in(x, y, m))
 }
 
 /// One mouse-wheel gesture flips once: after a flip, wheel events are ignored until this long
@@ -81,6 +109,79 @@ static LAST_WHEEL: AtomicU32 = AtomicU32::new(0);
 static TAB_HELD: AtomicBool = AtomicBool::new(false);
 /// Foreground window (HWND as isize) when the wheel opened; another one closes a click wheel.
 static OPEN_FG: AtomicIsize = AtomicIsize::new(0);
+
+// Clothesline edge reveal: its own flag, the cached monitor rectangles (atomics, so the hook
+// never calls a monitor API) and the layout fingerprint they were read for.
+static LINE_EDGE: AtomicBool = AtomicBool::new(false);
+static IN_ZONE: AtomicBool = AtomicBool::new(false);
+static MON_COUNT: AtomicUsize = AtomicUsize::new(0);
+static MON_RECTS: [AtomicI32; MAX_MONITORS * 4] = [const { AtomicI32::new(0) }; MAX_MONITORS * 4];
+static DISPLAY_SIG: [AtomicI32; 5] = [const { AtomicI32::new(0) }; 5];
+
+/// Turn the edge-zone check on or off (the clothesline's "reveal at the top edge").
+pub fn set_line_edge(on: bool) {
+    LINE_EDGE.store(on, Relaxed);
+    IN_ZONE.store(false, Relaxed);
+}
+
+/// Replace the cached monitor rectangles `(left, top, right, bottom)` and the layout fingerprint.
+pub fn set_monitors(rects: &[(i32, i32, i32, i32)], signature: [i32; 5]) {
+    let n = rects.len().min(MAX_MONITORS);
+    for (i, r) in rects.iter().take(n).enumerate() {
+        MON_RECTS[i * 4].store(r.0, Relaxed);
+        MON_RECTS[i * 4 + 1].store(r.1, Relaxed);
+        MON_RECTS[i * 4 + 2].store(r.2, Relaxed);
+        MON_RECTS[i * 4 + 3].store(r.3, Relaxed);
+    }
+    MON_COUNT.store(n, Relaxed);
+    for (slot, v) in DISPLAY_SIG.iter().zip(signature) {
+        slot.store(v, Relaxed);
+    }
+}
+
+fn in_edge_zone(x: i32, y: i32) -> bool {
+    (0..MON_COUNT.load(Relaxed).min(MAX_MONITORS)).any(|i| {
+        edge_zone_in(
+            x,
+            y,
+            (
+                MON_RECTS[i * 4].load(Relaxed),
+                MON_RECTS[i * 4 + 1].load(Relaxed),
+                MON_RECTS[i * 4 + 2].load(Relaxed),
+                MON_RECTS[i * 4 + 3].load(Relaxed),
+            ),
+        )
+    })
+}
+
+/// Is the pointer in the reveal zone right now (as of the last mouse move)?
+pub fn pointer_in_zone() -> bool {
+    LINE_EDGE.load(Relaxed) && IN_ZONE.load(Relaxed)
+}
+
+/// One mouse move while the edge reveal is on: atomics and a send only.
+fn edge_move(x: i32, y: i32) {
+    let sig = super::win::display_signature();
+    if sig
+        .iter()
+        .zip(&DISPLAY_SIG)
+        .any(|(now, cached)| *now != cached.load(Relaxed))
+    {
+        // Store it so the event is sent once; the consumer thread reads the monitors.
+        for (slot, v) in DISPLAY_SIG.iter().zip(sig) {
+            slot.store(v, Relaxed);
+        }
+        send(HookEvent::Displays);
+    }
+    let inside = in_edge_zone(x, y);
+    if inside != IN_ZONE.swap(inside, Relaxed) {
+        send(if inside {
+            HookEvent::EdgeEnter { x, y }
+        } else {
+            HookEvent::EdgeLeave
+        });
+    }
+}
 
 pub fn set_config(enabled: bool, any_app: bool) {
     ENABLED.store(enabled, Relaxed);
@@ -210,6 +311,9 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
                 Some(ev) => send(ev),
                 None => {}
             }
+        }
+        if msg == WM_MOUSEMOVE && LINE_EDGE.load(Relaxed) {
+            edge_move(x, y);
         }
         if ENABLED.load(Relaxed) {
             match msg {
@@ -528,6 +632,25 @@ mod tests {
         );
         assert_eq!(mouse_action(true, true, WM_LBUTTONDOWN, true, true), None);
         assert_eq!(mouse_action(true, false, WM_LBUTTONDOWN, false, true), None);
+    }
+
+    #[test]
+    fn edge_zone_cases() {
+        let m = [(0, 0, 1920, 1080)];
+        assert!(edge_zone(960, 0, &m));
+        assert!(edge_zone(960, 1, &m));
+        assert!(!edge_zone(960, 3, &m));
+        // Outside the middle 60 %.
+        assert!(!edge_zone(100, 0, &m));
+        assert!(!edge_zone(1800, 0, &m));
+        // A second monitor to the right.
+        let two = [(0, 0, 1920, 1080), (1920, 0, 3840, 1080)];
+        assert!(edge_zone(2880, 0, &two));
+        assert!(!edge_zone(1930, 0, &two));
+        // A monitor whose top is not 0 (arranged lower).
+        assert!(edge_zone(2880, 200, &[(1920, 200, 3840, 1280)]));
+        assert!(!edge_zone(2880, 0, &[(1920, 200, 3840, 1280)]));
+        assert!(!edge_zone(960, 0, &[]));
     }
 
     #[test]

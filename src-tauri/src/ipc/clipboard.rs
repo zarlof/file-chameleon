@@ -23,7 +23,7 @@ fn not_found() -> CmdError {
     CmdError::new("notFound", "clipboard item not found")
 }
 
-fn find(state: &AppState, id: u64) -> CmdResult<ClipItem> {
+pub(crate) fn find(state: &AppState, id: u64) -> CmdResult<ClipItem> {
     store(state).get(id).cloned().ok_or_else(not_found)
 }
 
@@ -338,6 +338,8 @@ pub async fn clip_save_edited(app: AppHandle, id: u64, data_url: String) -> CmdR
     super::blocking(move || {
         let item = save_edited_data_url(app.state::<AppState>().clips(), id, &data_url)?;
         updated(&app, &item);
+        // An edited image peeks in on the clothesline like a new copy.
+        crate::line::peek(&app);
         Ok(item)
     })
     .await?

@@ -161,7 +161,7 @@ fn place(app: &AppHandle, w: &WebviewWindow) {
 /// Shell chrome that takes focus when the shelf is opened from the tray (the taskbar, the
 /// hidden-icons flyout): pasting "back" into it is meaningless, so it counts as no window.
 #[cfg_attr(not(windows), allow(dead_code))]
-fn is_taskbar_class(class: &str) -> bool {
+pub(crate) fn is_taskbar_class(class: &str) -> bool {
     matches!(
         class,
         "Shell_TrayWnd"
@@ -240,13 +240,21 @@ pub fn toggle(app: &AppHandle) {
 /// 300 ms to be released; then their key-ups are injected, so the target sees a plain Ctrl+V.
 pub fn paste_into_previous(app: &AppHandle) {
     hide(app);
+    let prev = app
+        .state::<AppState>()
+        .shelf_prev
+        .load(std::sync::atomic::Ordering::SeqCst);
+    paste_keys_into(prev);
+}
+
+/// Bring `prev` (an HWND, 0 = none) to the front and type Ctrl+V into it. Shared by the shelf and
+/// the clothesline; the caller hides its own window first.
+pub fn paste_keys_into(prev: isize) {
+    #[cfg(not(windows))]
+    let _ = prev;
     #[cfg(windows)]
     {
         use crate::platform::win;
-        let prev = app
-            .state::<AppState>()
-            .shelf_prev
-            .load(std::sync::atomic::Ordering::SeqCst);
         if prev != 0 && win::is_window(prev) && win::set_foreground(prev) {
             std::thread::sleep(std::time::Duration::from_millis(60));
             // Mask right away: Alt or Win released by hand while we wait must not open a menu.

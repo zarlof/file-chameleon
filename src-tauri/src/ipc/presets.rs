@@ -131,6 +131,20 @@ pub fn run_preset(
             );
             return Ok(vec![]);
         }
+        // File actions: handled here, never queued, no Recent entry.
+        Operation::CopyPath | Operation::OpenTerminal | Operation::Float => {
+            if !interactive {
+                return Err(
+                    fc_core::Error::Invalid("file actions are not available here".into()).into(),
+                );
+            }
+            match &preset.op {
+                Operation::CopyPath => crate::line::copy_paths(app, &paths)?,
+                Operation::OpenTerminal => crate::line::open_terminal(&paths)?,
+                _ => crate::float::open(app, paths),
+            }
+            return Ok(vec![]);
+        }
         Operation::CopyTo {
             dir: None,
             move_files,
