@@ -52,6 +52,18 @@ pub async fn line_file_copy(app: AppHandle, paths: Vec<String>) -> CmdResult<()>
     super::blocking(move || crate::line::copy_files(&app, &paths)).await?
 }
 
+/// Put the files on the clipboard, hide the line and paste into the app it was opened from.
+#[tauri::command]
+pub async fn line_file_paste(app: AppHandle, paths: Vec<String>) -> CmdResult<()> {
+    super::blocking(move || crate::line::paste_files(&app, &paths)).await?
+}
+
+/// Put text on the clipboard without it becoming a clip (used by "Copy path").
+#[tauri::command(async)]
+pub fn line_copy_text(app: AppHandle, text: String) -> CmdResult<()> {
+    crate::line::copy_text(&app, &text)
+}
+
 /// Open a file with its default app.
 #[tauri::command(async)]
 pub fn line_file_open(app: AppHandle, path: String) -> CmdResult<()> {

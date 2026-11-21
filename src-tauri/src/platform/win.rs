@@ -266,7 +266,7 @@ pub fn system_language() -> String {
     }
 }
 
-// ---------------------------------------------------------------- clipboard v2 and shelf (Task 9)
+// ---------------------------------------------------------------- clipboard v2 (Task 9)
 
 /// Lowercase exe file name of a process (`None` if it cannot be queried).
 fn exe_name_of(pid: u32) -> Option<String> {

@@ -38,11 +38,13 @@ computer, and the originals are never changed or deleted.
 - **Right-click menu (optional).** "Convert with File Chameleon" in Explorer opens the same wheel at
   your cursor; click a slice, or press Esc to close.
 
+558 conversions in total.
+
 | Kind | Formats and actions |
 |---|---|
-| Images | PNG, JPG, WebP, BMP, GIF, TIFF, ICO; SVG → PNG/JPG/WebP/ICO; grayscale, rotate, mirror, trim transparent edges, pixelate, blur, resize, crop to 16:9 / 9:16 / 1:1 / 4:3, draw and write |
-| Video | MP4, MKV, WebM, MOV, AVI; video → GIF; GIF → MP4/WebM; extract audio; crop to an aspect ratio; 2x or half speed |
-| Audio | MP3, M4A, Opus/OGG, FLAC, WAV; iPhone ringtone (M4R, up to 40 s) |
+| Images | PNG, JPG, WebP, BMP, GIF, TIFF, ICO, TGA, QOI, PNM; SVG → PNG/JPG/WebP/ICO; grayscale, rotate, mirror, trim transparent edges, pixelate, blur, resize, crop to 16:9 / 9:16 / 1:1 / 4:3, draw and write |
+| Video | MP4, MKV, WebM, MOV, AVI, M4V, WMV, FLV, MPG, 3GP, TS (OGV is read only); video → GIF; GIF → MP4/WebM; extract audio; crop to an aspect ratio; 2x or half speed |
+| Audio | MP3, M4A, Opus/OGG, FLAC, WAV, AAC, WMA, AIFF, AC3, MKA (AMR is read only); iPhone ringtone (M4R, up to 40 s) |
 | PDF | merge, split, images → PDF, PDF → PNG/JPG |
 | Text and data | Markdown → HTML, TXT → HTML, CSV ⇄ TSV ⇄ JSON ⇄ YAML ⇄ TOML |
 | Subtitles | SRT ⇄ WebVTT, → plain text; ASS/SSA → SRT/WebVTT. Old Turkish (Windows-1254) and UTF-16 files are read correctly. |
@@ -65,9 +67,17 @@ convert it in one click. **Ctrl+Alt+D** downloads the link you just copied.
 
 ### Clipboard
 
-- **Shelf:** **Ctrl+Alt+V** opens three rows (images, texts, links) at the top of the screen.
-  Arrows and Enter copy, **Ctrl+Enter** pastes straight into the app you were in, 1–9 picks a card,
-  typing searches, P pins, Delete moves to the trash (Ctrl+Z brings it back).
+- **The clothesline:** up to four ropes (images, texts, links, files) with your clips pegged on them
+  like laundry, across the top or bottom of the screen. **Ctrl+Alt+L** opens it (**Ctrl+Alt+F**
+  opens it with search), or move the mouse to the screen edge and keep it there for a moment; it
+  also peeks for a moment when you copy something. Click a card to copy it (or copy and close, or
+  paste straight into the app you were in: your choice), **Ctrl+Enter** pastes, 1-9 picks a card,
+  typing searches, Delete moves to the trash (Ctrl+Z brings it back). Drag a card out to drop it
+  into another app. Settings → **Line** changes the edge, size, rope and pin look, cards, colors,
+  swing, sounds, rope order and names, how many cards each rope holds, and more.
+- **The files rope:** the fourth rope holds files you added, converted or downloaded. Drag them out,
+  open them, show them in Explorer, or put them on the clipboard. Right-click a file for more.
+  The Explorer right-click verb **Hang on the line** ("İpe as" in Turkish) puts files there.
 - **Library:** the **Clipboard** page has folders, tags, a pinned filter, a trash, a grid or list
   view, and an inspector for titles, notes and editing text. Export items to a folder.
 - **Text in images:** the built-in Windows OCR reads text in copied images, offline. You can search
@@ -86,8 +96,8 @@ convert it in one click. **Ctrl+Alt+D** downloads the link you just copied.
   downloaded only the first time a feature needs them, and each download is SHA-256 verified. An
   FFmpeg already on your `PATH` is used as is.
 - **Low memory.** The background work (tray, hooks, hotkeys, clipboard watcher, job queue) runs in
-  Rust. The main window is destroyed when you close it and rebuilt when you open it. The clipboard
-  shelf window is only created the first time you open it.
+  Rust. The main window is destroyed when you close it and rebuilt when you open it. The line
+  window is only created the first time you open it.
 - **Native feel.** Windows 11 Mica and caption buttons, the Inter font and Lucide icons. It follows
   light and dark mode, has an interface size setting, and the interface is in Turkish and English.
 
@@ -104,7 +114,7 @@ is missing.
 
 - **Ctrl + drag** files or folders from File Explorer or the desktop to open the wheel. Press
   **Esc** or release outside the wheel to cancel. **Ctrl+Shift + drag** opens the back face.
-- **Ctrl+Alt+V** opens the clipboard shelf; **Ctrl+Alt+D** downloads the copied link. Change or turn
+- **Ctrl+Alt+L** opens the clothesline; **Ctrl+Alt+D** downloads the copied link. Change or turn
   off these shortcuts in Settings → **Shortcuts**.
 - Closing the window keeps File Chameleon in the tray (you can change that in Settings → **General**).
   Use **Quit** in the tray menu to exit.

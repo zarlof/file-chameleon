@@ -12,7 +12,7 @@
   import type { ClipItem, ClipShelf, LineFile, Settings } from '../lib/types';
   import { fitCount, matches, overflow, ropeCards, ropeName, splitRopes, visibleRopes, type LineCard } from './logic';
   import { fileId } from './files';
-  import { bandTops, cardOpacity, cardStyleAttr, ropeColor, sizeInfo, windowHeight } from './layout';
+  import { bandTops, cardOpacity, maxRopes, cardStyleAttr, ropeColor, sizeInfo, windowHeight } from './layout';
   import { isCommandKey, nextFocus, type Focus, type NavKey } from './keys';
   import { quiet, tick as hangTick } from './sound';
   import Preview from './Preview.svelte';
@@ -32,6 +32,7 @@
   let paused = $state(false);
   let shown = $state(false);
   let width = $state(window.innerWidth);
+  let height = $state(window.innerHeight);
   let selected = $state<number[]>([]);
   let anchor: number | null = null;
   let copiedId = $state<number | null>(null);
@@ -58,7 +59,10 @@
     const src = settings?.lineFilesSources ?? { added: true, converted: true, downloaded: true };
     return files.filter((f) => src[f.source]);
   });
-  const baseRopes = $derived(visibleRopes(splitRopes(items, ropeCfg, settings?.lineRopeOrder, shownFiles)));
+  // Only whole ropes are drawn: when the window is clamped to the work area, the last ones drop off.
+  const baseRopes = $derived(
+    visibleRopes(splitRopes(items, ropeCfg, settings?.lineRopeOrder, shownFiles)).slice(0, maxRopes(height, settings?.lineSize ?? 'medium')),
+  );
   const ropes = $derived(
     baseRopes.map((r) => {
       const q = query.trim();
@@ -357,7 +361,8 @@
 
   function fail(e: unknown) {
     console.error(e);
-    showToast(errorOf(e).message || t('failed'));
+    const err = errorOf(e);
+    showToast(err.code === 'notFound' ? t('gone') : err.message || t('failed'));
   }
 
   function cardsOf(ids: number[]): LineCard[] {
@@ -402,10 +407,11 @@
   /** The click action from the settings: copy, copy and close, or paste into the previous app. */
   async function activate(ids: number[]) {
     const action = settings?.lineClickAction ?? 'copy';
-    const { clips } = splitTargets(ids);
-    if (action === 'paste' && ids[0] > 0 && clips.length > 0) {
+    const { clips, paths } = splitTargets(ids);
+    if (action === 'paste' && (ids[0] > 0 ? clips.length > 0 : paths.length > 0)) {
       try {
-        await api.linePaste(clips);
+        if (ids[0] > 0) await api.linePaste(clips);
+        else await api.lineFilePaste(paths);
       } catch (e) {
         fail(e);
       }
@@ -613,7 +619,7 @@
     const ctrl = !altGr && (e.ctrlKey || e.metaKey);
     const key = e.key;
     if (!isCommandKey(e, false)) {
-      // Any other printable character starts a search (the shelf does the same).
+      // Any other printable character starts a search.
       if (key.length === 1 && !ctrl && (!e.altKey || altGr) && !previewOn && !menu) {
         e.preventDefault();
         startSearch(searchOpen ? query + key : key);
@@ -724,7 +730,7 @@
   });
 </script>
 
-<svelte:window bind:innerWidth={width} {onkeydown} {onpointerdown} />
+<svelte:window bind:innerWidth={width} bind:innerHeight={height} {onkeydown} {onpointerdown} />
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="strip" class:shown class:bottom style:height="{stripH}px" style={cardVarsStyle}>
@@ -752,6 +758,7 @@
       pinStyle={settings?.linePinStyle ?? 'plastic'}
       pinColor={settings?.linePinColor ?? 'auto'}
       {cardOp}
+      ropeOp={op}
       zoomOn={settings?.lineZoomOnHover ?? false}
       onzoom={(item, rect) => (zoom = shown && item && rect ? { item, rect } : null)}
       emptyText={query.trim() ? t('search.none') : ''}
@@ -825,7 +832,7 @@
       <button type="button" role="menuitem" onclick={() => menuDo(() => openCard(c))}>{t('menu.open')}</button>
       <button type="button" role="menuitem" onclick={() => menuDo(() => api.lineFileReveal(f.path))}>{t('menu.reveal')}</button>
       <button type="button" role="menuitem" onclick={() => menuDo(async () => { await api.wheelOpen([f.path]); await hide(); })}>{t('menu.convert')}</button>
-      <button type="button" role="menuitem" onclick={() => menuDo(async () => { await navigator.clipboard.writeText(f.path); showToast(t('pathCopied')); })}>{t('menu.copyPath')}</button>
+      <button type="button" role="menuitem" onclick={() => menuDo(async () => { await api.lineCopyText(f.path); showToast(t('pathCopied')); })}>{t('menu.copyPath')}</button>
       <hr />
       <button type="button" role="menuitem" class="danger" onclick={() => menuDo(() => trash(targetsFor(c)))}>{t('menu.removeFromList')}</button>
     {:else if c.item}

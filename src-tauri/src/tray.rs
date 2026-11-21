@@ -69,7 +69,20 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             // the webview.
             "line" => {
                 let app = app.clone();
-                std::thread::spawn(move || crate::line::show(&app, "hotkey"));
+                if !app.state::<AppState>().settings().line_enabled {
+                    // Off: nothing would appear, so open the settings where it is switched on.
+                    crate::windows::show_main(
+                        &app,
+                        Some(crate::events::NavPayload {
+                            view: "settings".into(),
+                            paths: vec![],
+                            url: None,
+                            clip: None,
+                        }),
+                    );
+                } else {
+                    std::thread::spawn(move || crate::line::show(&app, "hotkey"));
+                }
             }
             "pause" => {
                 let state = app.state::<AppState>();

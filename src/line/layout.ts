@@ -34,6 +34,12 @@ export function windowHeight(n: number, size: string): number {
   return Math.max(1, n) * (sizeOf(size).band + GAP);
 }
 
+/** How many whole ropes fit a window `height` logical px high (at least one). Same rule as `max_ropes` in src-tauri/src/line.rs. */
+export function maxRopes(height: number, size: string): number {
+  const n = Math.floor(height / (sizeOf(size).band + GAP));
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
 /** Cards keep at least 90 % opacity so they stay readable on a faint backdrop. */
 export function cardOpacity(lineOpacity: number): number {
   return Math.max(0.9, lineOpacity / 100);

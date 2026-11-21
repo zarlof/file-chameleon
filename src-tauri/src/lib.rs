@@ -146,6 +146,8 @@ pub fn run() {
             ipc::line::line_files,
             ipc::line::line_file_copy,
             ipc::line::line_file_open,
+            ipc::line::line_file_paste,
+            ipc::line::line_copy_text,
             ipc::line::line_file_reveal,
             ipc::line::line_file_remove,
             ipc::line::line_file_drag_out,

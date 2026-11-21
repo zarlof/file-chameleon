@@ -25,6 +25,7 @@
   "saved": "File saved",
   "dragFailed": "Could not start the drag",
   "failed": "That did not work",
+  "gone": "The file is gone",
   "float.close": "Close",
   "float.missing": "Could not open the image",
   "settings.title": "Line",

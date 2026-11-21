@@ -14,6 +14,8 @@ export interface LineFile {
   size: number;
   kind: Kind | null;
   thumb: string | null;
+  /** File modification time (ms): cache busting for the thumbnail URL. */
+  mtime?: number;
 }
 
 export type Kind = 'image' | 'vector' | 'video' | 'audio' | 'pdf' | 'data' | 'subtitle' | 'archive';

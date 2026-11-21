@@ -165,17 +165,22 @@ fn tools_for(inputs: &[InputInfo]) -> Vec<String> {
         return vec![];
     }
     let all = |f: &dyn Fn(formats::Kind) -> bool| kinds.iter().all(|k| f(k.unwrap()));
+    // Input-only formats (ogv, amr, ...) cannot be re-encoded here, so the ffmpeg tools would
+    // always fail on them.
+    let ffmpeg_ok = !inputs
+        .iter()
+        .any(|i| i.format.as_deref().is_some_and(formats::is_input_only));
     let mut t = Vec::new();
-    if all(&|k| matches!(k, Image | Video | Audio | Pdf)) {
+    if ffmpeg_ok && all(&|k| matches!(k, Image | Video | Audio | Pdf)) {
         t.push("compress");
     }
-    if all(&|k| matches!(k, Video | Audio)) {
+    if ffmpeg_ok && all(&|k| matches!(k, Video | Audio)) {
         t.extend(["trim", "speed"]);
     }
-    if all(&|k| k == Video) {
+    if ffmpeg_ok && all(&|k| k == Video) {
         t.push("mute");
     }
-    if all(&|k| matches!(k, Image | Video)) && inputs.len() == 1 {
+    if ffmpeg_ok && all(&|k| matches!(k, Image | Video)) && inputs.len() == 1 {
         t.push("crop");
     }
     if all(&|k| matches!(k, Pdf | Image)) && (inputs.len() > 1 || kinds[0] == Some(Pdf)) {
@@ -187,15 +192,10 @@ fn tools_for(inputs: &[InputInfo]) -> Vec<String> {
     t.into_iter().map(String::from).collect()
 }
 
-/// The Convert view calls this for every file set it gets (drop or pick): they join the files
-/// rope.
+/// The Convert view calls this for every file set it gets (drop or pick). It records nothing:
+/// files join the files rope when a conversion is actually submitted (`submit_with`).
 #[tauri::command]
-pub fn list_targets(app: AppHandle, paths: Vec<String>) -> TargetsResponse {
-    crate::files::record(
-        &app,
-        paths.iter().map(PathBuf::from).collect(),
-        fc_core::files::FileSource::Added,
-    );
+pub fn list_targets(paths: Vec<String>) -> TargetsResponse {
     let (inputs, targets) = targets_for_paths(&paths);
     let tools = tools_for(&inputs);
     TargetsResponse {
@@ -557,6 +557,26 @@ mod tests {
                 ..Default::default()
             },
         }
+    }
+
+    fn input(format: &str, kind: formats::Kind) -> InputInfo {
+        InputInfo {
+            path: format!("a.{format}"),
+            name: format!("a.{format}"),
+            format: Some(format.into()),
+            kind: Some(kind),
+            size: 1,
+        }
+    }
+
+    #[test]
+    fn input_only_formats_get_no_ffmpeg_tools() {
+        let ogv = tools_for(&[input("ogv", formats::Kind::Video)]);
+        assert!(ogv.is_empty(), "{ogv:?}");
+        let amr = tools_for(&[input("amr", formats::Kind::Audio)]);
+        assert!(amr.is_empty(), "{amr:?}");
+        let mp4 = tools_for(&[input("mp4", formats::Kind::Video)]);
+        assert!(mp4.contains(&"compress".to_string()) && mp4.contains(&"mute".to_string()));
     }
 
     #[test]

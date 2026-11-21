@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SIZES, bandTops, cardOpacity, cardVars, ropeColor, windowHeight } from './layout';
+import { SIZES, bandTops, cardOpacity, maxRopes, cardVars, ropeColor, windowHeight } from './layout';
 
 describe('layout', () => {
   it('layout_table_and_symmetry', () => {
@@ -43,5 +43,15 @@ describe('card look', () => {
     expect(cardVars('glassLight', 4, true)['--c-fg']).toBe('#16161a');
     expect(cardVars('paper', 4, true)['--c-bg']).toBe('var(--elevated-bg)');
     expect(cardVars('bogus', 4, true)['--c-bg']).toBe('rgba(20,20,24,0.78)');
+  });
+});
+
+describe('maxRopes', () => {
+  it('fits whole ropes only, same numbers as the Rust side', () => {
+    expect(maxRopes(688, 'medium')).toBe(3);
+    expect(maxRopes(760, 'medium')).toBe(4);
+    expect(maxRopes(100, 'large')).toBe(1);
+    expect(maxRopes(900, 'large')).toBe(3);
+    expect(maxRopes(0, 'small')).toBe(1);
   });
 });

@@ -1,7 +1,7 @@
 //! Clipboard and hotkey commands (v2). OWNER: Task 9. Mirrored by `src/lib/ipc.ts`.
 //!
 //! Single-item changes emit `clip://updated` (the item), bulk changes `clip://changed`, so the
-//! main window and the shelf stay in sync whichever one made the change.
+//! main window and the line stay in sync whichever one made the change.
 
 use super::{CmdError, CmdResult};
 use crate::events;

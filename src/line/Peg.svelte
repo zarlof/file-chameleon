@@ -164,7 +164,7 @@
       <div class="file">
         <div class="fthumb">
           {#if file.thumb && !thumbFailed}
-            <img src={convertFileSrc(file.thumb)} alt="" draggable="false" onerror={() => (thumbFailed = true)} />
+            <img src={`${convertFileSrc(file.thumb)}?v=${file.mtime ?? 0}`} alt="" draggable="false" onerror={() => (thumbFailed = true)} />
           {:else}
             <svg viewBox="0 0 24 28" width={22 * scale} height={26 * scale} aria-hidden="true">
               <path d="M3 1.5h12l6 6v19a1.5 1.5 0 0 1-1.5 1.5h-16.5a1.5 1.5 0 0 1-1.5-1.5v-23.5a1.5 1.5 0 0 1 1.5-1.5Z" class="doc" />

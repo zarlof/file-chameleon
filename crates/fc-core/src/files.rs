@@ -34,6 +34,34 @@ fn key(p: &Path) -> String {
     p.to_string_lossy().replace('/', "\\").to_lowercase()
 }
 
+/// Does a failed `metadata` call prove the file is gone? Only `NotFound` does: a network or
+/// offline drive, a permission problem or a timeout leaves the entry alone.
+pub fn error_means_gone(kind: std::io::ErrorKind) -> bool {
+    kind == std::io::ErrorKind::NotFound
+}
+
+/// Is `p` definitively missing? UNC paths are never stat-ed (an unreachable server would hang
+/// while the store lock is held), and a path on a drive whose root does not answer is kept.
+fn definitely_missing(p: &Path) -> bool {
+    use std::path::Component;
+    let mut comps = p.components();
+    if let Some(Component::Prefix(prefix)) = comps.next() {
+        match prefix.kind() {
+            std::path::Prefix::Disk(_) | std::path::Prefix::VerbatimDisk(_) => {
+                let root: PathBuf = p.components().take(2).collect();
+                if std::fs::metadata(&root).is_err() {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+    }
+    match std::fs::metadata(p) {
+        Ok(_) => false,
+        Err(e) => error_means_gone(e.kind()),
+    }
+}
+
 impl FileStore {
     /// Load `files.json` from `dir` (missing or corrupt file = empty store).
     pub fn open(dir: &Path) -> Result<FileStore> {
@@ -87,7 +115,7 @@ impl FileStore {
     /// (and the store is saved when that happened).
     pub fn list(&mut self, sources: &[FileSource]) -> Vec<FileEntry> {
         let before = self.entries.len();
-        self.entries.retain(|e| e.path.exists());
+        self.entries.retain(|e| !definitely_missing(&e.path));
         if self.entries.len() != before {
             let _ = self.save();
         }
@@ -187,6 +215,29 @@ mod tests {
         let mut again = FileStore::open(d.path()).unwrap();
         assert_eq!(again.entries.len(), 1, "pruning was saved");
         assert_eq!(again.list(&ALL).len(), 1);
+    }
+
+    #[test]
+    fn only_not_found_prunes() {
+        use std::io::ErrorKind::*;
+        assert!(error_means_gone(NotFound));
+        for k in [
+            PermissionDenied,
+            TimedOut,
+            ConnectionRefused,
+            Other,
+            Interrupted,
+        ] {
+            assert!(!error_means_gone(k), "{k:?}");
+        }
+        // UNC paths and paths on a dead drive are kept, existing ones too.
+        #[cfg(windows)]
+        assert!(!definitely_missing(Path::new(
+            r"\\no-such-server\share\a.png"
+        )));
+        let d = tempfile::tempdir().unwrap();
+        assert!(!definitely_missing(&touch(d.path(), "k.png")));
+        assert!(definitely_missing(&d.path().join("nope.png")));
     }
 
     #[test]

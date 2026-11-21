@@ -121,6 +121,8 @@ export const api = {
   // ---- files rope (wave 3)
   lineFiles: () => invoke<LineFile[]>('line_files'),
   lineFileCopy: (paths: string[]) => invoke<void>('line_file_copy', { paths }),
+  lineFilePaste: (paths: string[]) => invoke<void>('line_file_paste', { paths }),
+  lineCopyText: (text: string) => invoke<void>('line_copy_text', { text }),
   lineFileOpen: (path: string) => invoke<void>('line_file_open', { path }),
   lineFileReveal: (path: string) => invoke<void>('line_file_reveal', { path }),
   lineFileRemove: (paths: string[]) => invoke<void>('line_file_remove', { paths }),

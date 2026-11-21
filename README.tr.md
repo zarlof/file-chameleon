@@ -39,11 +39,13 @@ bilgisayarınızdan çıkmaz, orijinal dosyalar asla değiştirilmez veya silinm
 - **Sağ tık menüsü (isteğe bağlı).** Dosya Gezgini'ndeki "File Chameleon ile dönüştür" aynı çarkı
   imlecin yanında açar. Bir dilime tıklayın ya da kapatmak için Esc'ye basın.
 
+Toplam 558 dönüşüm.
+
 | Tür | Formatlar ve işlemler |
 |---|---|
-| Resim | PNG, JPG, WebP, BMP, GIF, TIFF, ICO; SVG → PNG/JPG/WebP/ICO; gri tonlama, döndürme, aynalama, saydam kenarları kırpma, pikselleştirme, bulanıklaştırma, boyutlandırma, 16:9 / 9:16 / 1:1 / 4:3 kırpma, çizme ve yazma |
-| Video | MP4, MKV, WebM, MOV, AVI; videodan GIF; GIF'ten MP4/WebM; sesi ayırma; en-boy oranına göre kırpma; 2 kat veya yarı hız |
-| Ses | MP3, M4A, Opus/OGG, FLAC, WAV; iPhone zil sesi (M4R, en fazla 40 sn) |
+| Resim | PNG, JPG, WebP, BMP, GIF, TIFF, ICO, TGA, QOI, PNM; SVG → PNG/JPG/WebP/ICO; gri tonlama, döndürme, aynalama, saydam kenarları kırpma, pikselleştirme, bulanıklaştırma, boyutlandırma, 16:9 / 9:16 / 1:1 / 4:3 kırpma, çizme ve yazma |
+| Video | MP4, MKV, WebM, MOV, AVI, M4V, WMV, FLV, MPG, 3GP, TS (OGV yalnızca okunur); videodan GIF; GIF'ten MP4/WebM; sesi ayırma; en-boy oranına göre kırpma; 2 kat veya yarı hız |
+| Ses | MP3, M4A, Opus/OGG, FLAC, WAV, AAC, WMA, AIFF, AC3, MKA (AMR yalnızca okunur); iPhone zil sesi (M4R, en fazla 40 sn) |
 | PDF | birleştirme, bölme, resimlerden PDF, PDF'ten PNG/JPG |
 | Metin ve veri | Markdown → HTML, TXT → HTML, CSV ⇄ TSV ⇄ JSON ⇄ YAML ⇄ TOML |
 | Altyazı | SRT ⇄ WebVTT, → düz metin; ASS/SSA → SRT/WebVTT. Eski Türkçe (Windows-1254) ve UTF-16 dosyalar doğru okunur. |
@@ -67,9 +69,18 @@ az önce kopyaladığınız linki indirir.
 
 ### Pano
 
-- **Raf:** **Ctrl+Alt+V** ekranın üstünde üç sıra (resimler, metinler, linkler) açar. Oklar ve Enter
-  kopyalar, **Ctrl+Enter** doğrudan önceki uygulamaya yapıştırır, 1–9 bir kart seçer, yazmak arar,
-  P sabitler, Delete çöp kutusuna taşır (Ctrl+Z geri getirir).
+- **Çamaşır ipi:** resimler, metinler, linkler ve dosyalar için en çok dört ip; panonuzdaki öğeler
+  çamaşır gibi mandalla asılır, ekranın üstünde ya da altında durur. **Ctrl+Alt+L** açar
+  (**Ctrl+Alt+F** aramayla açar), ya da fareyi ekran kenarına götürüp bir an bekleyin; bir şey
+  kopyalayınca da kısa süre göz atar. Karta tıklamak kopyalar (ya da kopyalayıp kapatır, ya da
+  önceki uygulamaya doğrudan yapıştırır: ayarınıza göre), **Ctrl+Enter** yapıştırır, 1–9 bir kart
+  seçer, yazmak arar, Delete çöp kutusuna taşır (Ctrl+Z geri getirir). Kartı sürükleyip başka bir
+  uygulamaya bırakabilirsiniz. Ayarlar → **İp** bölümünden kenar, boyut, ip ve mandal görünümü,
+  kartlar, renkler, sallanma, sesler, ip sırası ve adları, her ipte kaç kart durduğu ve daha fazlası
+  değiştirilir.
+- **Dosyalar ipi:** dördüncü ip eklediğiniz, dönüştürdüğünüz ya da indirdiğiniz dosyaları tutar.
+  Sürükleyebilir, açabilir, Gezgin'de gösterebilir veya panoya koyabilirsiniz. Sağ tık daha fazlasını
+  verir. Gezgin'in sağ tık menüsündeki **İpe as** komutu dosyaları buraya asar.
 - **Kütüphane:** **Pano** sayfasında klasörler, etiketler, sabitlenenler filtresi, çöp kutusu, ızgara
   veya liste görünümü ve başlık, not ve metin düzenleme için bir ayrıntı paneli vardır. Öğeleri bir
   klasöre dışa aktarabilirsiniz.
@@ -90,7 +101,7 @@ az önce kopyaladığınız linki indirir.
   özellik onlara ilk ihtiyaç duyduğunda bir kez indirilir ve SHA-256 ile doğrulanır. Bilgisayarınızda
   `PATH` içinde FFmpeg varsa doğrudan o kullanılır.
 - **Az bellek.** Arka plandaki işler (tepsi, kancalar, kısayollar, pano dinleyici, iş kuyruğu) Rust
-  ile çalışır. Ana pencere kapatılınca tamamen kapanır, açılınca yeniden oluşturulur. Pano rafı
+  ile çalışır. Ana pencere kapatılınca tamamen kapanır, açılınca yeniden oluşturulur. İp
   penceresi ancak ilk açtığınızda oluşturulur.
 - **Doğal görünüm.** Windows 11 Mica ve pencere düğmeleri, Inter yazı tipi ve Lucide ikonları. Açık
   ve koyu temaya uyar, arayüz boyutu ayarlanabilir. Arayüz Türkçe ve İngilizcedir.
@@ -108,7 +119,7 @@ Gereksinimler: Windows 10 (1809 ve üstü) veya Windows 11, 64 bit. WebView2 yok
 - Çarkı açmak için Dosya Gezgini'nden veya masaüstünden dosya ya da klasörleri **Ctrl + sürükleyin**.
   İptal etmek için **Esc**'ye basın ya da çarkın dışında bırakın. **Ctrl+Shift + sürükle** arka yüzü
   açar.
-- **Ctrl+Alt+V** pano rafını açar, **Ctrl+Alt+D** kopyalanan linki indirir. Bu kısayolları Ayarlar →
+- **Ctrl+Alt+L** çamaşır ipini açar, **Ctrl+Alt+D** kopyalanan linki indirir. Bu kısayolları Ayarlar →
   **Kısayollar** bölümünden değiştirebilir veya kapatabilirsiniz.
 - Pencereyi kapatınca File Chameleon tepside çalışmaya devam eder (Ayarlar → **Genel** bölümünden
   değiştirebilirsiniz). Çıkmak için tepsi menüsünde **Çıkış**'ı seçin.

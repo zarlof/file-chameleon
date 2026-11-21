@@ -29,6 +29,9 @@ pub struct LineFile {
     pub size: u64,
     pub kind: Option<Kind>,
     pub thumb: Option<String>,
+    /// Modification time of the file (ms since the epoch): the page adds it to the thumbnail URL
+    /// so a replaced file does not show the old cached picture.
+    pub mtime: u64,
 }
 
 /// File name of the cached thumbnail of `path`: a stable 64-bit FNV-1a hash of the path (case
@@ -235,7 +238,12 @@ pub fn list(app: &AppHandle) -> Vec<LineFile> {
     let files = entries
         .map(|e| {
             let kind = formats::detect_path(&e.path).map(|f| f.kind);
-            let size = std::fs::metadata(&e.path).map(|m| m.len()).unwrap_or(0);
+            let meta = std::fs::metadata(&e.path).ok();
+            let size = meta.as_ref().map_or(0, |m| m.len());
+            let mtime = meta
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |d| d.as_millis() as u64);
             let mut thumb = None;
             if kind == Some(Kind::Image) {
                 let name = thumb_name(&e.path);
@@ -265,6 +273,7 @@ pub fn list(app: &AppHandle) -> Vec<LineFile> {
                 size,
                 kind,
                 thumb: thumb.map(|t| t.to_string_lossy().into_owned()),
+                mtime,
             }
         })
         .collect();

@@ -51,6 +51,17 @@ pub fn window_height(ropes: usize, size: &str) -> f64 {
     ropes.max(1) as f64 * (band_height(size) + BAND_GAP)
 }
 
+/// The most whole ropes that fit a work area `work_h` logical pixels high at `size`
+/// (at least one). The page uses the same rule (`maxRopes` in `src/line/layout.ts`).
+pub fn max_ropes(work_h: f64, size: &str) -> usize {
+    let n = (work_h / (band_height(size) + BAND_GAP)).floor();
+    if n.is_finite() && n >= 1.0 {
+        n as usize
+    } else {
+        1
+    }
+}
+
 /// How long the pointer must stay in the edge zone before the line reveals itself.
 pub fn dwell(ms: u32) -> Duration {
     Duration::from_millis(u64::from(ms))
@@ -74,6 +85,7 @@ pub fn line_rect(
         1.0
     };
     let (work_w, work_h) = ((right - left).max(1), (bottom - top).max(1));
+    let ropes = ropes.min(max_ropes(f64::from(work_h) / scale, size));
     let height = fit_height(ropes, size, scale, Some(work_h));
     let y = if edge == "bottom" {
         bottom - height
@@ -758,6 +770,30 @@ pub fn paste(app: &AppHandle, ids: &[u64]) -> CmdResult<()> {
     Ok(())
 }
 
+/// `line_file_paste`: copy the files (a file list), hide the line and paste into the window it
+/// came from.
+pub fn paste_files(app: &AppHandle, paths: &[String]) -> CmdResult<()> {
+    copy_files(app, paths)?;
+    hide(app);
+    let prev = app.state::<AppState>().line_prev.load(Ordering::SeqCst);
+    paste_keys_into(prev);
+    Ok(())
+}
+
+/// `line_copy_text`: text on the clipboard as our own write, so it is neither recorded as a clip
+/// nor peeked at.
+pub fn copy_text(app: &AppHandle, text: &str) -> CmdResult<()> {
+    match crate::platform::clipboard::write_text(text) {
+        Ok(seq) => {
+            app.state::<AppState>()
+                .clip_self_write
+                .store(seq, Ordering::SeqCst);
+            Ok(())
+        }
+        Err(e) => Err(CmdError::new("clipboard", e)),
+    }
+}
+
 /// `line_open_item`: the clipboard library, with that clip selected.
 pub fn open_item(app: &AppHandle, id: u64) {
     hide(app);
@@ -955,8 +991,8 @@ mod tests {
             line_rect((1920, 40, 3840, 1080), 1.0, 0, m, "top"),
             (1920, 40, 1920, 190)
         );
-        // Never taller than the work area.
-        assert_eq!(line_rect((0, 0, 800, 300), 1.0, 3, m, "top").3, 300);
+        // Never taller than the work area: only whole ropes fit.
+        assert_eq!(line_rect((0, 0, 800, 300), 1.0, 3, m, "top").3, 190);
     }
 
     #[test]
@@ -966,10 +1002,10 @@ mod tests {
             line_rect((0, 0, 1920, 1040), 1.0, 3, "medium", "bottom"),
             (0, 470, 1920, 570)
         );
-        // A clamped window fills the work area from its top.
+        // A clamped window holds whole ropes only and sits on the bottom.
         assert_eq!(
             line_rect((0, 40, 800, 340), 1.0, 3, "medium", "bottom"),
-            (0, 40, 800, 300)
+            (0, 150, 800, 190)
         );
         // An unknown edge is the top.
         assert_eq!(line_rect((0, 0, 1920, 1040), 1.0, 3, "medium", "left").1, 0);
@@ -980,7 +1016,22 @@ mod tests {
         assert_eq!(window_height(4, "large"), 936.0);
         assert_eq!(fit_height(4, "large", 1.0, Some(900)), 900);
         assert_eq!(fit_height(4, "large", 1.0, Some(1040)), 936);
-        assert_eq!(line_rect((0, 0, 1600, 900), 1.0, 4, "large", "top").3, 900);
+        // 4 large ropes on a 900 px work area: 3 whole ropes fit (702), never a clipped fourth.
+        assert_eq!(line_rect((0, 0, 1600, 900), 1.0, 4, "large", "top").3, 702);
+    }
+
+    #[test]
+    fn max_ropes_fit_whole_ropes() {
+        assert_eq!(max_ropes(688.0, "medium"), 3);
+        assert_eq!(max_ropes(760.0, "medium"), 4);
+        assert_eq!(max_ropes(100.0, "large"), 1);
+        assert_eq!(max_ropes(900.0, "large"), 3);
+        // 4 ropes asked for on a 688 px work area: the window holds 3 whole ropes.
+        let (_, _, _, h) = line_rect((0, 0, 1920, 688), 1.0, 4, "medium", "top");
+        assert_eq!(h, 570);
+        // High DPI: 1032 physical px at 1.5 = 688 logical.
+        let (_, _, _, h) = line_rect((0, 0, 1920, 1032), 1.5, 4, "medium", "top");
+        assert_eq!(h, 855);
     }
 
     #[test]

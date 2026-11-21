@@ -40,6 +40,7 @@
     pinStyle = 'plastic',
     pinColor = 'auto',
     cardOp,
+    ropeOp = 1,
     zoomOn = false,
     onzoom,
     emptyText = '',
@@ -79,6 +80,8 @@
     pinColor?: string;
     /** Card opacity 0.9..1. */
     cardOp: number;
+    /** Opacity of the rope itself (cord, knots, label), 0.3..1. */
+    ropeOp?: number;
     zoomOn?: boolean;
     onzoom?: (item: NonNullable<LineCard['item']> | null, rect: DOMRect | null) => void;
     /** Shown on the rope when a search leaves it empty. */
@@ -102,7 +105,7 @@
 </script>
 
 <div class="rope" style:top="{top}px" style:height="{band}px">
-  <svg class="cord" {width} height={TOP + sagPx + 24} viewBox="0 0 {width} {TOP + sagPx + 24}" aria-hidden="true">
+  <svg class="cord" style:opacity={ropeOp} {width} height={TOP + sagPx + 24} viewBox="0 0 {width} {TOP + sagPx + 24}" aria-hidden="true">
     <g transform="translate(0 {TOP})" class="g" class:thin={ropeStyle === 'thin'}>
       {#each layers as l, i (i)}
         <path {d} fill="none" stroke={l.stroke} stroke-width={l.width} stroke-dasharray={l.dash} stroke-linecap="round" stroke-linejoin="round" opacity={l.opacity} />
@@ -113,7 +116,7 @@
       {/if}
     </g>
   </svg>
-  {#if showLabel && label}<span class="label">{label}</span>{/if}
+  {#if showLabel && label}<span class="label" style:opacity={ropeOp}>{label}</span>{/if}
   {#if cards.length === 0 && emptyText}<span class="none">{emptyText}</span>{/if}
   {#each cards as c, i (c.id)}
     <div class="slot" style:left="{centers[i] - card / 2}px" style:top="{TOP + ropeY(width, centers[i], centers, sagPx) + 8 * scale}px" style:width="{card}px">
