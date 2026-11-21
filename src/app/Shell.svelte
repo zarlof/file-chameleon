@@ -19,6 +19,7 @@
   import Clipboard from './views/clipboard/index.svelte';
   import Convert from './views/convert/index.svelte';
   import Download from './views/download/index.svelte';
+  import Presets from './views/presets/index.svelte';
   import Recent from './views/recent/index.svelte';
   import About from './views/settings/About.svelte';
   import Appearance from './views/settings/Appearance.svelte';
@@ -27,6 +28,7 @@
   import General from './views/settings/General.svelte';
   import Placeholder from './views/settings/Placeholder.svelte';
   import Shortcuts from './views/settings/Shortcuts.svelte';
+  import WheelEditor from './views/wheel/index.svelte';
 
   let width = $state(1000);
   let dragging = $state(false);
@@ -112,8 +114,8 @@
         {:else if nav.view === 'clipboard'}<Clipboard />
         {:else if nav.view === 'recent'}<Recent />
         {:else if nav.view === 'general'}<General />
-        {:else if nav.view === 'wheel'}<Placeholder title={t('common.nav.wheel')} />
-        {:else if nav.view === 'presets'}<Placeholder title={t('common.nav.presets')} />
+        {:else if nav.view === 'wheel'}<WheelEditor />
+        {:else if nav.view === 'presets'}<Presets />
         {:else if nav.view === 'shortcuts'}<Shortcuts />
         {:else if nav.view === 'watch'}<Placeholder title={t('common.nav.watch')} />
         {:else if nav.view === 'clipboardSettings'}<ClipboardSettings />

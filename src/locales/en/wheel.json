@@ -1,0 +1,83 @@
+{
+  "resetAll": "Reset all",
+  "resetAllTitle": "Reset the whole wheel?",
+  "resetAllMessage": "Every profile goes back to its default arrangement. Your own presets, groups and profiles are removed.",
+  "loadFailed": "Couldn't load the wheel settings.",
+  "retry": "Try again",
+  "profiles": {
+    "title": "1. Choose a profile",
+    "search": "Search profiles",
+    "none": "No profile matches.",
+    "counts": "{front} on the front, {back} on the back",
+    "newName": "New profile"
+  },
+  "arrange": {
+    "title": "2. Arrange presets",
+    "front": "Front",
+    "back": "Back",
+    "flipHint": "Flip the open wheel: Tab / mouse wheel",
+    "emptySide": "Empty side",
+    "empty": "This side is empty. Pick presets on the right to add them.",
+    "capacity": "{n} of {max}",
+    "moveEarlier": "Move earlier (Alt+←)",
+    "moveLater": "Move later (Alt+→)",
+    "remove": "Remove (Delete)",
+    "editGroup": "Edit group",
+    "slots": "Slots",
+    "keys": "Alt+← and Alt+→ move the selected slot, Delete removes it."
+  },
+  "profile": {
+    "name": "Name",
+    "mixed": "Use for mixed selections",
+    "mixedHint": "Opens when the dragged files belong to different profiles.",
+    "extensions": "File extensions",
+    "noExtensions": "No extensions yet.",
+    "addExtension": "Add",
+    "extensionPlaceholder": "e.g. docx",
+    "badExtension": "Use 1–10 letters or digits, without a dot.",
+    "removeExtension": "Remove {ext}",
+    "shadowed": "{ext} files open “{profile}”, which comes first in the list.",
+    "otherHint": "Files that no profile takes get this wheel.",
+    "resetTitle": "Reset “{name}”?",
+    "resetMessage": "This profile goes back to its default slots, extensions and name.",
+    "reset": "Reset profile",
+    "delete": "Delete profile",
+    "deleteTitle": "Delete “{name}”?",
+    "deleteMessage": "Its wheel arrangement is removed. Presets and groups stay."
+  },
+  "picker": {
+    "title": "Available presets",
+    "search": "Search presets",
+    "copyToFolder": "Copy to folder",
+    "none": "No preset matches.",
+    "groupOf": "Group · {n}",
+    "unfit": "Doesn't work with {profile} files",
+    "onFace": "Already on this side",
+    "full": "This side is full (at most {max})."
+  },
+  "group": {
+    "newTitle": "New group",
+    "editTitle": "Edit group",
+    "name": "Name",
+    "defaultName": "New group",
+    "members": "Presets ({n} of {max})",
+    "noMembers": "Pick up to 6 presets below. They fan out around the group's slot.",
+    "search": "Search presets",
+    "full": "A group holds at most {max} presets.",
+    "create": "Create and add",
+    "save": "Save",
+    "delete": "Delete group",
+    "moveEarlier": "Move earlier",
+    "moveLater": "Move later",
+    "remove": "Remove"
+  },
+  "newPreset": {
+    "title": "New preset",
+    "create": "Create and add"
+  },
+  "errors": {
+    "invalid": "That change couldn't be saved and was undone.",
+    "saveFailed": "Couldn't save the wheel. The change was undone.",
+    "resetFailed": "Couldn't reset the wheel."
+  }
+}
