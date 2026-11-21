@@ -28,7 +28,14 @@
     "trim": "Trim",
     "mute": "Mute",
     "speed": "Change speed",
-    "crop": "Crop"
+    "crop": "Crop",
+    "edit": "Edit",
+    "cropAspect": "Crop to aspect ratio",
+    "copy": "Copy to folder",
+    "move": "Move to folder",
+    "zip": "Make ZIP",
+    "extract": "Extract archive",
+    "annotate": "Edit image"
   },
   "errors": {
     "cancelled": "Cancelled.",
@@ -40,6 +47,7 @@
     "checksum": "The download was corrupted. Please try again.",
     "toolFailed": "The conversion tool reported an error.",
     "failed": "Something went wrong.",
-    "io": "The file could not be read or written. Check the folder and permissions."
+    "io": "The file could not be read or written. Check the folder and permissions.",
+    "invalid": "The settings are invalid. Check the preset."
   }
 }

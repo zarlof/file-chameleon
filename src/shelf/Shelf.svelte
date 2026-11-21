@@ -126,6 +126,7 @@
     anchor = null;
     toast = null;
     data = { images: [], texts: [], links: [] };
+    visible = true;
     window.focus();
     await refresh(true);
     await tick();
@@ -143,7 +144,15 @@
     toastTimer = setTimeout(() => (toast = null), 4000);
   }
 
+  // While the window is hidden, clip / settings events only mark the lists stale; `shelf://open`
+  // (reopen) reloads them. Saves the queries and renders for a window nobody sees.
+  let visible = true;
+  function refreshLive() {
+    if (visible) void refresh();
+  }
+
   async function hide() {
+    visible = false;
     try {
       await api.shelfHide();
     } catch (e) {
@@ -362,12 +371,12 @@
       await refresh(true);
       unlisten.push(
         await on.shelfOpen(() => void reopen()),
-        await on.clipAdded(() => void refresh()),
-        await on.clipUpdated(() => void refresh()),
-        await on.clipChanged(() => void refresh()),
+        await on.clipAdded(refreshLive),
+        await on.clipUpdated(refreshLive),
+        await on.clipChanged(refreshLive),
         await on.settingsChanged((s) => {
           applySettings(s);
-          void refresh();
+          refreshLive();
         }),
       );
     })();

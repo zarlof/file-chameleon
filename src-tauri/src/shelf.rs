@@ -158,6 +158,19 @@ fn place(app: &AppHandle, w: &WebviewWindow) {
     let _ = (app, w);
 }
 
+/// Shell chrome that takes focus when the shelf is opened from the tray (the taskbar, the
+/// hidden-icons flyout): pasting "back" into it is meaningless, so it counts as no window.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn is_taskbar_class(class: &str) -> bool {
+    matches!(
+        class,
+        "Shell_TrayWnd"
+            | "Shell_SecondaryTrayWnd"
+            | "NotifyIconOverflowWindow"
+            | "TopLevelWindowForOverflowXamlIsland"
+    )
+}
+
 /// Show the shelf (creating it on first use) and tell the page (`shelf://open`). On the very
 /// first show the page may not be listening yet; it loads its data on mount anyway.
 pub fn show_shelf(app: &AppHandle) {
@@ -167,7 +180,10 @@ pub fn show_shelf(app: &AppHandle) {
         // No foreground window, or one of ours (the shelf, the main window): nothing to paste
         // into later, so `shelf_paste` just copies.
         let fg = crate::platform::win::foreground_window();
-        let prev = if fg == 0 || crate::platform::win::is_own_window(fg) {
+        let prev = if fg == 0
+            || crate::platform::win::is_own_window(fg)
+            || is_taskbar_class(&crate::platform::win::window_class(fg))
+        {
             0
         } else {
             fg
@@ -249,7 +265,20 @@ pub fn paste_into_previous(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::{paste_sequence, shelf_rect};
+    use super::{is_taskbar_class, paste_sequence, shelf_rect};
+
+    #[test]
+    fn taskbar_windows_are_not_a_paste_target() {
+        for c in [
+            "Shell_TrayWnd",
+            "NotifyIconOverflowWindow",
+            "TopLevelWindowForOverflowXamlIsland",
+        ] {
+            assert!(is_taskbar_class(c), "{c}");
+        }
+        assert!(!is_taskbar_class("Notepad"));
+        assert!(!is_taskbar_class("Chrome_WidgetWin_1"));
+    }
 
     #[test]
     fn paste_releases_held_modifiers_first() {

@@ -29,7 +29,7 @@ export function newRule(path: string, presets: Preset[], existing: Iterable<stri
 /** Error codes of the backend (`rule_problem`, `job_error`) that have their own text. A job error
  *  arrives as "<code>:<message>"; the message is kept as detail. Anything else (a folder read
  *  error from the OS) is shown as it is. */
-const CODES = ['presetMissing', 'presetNotUnattended', 'missingTool', 'failed'];
+const CODES = ['presetMissing', 'presetNotUnattended', 'selfTarget', 'missingTool', 'failed'];
 
 export interface StatusLine {
   text: string;

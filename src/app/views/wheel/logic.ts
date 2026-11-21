@@ -159,14 +159,18 @@ export function shadowedBy(profiles: Profile[], profileId: string, ext: string):
 
 // ---------------------------------------------------------------- ids, extensions, folders
 
-/** Next free "u-<n>" (also used for user groups and profiles, each in its own list). */
+/**
+ * A fresh "u-<base36 time><random>" id (also used for user groups and profiles, each in its own
+ * list). Ids are never reused, even after a delete: a watch folder or profile that still names a
+ * deleted preset must not silently point at a newer one. `existing` only guards against a clash.
+ */
 export function newPresetId(existing: Iterable<string>): string {
-  let max = 0;
-  for (const id of existing) {
-    const m = /^u-(\d+)$/.exec(id);
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  return `u-${max + 1}`;
+  const taken = new Set(existing);
+  let id: string;
+  do {
+    id = `u-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  } while (taken.has(id));
+  return id;
 }
 
 /** ".JPG" -> "jpg"; null unless 1..10 ASCII letters or digits. */

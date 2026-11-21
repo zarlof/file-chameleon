@@ -28,7 +28,14 @@
     "trim": "Kes",
     "mute": "Sessize al",
     "speed": "Hızı değiştir",
-    "crop": "Kırp"
+    "crop": "Kırp",
+    "edit": "Düzenle",
+    "cropAspect": "En boy oranına kırp",
+    "copy": "Klasöre kopyala",
+    "move": "Klasöre taşı",
+    "zip": "ZIP yap",
+    "extract": "Arşivi çıkar",
+    "annotate": "Görseli düzenle"
   },
   "errors": {
     "cancelled": "İptal edildi.",
@@ -40,6 +47,7 @@
     "checksum": "İndirilen dosya bozuk. Lütfen tekrar deneyin.",
     "toolFailed": "Dönüştürme aracı bir hata bildirdi.",
     "failed": "Bir şeyler ters gitti.",
-    "io": "Dosya okunamadı ya da yazılamadı. Klasörü ve izinleri kontrol edin."
+    "io": "Dosya okunamadı ya da yazılamadı. Klasörü ve izinleri kontrol edin.",
+    "invalid": "Ayarlar geçersiz. Hazır ayarı kontrol edin."
   }
 }

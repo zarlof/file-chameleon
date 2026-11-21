@@ -40,5 +40,6 @@
   "error.checksum": "Download is corrupted",
   "error.toolFailed": "The conversion tool failed",
   "error.failed": "Something went wrong",
-  "error.io": "Could not read or write the file"
+  "error.io": "Could not read or write the file",
+  "error.invalid": "Invalid settings"
 }

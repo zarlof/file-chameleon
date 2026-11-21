@@ -30,10 +30,20 @@ pub fn start(app: &AppHandle) {
     // Clipboard v2 (Task 9): hotkeys, OCR, watched image folders, retention.
     hotkeys::configure(app, &s);
     ocr::set_enabled(s.clipboard_ocr);
-    clipboard::configure_folders(app, &s);
     clipboard::start_maintenance(app);
-    // Watch folders (Task 10).
-    crate::watchfolders::configure(app, &s);
+    // Watched folders (clipboard image folders, Task 10 watch folders): the first scan reads
+    // every file's metadata, and an unreachable network path can stall for a long time, so it
+    // never runs on the main thread.
+    let app = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("fc-folders-init".into())
+        .spawn(move || {
+            clipboard::configure_folders(&app, &s);
+            crate::watchfolders::configure(&app, &s);
+        });
+    if let Err(e) = spawned {
+        eprintln!("folder watchers: {e}");
+    }
 }
 
 fn configure_wheel(app: &AppHandle, s: &Settings) {

@@ -137,7 +137,7 @@ export function describePreset(p: Preset, t: Translate): string {
   return parts.join(' · ');
 }
 
-/** An editable copy of any preset, with a fresh "u-<n>" id and a "… copy" name. */
+/** An editable copy of any preset, with a fresh "u-…" id and a "… copy" name. */
 export function duplicatePreset(p: Preset, existingIds: Iterable<string>, t: Translate): Preset {
   const copy = JSON.parse(JSON.stringify(p)) as Preset;
   return { ...copy, id: newPresetId(existingIds), name: t('presetsPage.copyName', { name: presetLabel(p, t) }), builtin: false };

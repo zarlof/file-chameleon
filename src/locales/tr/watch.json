@@ -25,6 +25,7 @@
     "presetMissing": "Bu hazır ayar artık yok. Başka bir tane seç.",
     "presetNotUnattended": "Bu hazır ayar klasör seçimi ya da düzenleyici gerektirdiği için kendi başına çalışamaz. Başka bir tane seç.",
     "missingTool": "Gereken bir araç henüz kurulu değil. Motorlar sayfasından kur.",
-    "failed": "Son dosya işlenemedi."
+    "failed": "Son dosya işlenemedi.",
+    "selfTarget": "Hedef klasör izlenen klasörün kendisi olamaz."
   }
 }

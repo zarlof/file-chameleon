@@ -132,9 +132,16 @@ describe('profiles', () => {
 });
 
 describe('ids and extensions', () => {
-  it('makes the next u-<n> id', () => {
-    expect(newPresetId([])).toBe('u-1');
-    expect(newPresetId(['to-png', 'u-1', 'u-7', 'u-x', 'u-3'])).toBe('u-8');
+  it('makes unique u- ids that are never reused', () => {
+    const ids = new Set<string>();
+    for (let i = 0; i < 200; i++) ids.add(newPresetId(ids));
+    expect(ids.size).toBe(200);
+    for (const id of ids) expect(id).toMatch(/^u-[a-z0-9]+$/);
+    // Deleting the newest item does not free its id for the next one.
+    const a = newPresetId(['u-1']);
+    const b = newPresetId(['u-1']);
+    expect(a).not.toBe(b);
+    expect(newPresetId(['to-png', 'u-1', 'u-7', 'u-x'])).not.toBe('u-8');
   });
   it('normalizes extensions', () => {
     expect(normalizeExt('.JPG')).toBe('jpg');

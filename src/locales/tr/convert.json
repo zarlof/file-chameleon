@@ -25,7 +25,9 @@
     "video": "Video",
     "audio": "Ses",
     "pdf": "PDF",
-    "data": "Veri"
+    "data": "Veri",
+    "subtitle": "Altyazı",
+    "archive": "Arşiv"
   },
   "tools": {
     "title": "Araçlar",
@@ -81,5 +83,9 @@
   "queue": {
     "title": "Sıra",
     "all": "Tümünü Son işlemler'de gör"
+  },
+  "wheel": {
+    "open": "Çarkı aç",
+    "edit": "Düzenle"
   }
 }

@@ -75,4 +75,11 @@ describe('toastView', () => {
     expect(shortenUrl('https://www.example.com/')).toBe('example.com');
     expect(shortenUrl('https://example.com/' + 'a'.repeat(80)).length).toBe(44);
   });
+  it('localizes the invalid job error code', () => {
+    setLang('en', 'en');
+    expect(toastView(p('jobFailed', { inputName: 'a.png', errorCode: 'invalid' }), t).body).toBe('a.png · Invalid settings');
+    setLang('tr', 'en');
+    expect(toastView(p('jobFailed', { inputName: 'a.png', errorCode: 'invalid' }), t).body).toBe('a.png · Geçersiz ayar');
+    setLang('en', 'en');
+  });
 });

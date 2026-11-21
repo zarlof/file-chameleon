@@ -2,7 +2,7 @@
 import type { JobSnapshot, Operation } from '../../../lib/types';
 
 export const ERROR_CODES = [
-  'cancelled', 'missingTool', 'unsupported', 'notFound', 'tooLarge', 'network', 'checksum', 'toolFailed', 'failed', 'io',
+  'cancelled', 'missingTool', 'unsupported', 'notFound', 'tooLarge', 'network', 'checksum', 'toolFailed', 'failed', 'io', 'invalid',
 ] as const;
 
 /** i18n key for a job's error code (unknown / missing codes fall back to the generic "failed" text). */
@@ -29,6 +29,8 @@ export function opLabel(op: Operation): { key: string; params?: Record<string, s
       return { key: 'recent.op.convert', params: { to: op.to.toUpperCase() } };
     case 'compress':
       return { key: 'recent.op.compress', params: { level: op.level } };
+    case 'copyTo':
+      return { key: op.moveFiles ? 'recent.op.move' : 'recent.op.copy' };
     default:
       return { key: `recent.op.${op.type}` };
   }

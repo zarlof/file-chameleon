@@ -186,6 +186,16 @@
     void submit(req, [...missing]);
   }
 
+  /** The wheel opens in click mode at the cursor with the loaded files. */
+  function openWheel() {
+    void api.wheelOpen(supported.map((i) => i.path)).catch(() => {});
+  }
+  /** "Edit" shows for exactly one raster image (vectors and everything else have no editor). */
+  const editablePath = $derived(resp?.inputs.length === 1 && resp.inputs[0].kind === 'image' ? resp.inputs[0].path : null);
+  function openEditor() {
+    if (editablePath) nav.goto({ view: 'editor', paths: [editablePath], url: null });
+  }
+
   const fileCount = $derived(resp?.inputs.length ?? 0);
   // Home (no files loaded): finished jobs are listed under "Recent conversions", so the queue skips them.
   const recentDone = $derived(fileCount === 0 ? jobs.list.filter((j) => j.state === 'done').slice(0, 6) : []);
@@ -239,6 +249,12 @@
         <Button size="sm" onclick={pickFiles}>{t('convert.drop.addFiles')}</Button>
         <Button size="sm" onclick={pickFolder}>{t('convert.drop.addFolder')}</Button>
         <Button size="sm" variant="plain" onclick={() => refresh([])}>{t('convert.drop.clear')}</Button>
+        {#if supported.length > 0}
+          <Button size="sm" onclick={openWheel}>{t('convert.wheel.open')}</Button>
+        {/if}
+        {#if editablePath}
+          <Button size="sm" onclick={openEditor}>{t('convert.wheel.edit')}</Button>
+        {/if}
       </div>
     </div>
     {#if loadError}<p class="error">{t('convert.loadError')}</p>{/if}

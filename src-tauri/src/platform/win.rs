@@ -214,6 +214,13 @@ pub fn foreground_window() -> isize {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow().0 as isize }
 }
 
+/// Window class name of `h` ("" when it cannot be read).
+pub fn window_class(h: isize) -> String {
+    let mut buf = [0u16; 128];
+    let n = unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassNameW(hwnd(h), &mut buf) };
+    String::from_utf16_lossy(&buf[..usize::try_from(n).unwrap_or(0)])
+}
+
 pub fn is_window(h: isize) -> bool {
     unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindow(Some(hwnd(h))).as_bool() }
 }

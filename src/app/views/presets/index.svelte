@@ -1,6 +1,6 @@
 <!--
   Presets page ("Hazır ayarlar") — every preset in a searchable, filterable list, and an editor
-  for the selected one. Built-ins are read-only ("Duplicate" makes an editable u-<n> copy);
+  for the selected one. Built-ins are read-only ("Duplicate" makes an editable copy);
   user presets can be edited (saved as you type, through the wheelConfig store) and deleted.
 -->
 <script lang="ts">

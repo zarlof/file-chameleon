@@ -40,5 +40,6 @@
   "error.checksum": "İndirilen dosya bozuk",
   "error.toolFailed": "Dönüştürme aracı başarısız oldu",
   "error.failed": "Bir şeyler ters gitti",
-  "error.io": "Dosya okunamadı veya yazılamadı"
+  "error.io": "Dosya okunamadı veya yazılamadı",
+  "error.invalid": "Geçersiz ayar"
 }

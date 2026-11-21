@@ -25,6 +25,7 @@
     "presetMissing": "This preset no longer exists. Choose another one.",
     "presetNotUnattended": "This preset needs a folder choice or the editor, so it can't run on its own. Choose another one.",
     "missingTool": "Needs a tool that isn't installed yet. Install it from Engines.",
-    "failed": "Couldn't process the last file."
+    "failed": "Couldn't process the last file.",
+    "selfTarget": "The target folder can't be the watched folder itself."
   }
 }

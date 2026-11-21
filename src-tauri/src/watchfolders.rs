@@ -60,19 +60,63 @@ pub fn rule_problem(config: &WheelConfig, preset_id: &str) -> Option<&'static st
     }
 }
 
+/// Comparable form of a folder path: separators unified, no trailing separator, and
+/// case-folded on Windows (the file system there ignores case).
+fn norm(p: &Path) -> String {
+    let s = p.to_string_lossy().replace('\\', "/");
+    let s = s.trim_end_matches('/');
+    if cfg!(windows) {
+        s.to_lowercase()
+    } else {
+        s.to_string()
+    }
+}
+
+/// The fixed folder a `copyTo` preset writes to, when the rule has one.
+fn fixed_target(config: &WheelConfig, preset_id: &str) -> Option<PathBuf> {
+    use fc_core::jobs::Operation;
+    match config.preset(preset_id).map(|p| &p.op) {
+        Some(Operation::CopyTo { dir: Some(d), .. }) => Some(d.clone()),
+        _ => None,
+    }
+}
+
+/// Whether the preset writes straight into the watched folder (every result would be a new file
+/// to process, forever).
+fn is_self_target(config: &WheelConfig, rule: &WatchFolder) -> bool {
+    fixed_target(config, &rule.preset).is_some_and(|d| norm(&d) == norm(&rule.path))
+}
+
+/// [`rule_problem`] plus the rule-level `selfTarget` check.
+pub fn rule_error(config: &WheelConfig, rule: &WatchFolder) -> Option<&'static str> {
+    rule_problem(config, &rule.preset)
+        .or_else(|| is_self_target(config, rule).then_some("selfTarget"))
+}
+
+/// Folders the watcher must not enter: `converted`, and a fixed copy/move target inside the
+/// watched folder (only matters with subfolders on, harmless otherwise).
+fn excludes(config: &WheelConfig, rule: &WatchFolder) -> Vec<PathBuf> {
+    let mut out = vec![rule.path.join(OUTPUT_FOLDER)];
+    if let Some(d) = fixed_target(config, &rule.preset) {
+        let (target, base) = (norm(&d), norm(&rule.path));
+        if target.len() > base.len() && target.starts_with(&format!("{base}/")) {
+            out.push(d);
+        }
+    }
+    out
+}
+
 /// The watcher specs: enabled rules with a folder and a usable preset. `exclude` is built from
 /// the same `dir` the spec carries (the watcher compares the strings `read_dir` yields).
 pub fn specs_from_settings(s: &Settings, config: &WheelConfig) -> Vec<WatchSpec> {
     s.watch_folders
         .iter()
-        .filter(|w| {
-            w.enabled && !w.path.as_os_str().is_empty() && rule_problem(config, &w.preset).is_none()
-        })
+        .filter(|w| w.enabled && !w.path.as_os_str().is_empty() && rule_error(config, w).is_none())
         .map(|w| WatchSpec {
             id: w.id.clone(),
             dir: w.path.clone(),
             recursive: w.subfolders,
-            exclude: vec![w.path.join(OUTPUT_FOLDER)],
+            exclude: excludes(config, w),
             // Every file is checked against the preset when it fires.
             extensions: None,
         })
@@ -136,7 +180,7 @@ fn decide(s: &Settings, config: &WheelConfig, id: &str, path: &Path) -> Decision
     let Some(rule) = s.watch_folders.iter().find(|w| w.id == id && w.enabled) else {
         return Decision::Skip;
     };
-    if let Some(code) = rule_problem(config, &rule.preset) {
+    if let Some(code) = rule_error(config, rule) {
         return Decision::Blocked(code);
     }
     let fits = config
@@ -213,7 +257,7 @@ pub fn reconfigure(app: &AppHandle) {
 
 fn status_of(app: &AppHandle, rule: &WatchFolder) -> WatchStatus {
     let state = app.state::<AppState>();
-    let problem = rule_problem(&state.wheel_config(), &rule.preset);
+    let problem = rule_error(&state.wheel_config(), rule);
     let (processed, last_file, job_error) = state
         .watch
         .counters
@@ -342,6 +386,65 @@ mod tests {
         assert_eq!(rule_problem(&config, "pick"), Some("presetNotUnattended"));
         assert_eq!(rule_problem(&config, "edit"), Some("presetNotUnattended"));
         assert_eq!(rule_problem(&config, "fixed"), None);
+    }
+
+    fn copy_preset(id: &str, dir: &str, move_files: bool) -> Preset {
+        Preset {
+            id: id.into(),
+            name: id.into(),
+            builtin: false,
+            op: Operation::CopyTo {
+                dir: Some(dir.into()),
+                move_files,
+            },
+            options: Default::default(),
+        }
+    }
+
+    #[test]
+    fn a_target_equal_to_the_watched_folder_is_rejected() {
+        let mut config = WheelConfig::builtin();
+        config
+            .presets
+            .push(copy_preset("same", "C:/In/Photos/", false));
+        config
+            .presets
+            .push(copy_preset("mv", "c:\\in\\photos", true));
+        config.presets.push(copy_preset("other", "D:/out", false));
+        let r = |preset: &str| rule("a", "C:\\in\\photos", preset, true);
+        assert_eq!(rule_error(&config, &r("same")), Some("selfTarget"));
+        assert_eq!(rule_error(&config, &r("mv")), Some("selfTarget"));
+        assert_eq!(rule_error(&config, &r("other")), None);
+        assert_eq!(rule_error(&config, &r("to-webp")), None);
+        // The rule does not start, and a settled file is blocked.
+        let s = settings(vec![r("same"), r("other")]);
+        let specs = super::specs_from_settings(&s, &config);
+        assert_eq!(specs.len(), 1);
+        assert_eq!(
+            decide(&s, &config, "a", Path::new("C:\\in\\photos\\x.png")),
+            Decision::Blocked("selfTarget")
+        );
+    }
+
+    #[test]
+    fn a_target_inside_the_watched_folder_is_excluded() {
+        let mut config = WheelConfig::builtin();
+        config
+            .presets
+            .push(copy_preset("inner", "C:/in/photos/sorted", false));
+        config
+            .presets
+            .push(copy_preset("lookalike", "C:/in/photos-sorted", false));
+        let mut r = rule("a", "C:\\in\\photos", "inner", true);
+        r.subfolders = true;
+        assert_eq!(rule_error(&config, &r), None);
+        let ex = excludes(&config, &r);
+        assert_eq!(ex.len(), 2);
+        assert_eq!(ex[0], PathBuf::from("C:\\in\\photos").join("converted"));
+        assert_eq!(ex[1], PathBuf::from("C:/in/photos/sorted"));
+        // A sibling whose name merely starts the same is not inside.
+        r.preset = "lookalike".into();
+        assert_eq!(excludes(&config, &r).len(), 1);
     }
 
     #[test]

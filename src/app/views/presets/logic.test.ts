@@ -101,9 +101,11 @@ describe('withOp', () => {
 describe('duplicates, usage and numbers', () => {
   const builtin: Preset = { id: 'to-jpg-70', name: '', builtin: true, op: { type: 'convert', to: 'jpg' }, options: { quality: 70 } };
 
-  it('duplicates a built-in into an editable u-<n> copy', () => {
+  it('duplicates a built-in into an editable copy with a fresh u- id', () => {
     const copy = duplicatePreset(builtin, ['to-jpg-70', 'u-2'], en);
-    expect(copy).toMatchObject({ id: 'u-3', builtin: false, op: { type: 'convert', to: 'jpg' }, options: { quality: 70 } });
+    expect(copy.id).toMatch(/^u-[a-z0-9]+$/);
+    expect(copy.id).not.toBe('u-2');
+    expect(copy).toMatchObject({ builtin: false, op: { type: 'convert', to: 'jpg' }, options: { quality: 70 } });
     expect(copy.name).toContain('JPG 70%');
     copy.options.quality = 10;
     expect(builtin.options.quality).toBe(70);

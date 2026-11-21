@@ -186,9 +186,23 @@ impl Settings {
 
     /// Merge the fields of `v` onto the defaults, skipping any field that does not deserialize.
     fn from_value(v: Value) -> Self {
-        let Value::Object(file) = v else {
+        let Value::Object(mut file) = v else {
             return Self::default();
         };
+        // v1 -> v2: one retention value became three. Carry the old value over so an upgrade
+        // never prunes history under the (shorter) v2 defaults.
+        const NEW_KEYS: [&str; 3] = [
+            "clipboardRetentionText",
+            "clipboardRetentionLinks",
+            "clipboardRetentionImages",
+        ];
+        if let Some(old) = file.get("clipboardRetentionDays").cloned()
+            && NEW_KEYS.iter().all(|k| !file.contains_key(*k))
+        {
+            for key in NEW_KEYS {
+                file.insert(key.to_string(), old.clone());
+            }
+        }
         if let Ok(s) = serde_json::from_value(Value::Object(file.clone())) {
             return s;
         }
@@ -273,6 +287,28 @@ mod tests {
         // A non-object file is just defaults.
         std::fs::write(&p, b"[1, 2]").unwrap();
         assert_eq!(Settings::load(&p), Settings::default());
+    }
+
+    #[test]
+    fn v1_retention_days_migrates_to_all_three_kinds() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        std::fs::write(&p, br#"{"theme":"dark","clipboardRetentionDays":90}"#).unwrap();
+        let s = Settings::load(&p);
+        assert_eq!(s.theme, "dark");
+        assert_eq!(s.clipboard_retention_text, 90);
+        assert_eq!(s.clipboard_retention_links, 90);
+        assert_eq!(s.clipboard_retention_images, 90);
+        // A v2 file keeps its own values.
+        std::fs::write(
+            &p,
+            br#"{"clipboardRetentionDays":90,"clipboardRetentionText":5}"#,
+        )
+        .unwrap();
+        let s = Settings::load(&p);
+        assert_eq!(s.clipboard_retention_text, 5);
+        assert_eq!(s.clipboard_retention_links, 30);
+        assert_eq!(s.clipboard_retention_images, 7);
     }
 
     #[test]

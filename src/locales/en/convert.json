@@ -25,7 +25,9 @@
     "video": "Video",
     "audio": "Audio",
     "pdf": "PDF",
-    "data": "Data"
+    "data": "Data",
+    "subtitle": "Subtitles",
+    "archive": "Archive"
   },
   "tools": {
     "title": "Tools",
@@ -81,5 +83,9 @@
   "queue": {
     "title": "Queue",
     "all": "Show all in Recent"
+  },
+  "wheel": {
+    "open": "Open wheel",
+    "edit": "Edit"
   }
 }

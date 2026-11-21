@@ -16,6 +16,8 @@ use tauri::{AppHandle, Manager};
 pub const THUMB_SIDE: u32 = 96;
 /// Larger files get no thumbnail (decoding them would delay it past the drop).
 pub const THUMB_MAX_BYTES: u64 = 30 * 1024 * 1024;
+/// ... and so do images above this many pixels (a small file can still decode to gigabytes).
+pub const THUMB_MAX_PIXELS: u64 = 25_000_000;
 /// `read_image_preview` never returns a larger side than this (the editor asks for it and
 /// warns when an image was reduced to it).
 pub const PREVIEW_MAX_SIDE: u32 = 8192;
@@ -79,6 +81,16 @@ pub fn wheel_thumbnail(path: &str) -> Option<String> {
     }
     let meta = std::fs::metadata(path).ok()?;
     if !meta.is_file() || meta.len() > THUMB_MAX_BYTES {
+        return None;
+    }
+    // Header only: skip huge images before anything is decoded.
+    let (w, h) = ImageReader::open(path)
+        .ok()?
+        .with_guessed_format()
+        .ok()?
+        .into_dimensions()
+        .ok()?;
+    if u64::from(w) * u64::from(h) > THUMB_MAX_PIXELS {
         return None;
     }
     let img = open_image(path).ok()?;
@@ -204,6 +216,10 @@ mod tests {
 
         let thumb = wheel_thumbnail(p.to_str().unwrap()).unwrap();
         assert_eq!(decode_url(&thumb).width(), THUMB_SIDE);
+        // Over the pixel cap the header is enough to say no (a small file can still be huge).
+        let huge = d.join("huge.png");
+        std::fs::write(&huge, png_bytes(5100, 5000)).unwrap();
+        assert!(wheel_thumbnail(huge.to_str().unwrap()).is_none());
         // Not an image by extension: no thumbnail.
         std::fs::write(d.join("a.txt"), b"hello").unwrap();
         assert!(wheel_thumbnail(d.join("a.txt").to_str().unwrap()).is_none());
