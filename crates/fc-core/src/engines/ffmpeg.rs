@@ -134,6 +134,10 @@ fn video_codec_args(id: &str, quality: Option<u8>, crf: Option<u32>) -> Vec<Stri
             let q = 2 + u32::from(100 - quality.unwrap_or(75).clamp(1, 100)) / 10;
             let mut v = strs(&["-c:v", codec, "-q:v"]);
             v.push(q.to_string());
+            if id == "mpg" {
+                // mpeg2video only accepts a handful of frame rates; 25 is always valid.
+                v.extend(strs(&["-r", "25"]));
+            }
             v.extend(strs(&["-pix_fmt", "yuv420p"]));
             v
         }
@@ -168,13 +172,10 @@ fn audio_codec_args(id: &str, bitrate_k: Option<u32>) -> Vec<String> {
         "webm" | "opus" | "ogg" | "mka" => {
             vec!["-c:a".into(), "libopus".into(), "-b:a".into(), br(128)]
         }
-        "wmv" | "wma" => vec!["-c:a".into(), "wmav2".into(), "-b:a".into(), br(192)],
-        "mpg" | "ac3" => vec![
-            "-c:a".into(),
-            if id == "ac3" { "ac3" } else { "mp2" }.into(),
-            "-b:a".into(),
-            br(192),
-        ],
+        // wmav2 and mp2 encode at most stereo.
+        "wmv" | "wma" => strs(&["-c:a", "wmav2", "-ac", "2", "-b:a", &br(192)]),
+        "mpg" => strs(&["-c:a", "mp2", "-ac", "2", "-b:a", &br(192)]),
+        "ac3" => strs(&["-c:a", "ac3", "-b:a", &br(192)]),
         "aiff" => strs(&["-c:a", "pcm_s16be"]),
         "avi" => vec!["-c:a".into(), "libmp3lame".into(), "-b:a".into(), br(160)],
         "mp3" => match bitrate_k {
@@ -976,6 +977,8 @@ mod tests {
             a.contains("mpeg2video") && a.contains("-c:a mp2") && a.ends_with("-f mpeg o"),
             "{a}"
         );
+        assert!(conv("mpg").contains("-r 25") && conv("mpg").contains("mp2 -ac 2"));
+        assert!(conv("wma").contains("wmav2 -ac 2"));
         assert!(conv("3gp").ends_with("-f 3gp o"));
         assert!(conv("ts").ends_with("-f mpegts o"));
         let a = conv("aac");

@@ -421,6 +421,25 @@ impl Settings {
         self.line_damping = self.line_damping.clamp(50, 200);
         self.line_breeze_strength = self.line_breeze_strength.min(200);
         self.line_sound_volume = self.line_sound_volume.min(100);
+        const ACCENTS: [&str; 8] = [
+            "blue", "purple", "pink", "red", "orange", "yellow", "green", "graphite",
+        ];
+        if !(ACCENTS.contains(&self.line_color.as_str())
+            || ["accent", "natural"].contains(&self.line_color.as_str())
+            || is_hex_colour(&self.line_color))
+        {
+            self.line_color = "natural".into();
+        }
+        for n in [
+            &mut self.line_rope_names.images,
+            &mut self.line_rope_names.text,
+            &mut self.line_rope_names.links,
+            &mut self.line_rope_names.files,
+        ] {
+            if n.chars().count() > 24 {
+                *n = n.chars().take(24).collect();
+            }
+        }
         self.line_rope_order = sanitize_rope_order(&self.line_rope_order);
         self
     }
@@ -665,6 +684,14 @@ mod tests {
             ("top", "auto")
         );
         assert_eq!(s.line_rope_order, ["files", "text", "images", "links"]);
+        std::fs::write(
+            &p,
+            br#"{"lineColor":"banana","lineRopeNames":{"text":"abcdefghijklmnopqrstuvwxyz123"}}"#,
+        )
+        .unwrap();
+        let s = Settings::load(&p);
+        assert_eq!(s.line_color, "natural");
+        assert_eq!(s.line_rope_names.text.chars().count(), 24);
         std::fs::write(&p, br##"{"lineMaxPerRope":50,"linePinColor":"#aabbcc"}"##).unwrap();
         let s = Settings::load(&p);
         assert_eq!(

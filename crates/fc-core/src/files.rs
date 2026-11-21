@@ -31,7 +31,7 @@ pub struct FileStore {
 
 /// Dedupe key: paths compare case-insensitively (Windows file names are).
 fn key(p: &Path) -> String {
-    p.to_string_lossy().to_lowercase()
+    p.to_string_lossy().replace('/', "\\").to_lowercase()
 }
 
 impl FileStore {
@@ -167,6 +167,9 @@ mod tests {
             .unwrap();
         assert_eq!(s.entries.len(), 1);
         assert_eq!(s.entries[0].at, 2);
+        s.record(&[PathBuf::from("C:/a/x.png")], FileSource::Added, 3)
+            .unwrap();
+        assert_eq!(s.entries.len(), 1);
     }
 
     #[test]
