@@ -123,14 +123,15 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
         configure_wheel(app, &new);
     }
     // Explorer verb: written when turned on, removed when off, relabelled on a language change.
-    // A failed change keeps the old value.
+    // After a failure the setting says what the registry has: a failed write removed the key
+    // (off), a failed removal left it there (on).
     let verb_changed =
         old.context_menu != new.context_menu || (new.context_menu && old.language != new.language);
     if verb_changed
         && let Err(e) = contextmenu::set_enabled(new.context_menu, &ui_language(&new.language))
     {
         eprintln!("context menu: {e}");
-        new.context_menu = old.context_menu;
+        new.context_menu = !new.context_menu;
     }
     if old.clipboard_enabled != new.clipboard_enabled {
         if new.clipboard_enabled {

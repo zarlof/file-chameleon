@@ -16,8 +16,9 @@ use tauri::{AppHandle, Manager};
 pub const THUMB_SIDE: u32 = 96;
 /// Larger files get no thumbnail (decoding them would delay it past the drop).
 pub const THUMB_MAX_BYTES: u64 = 30 * 1024 * 1024;
-/// `read_image_preview` never returns a larger side than this.
-pub const PREVIEW_MAX_SIDE: u32 = 4096;
+/// `read_image_preview` never returns a larger side than this (the editor asks for it and
+/// warns when an image was reduced to it).
+pub const PREVIEW_MAX_SIDE: u32 = 8192;
 
 const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
 
@@ -84,7 +85,7 @@ pub fn wheel_thumbnail(path: &str) -> Option<String> {
     png_data_url(&img.thumbnail(THUMB_SIDE, THUMB_SIDE)).ok()
 }
 
-/// Editor: the image at `path` as a PNG data URL, longest side ≤ `max_side` (≤ 4096).
+/// Editor: the image at `path` as a PNG data URL, longest side ≤ `max_side` (≤ 8192).
 /// Async: decodes and encodes the image.
 #[tauri::command]
 pub async fn read_image_preview(path: String, max_side: u32) -> CmdResult<String> {
@@ -188,6 +189,12 @@ mod tests {
         // 0 and huge values are clamped instead of failing.
         assert_eq!(decode_url(&preview(&p, 0).unwrap()).width(), 1);
         assert_eq!(decode_url(&preview(&p, u32::MAX).unwrap()).width(), 300);
+        // The cap is 8192 (the editor asks for it and warns when it was reached).
+        let big = d.join("big.png");
+        std::fs::write(&big, png_bytes(8200, 2)).unwrap();
+        assert_eq!(decode_url(&preview(&big, u32::MAX).unwrap()).width(), 8192);
+        assert_eq!(decode_url(&preview(&big, 8192).unwrap()).width(), 8192);
+        assert_eq!(decode_url(&preview(&big, 5000).unwrap()).width(), 5000);
         assert!(matches!(
             preview(&d.join("missing.png"), 64),
             Err(fc_core::Error::NotFound(_))

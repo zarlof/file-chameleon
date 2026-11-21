@@ -199,7 +199,12 @@ pub fn list_targets(paths: Vec<String>) -> TargetsResponse {
 
 /// Fill in defaults from the settings, remember the target, and queue the jobs. Every way of
 /// starting a conversion (Convert view, wheel, toast, install-then-convert) goes through here.
-pub fn submit(state: &AppState, mut req: JobRequest) -> CmdResult<Vec<JobId>> {
+pub fn submit(state: &AppState, req: JobRequest) -> CmdResult<Vec<JobId>> {
+    submit_with(state, req, true)
+}
+
+/// `submit`; `remember = false` (watch folders) leaves the recent targets alone.
+pub fn submit_with(state: &AppState, mut req: JobRequest, remember: bool) -> CmdResult<Vec<JobId>> {
     if req.inputs.is_empty() {
         return Err(CmdError::new("unsupported", "no inputs"));
     }
@@ -212,7 +217,9 @@ pub fn submit(state: &AppState, mut req: JobRequest) -> CmdResult<Vec<JobId>> {
     if req.options.quality.is_none() {
         req.options.quality = Some(s.image_quality);
     }
-    if let Operation::Convert { to } = &req.op {
+    if let Operation::Convert { to } = &req.op
+        && remember
+    {
         let to = to.clone();
         state.update_settings(|s| s.touch_recent_target(&to));
     }

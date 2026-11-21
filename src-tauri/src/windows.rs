@@ -7,7 +7,7 @@ use fc_core::jobs::{JobSnapshot, JobState};
 use serde::Serialize;
 use serde_json::json;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{
     AppHandle, DragDropEvent, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
     Window, WindowEvent,
@@ -23,6 +23,9 @@ pub const WHEEL_SIZE: f64 = 540.0;
 /// Paths from several `--wheel` invocations (one per selected file) arriving within this time
 /// open one wheel.
 const WHEEL_ARGS_MS: u64 = 350;
+/// Files asked for within this time after a click wheel opened join it (late `--wheel`
+/// invocations of the same Explorer selection) instead of replacing it.
+const WHEEL_JOIN: Duration = Duration::from_millis(1000);
 /// Logical size of the toast window (card + shadow margin).
 pub const TOAST_W: f64 = 404.0;
 pub const TOAST_H: f64 = 150.0;
@@ -58,6 +61,8 @@ struct OverlayCtl {
     slots_for: Option<Vec<String>>,
     /// Click-mode wheel requested before the page was ready; opened by `overlay_ready`.
     pending_wheel: Option<Vec<String>>,
+    /// When the current click wheel opened (late files within `WHEEL_JOIN` join it).
+    click_opened: Option<Instant>,
 }
 
 static CTL: Mutex<OverlayCtl> = Mutex::new(OverlayCtl {
@@ -72,7 +77,17 @@ static CTL: Mutex<OverlayCtl> = Mutex::new(OverlayCtl {
     wheel_id: 0,
     slots_for: None,
     pending_wheel: None,
+    click_opened: None,
 });
+
+/// Append `more` to `into`, keeping the order and dropping paths already there.
+fn merge_paths(into: &mut Vec<String>, more: Vec<String>) {
+    for p in more {
+        if !into.contains(&p) {
+            into.push(p);
+        }
+    }
+}
 
 fn ctl() -> std::sync::MutexGuard<'static, OverlayCtl> {
     CTL.lock().unwrap_or_else(|e| e.into_inner())
@@ -220,6 +235,7 @@ fn hide_overlay_now(app: &AppHandle) {
         c.entered = false;
         c.click = false;
         c.slots_for = None;
+        c.click_opened = None;
     }
     crate::platform::set_wheel_open(false, false, (0, 0, 0, 0));
     if let Some(w) = overlay(app) {
@@ -332,14 +348,42 @@ pub fn open_wheel_click(app: &AppHandle, paths: Vec<String>) {
     crate::platform::ensure_hooks(app);
     on_main(app, move |app| {
         let Some(w) = overlay(app) else { return };
+        let joined = {
+            let mut c = ctl();
+            if !c.ready {
+                // Every batch that arrives before the page is ready opens with the first.
+                merge_paths(c.pending_wheel.get_or_insert_with(Vec::new), paths);
+                return;
+            }
+            let joins = c.mode == Mode::Wheel
+                && c.click
+                && c.click_opened.is_some_and(|t| t.elapsed() < WHEEL_JOIN);
+            if joins {
+                let mut all = c.slots_for.clone().unwrap_or_default();
+                merge_paths(&mut all, paths);
+                if c.slots_for.as_ref() == Some(&all) {
+                    return; // nothing new
+                }
+                // A new id drops the slots still being built for the smaller set.
+                c.wheel_id += 1;
+                c.slots_for = Some(all.clone());
+                Ok((c.wheel_id, all))
+            } else {
+                Err(paths)
+            }
+        };
+        let paths = match joined {
+            // The wheel stays where it is; only its slots change.
+            Ok((wheel_id, all)) => {
+                send_slots(app, wheel_id, all, false, true);
+                return;
+            }
+            Err(paths) => paths,
+        };
         let (x, y) = cursor();
         let (scale, rect) = wheel_rect(app, x, y);
         let wheel_id = {
             let mut c = ctl();
-            if !c.ready {
-                c.pending_wheel = Some(paths);
-                return;
-            }
             c.mode = Mode::Wheel;
             c.generation += 1;
             c.entered = true;
@@ -347,6 +391,7 @@ pub fn open_wheel_click(app: &AppHandle, paths: Vec<String>) {
             c.shift = false;
             c.wheel_id += 1;
             c.slots_for = Some(paths.clone());
+            c.click_opened = Some(Instant::now());
             c.wheel_id
         };
         show_wheel_window(&w, scale, rect, true);
@@ -365,11 +410,7 @@ pub fn queue_wheel_paths(app: &AppHandle, paths: Vec<String>) {
     let first = {
         let mut q = WHEEL_ARGS.lock().unwrap_or_else(|e| e.into_inner());
         let first = q.is_empty();
-        for p in paths {
-            if !q.contains(&p) {
-                q.push(p);
-            }
-        }
+        merge_paths(&mut q, paths);
         first
     };
     if !first {
@@ -760,5 +801,33 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merge_paths;
+
+    fn strings(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn later_wheel_batches_join_the_earlier_ones() {
+        // Explorer starts one process per selected file; batches arrive one after another.
+        let mut all = strings(&[r"C:\a.png", r"C:\b.png"]);
+        merge_paths(&mut all, strings(&[r"C:\c.png"]));
+        merge_paths(&mut all, strings(&[r"C:\b.png", r"C:\d.png", r"C:\d.png"]));
+        assert_eq!(
+            all,
+            strings(&[r"C:\a.png", r"C:\b.png", r"C:\c.png", r"C:\d.png"])
+        );
+        // Nothing new: unchanged.
+        merge_paths(&mut all, strings(&[r"C:\a.png"]));
+        merge_paths(&mut all, Vec::new());
+        assert_eq!(all.len(), 4);
+        let mut empty = Vec::new();
+        merge_paths(&mut empty, strings(&["x", "x", "y"]));
+        assert_eq!(empty, strings(&["x", "y"]));
     }
 }

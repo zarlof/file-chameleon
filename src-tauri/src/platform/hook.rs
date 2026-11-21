@@ -4,22 +4,25 @@
 //!
 //! The callbacks only do atomic bookkeeping and a channel send (Windows silently removes LL
 //! hooks that block ~300 ms) and always call `CallNextHookEx`. While the wheel is not open they
-//! are a pure pass-through; input is swallowed only in click mode (Tab, Esc). Filtering (which
-//! app the drag started in) happens on the consumer thread.
+//! are a pure pass-through; input is swallowed only in click mode (plain Tab, Esc). A foreground
+//! event hook closes the click-mode wheel when the user switches to another window (Alt+Tab,
+//! Win+number). Filtering (which app the drag started in) happens on the consumer thread.
 
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, AtomicU32, Ordering::Relaxed};
 use std::sync::mpsc::{Sender, channel};
-use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_CONTROL, VK_ESCAPE, VK_SHIFT, VK_TAB,
+    GetAsyncKeyState, VK_CONTROL, VK_ESCAPE, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, VK_TAB,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, DispatchMessageW, GetMessageW, GetSystemMetrics, KBDLLHOOKSTRUCT, MSG,
-    MSLLHOOKSTRUCT, SM_CXDRAG, SM_CYDRAG, SetWindowsHookExW, TranslateMessage, WH_KEYBOARD_LL,
-    WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL,
-    WM_RBUTTONDOWN,
+    CallNextHookEx, DispatchMessageW, EVENT_SYSTEM_FOREGROUND, GetForegroundWindow, GetMessageW,
+    GetSystemMetrics, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, SM_CXDRAG, SM_CYDRAG,
+    SetWindowsHookExW, TranslateMessage, WH_KEYBOARD_LL, WH_MOUSE_LL, WINEVENT_OUTOFCONTEXT,
+    WINEVENT_SKIPOWNPROCESS, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
+    WM_MOUSEWHEEL, WM_RBUTTONDOWN,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,8 +44,17 @@ pub enum HookEvent {
     Close,
 }
 
-/// Flips closer together than this are one (the overlay page uses the same gap).
+/// One mouse-wheel gesture flips once: after a flip, wheel events are ignored until this long
+/// passes without any (the overlay page uses the same rule).
 const FLIP_GAP_MS: u32 = 250;
+
+/// Modifiers held with a key.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Mods {
+    ctrl: bool,
+    alt: bool,
+    win: bool,
+}
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 static ANY_APP: AtomicBool = AtomicBool::new(false);
@@ -63,10 +75,12 @@ static RECT_R: AtomicI32 = AtomicI32::new(0);
 static RECT_B: AtomicI32 = AtomicI32::new(0);
 static FLIP_SCROLL: AtomicBool = AtomicBool::new(true);
 static FLIP_TAB: AtomicBool = AtomicBool::new(true);
-/// Message time (ms) of the last flip sent; 0 = none since the wheel opened.
-static LAST_FLIP: AtomicU32 = AtomicU32::new(0);
+/// Message time (ms) of the last mouse-wheel event while open; 0 = none since the wheel opened.
+static LAST_WHEEL: AtomicU32 = AtomicU32::new(0);
 /// Tab is held down (key repeat must not flip again and again).
 static TAB_HELD: AtomicBool = AtomicBool::new(false);
+/// Foreground window (HWND as isize) when the wheel opened; another one closes a click wheel.
+static OPEN_FG: AtomicIsize = AtomicIsize::new(0);
 
 pub fn set_config(enabled: bool, any_app: bool) {
     ENABLED.store(enabled, Relaxed);
@@ -86,8 +100,14 @@ pub fn set_wheel_open(open: bool, click: bool, rect: (i32, i32, i32, i32)) {
     RECT_T.store(rect.1, Relaxed);
     RECT_R.store(rect.2, Relaxed);
     RECT_B.store(rect.3, Relaxed);
-    LAST_FLIP.store(0, Relaxed);
+    LAST_WHEEL.store(0, Relaxed);
     TAB_HELD.store(false, Relaxed);
+    let fg = if open {
+        unsafe { GetForegroundWindow() }.0 as isize
+    } else {
+        0
+    };
+    OPEN_FG.store(fg, Relaxed);
     CLICK_MODE.store(click, Relaxed);
     WHEEL_OPEN.store(open, Relaxed);
 }
@@ -102,20 +122,33 @@ fn send(ev: HookEvent) {
     }
 }
 
-/// Send `Flip` unless one was sent less than `FLIP_GAP_MS` ago (`time` = message time in ms).
-fn flip(time: u32) {
-    let last = LAST_FLIP.load(Relaxed);
-    if last == 0 || time.wrapping_sub(last) >= FLIP_GAP_MS {
-        LAST_FLIP.store(time.max(1), Relaxed);
-        send(HookEvent::Flip);
-    }
+/// Leading edge of a mouse-wheel gesture: a wheel event at `now` flips when the previous one
+/// (`last`, 0 = none) is at least `FLIP_GAP_MS` old. Every event refreshes `last`, so a long
+/// scroll flips once. Times are message times in ms (wrapping).
+fn gesture_flip(last: u32, now: u32) -> bool {
+    last == 0 || now.wrapping_sub(last) >= FLIP_GAP_MS
+}
+
+/// Does a new foreground window close the wheel? Only a click-mode wheel, and only when the
+/// window differs from the one that was in front when it opened (0 = none: ignored).
+fn foreground_closes(open: bool, click: bool, new_fg: isize, open_fg: isize) -> bool {
+    open && click && new_fg != 0 && new_fg != open_fg
 }
 
 /// What a key press does: (event to send, swallow the key). Only Tab (when flipping with Tab
 /// is on) and Esc do anything, and only while the wheel is open. They are swallowed only in
-/// click mode: during a drag the source app must still see Esc to cancel the drag.
-fn key_action(open: bool, click: bool, vk: u32, flip_tab: bool) -> (Option<HookEvent>, bool) {
-    if !open {
+/// click mode: during a drag the source app must still see Esc to cancel the drag. With Alt or
+/// Win held (Win+Tab, Alt+Esc) nothing happens; with Ctrl only during a drag, where Ctrl is part
+/// of the Ctrl+drag gesture and nothing is swallowed (click mode leaves Ctrl+Esc, Ctrl+Shift+Esc
+/// and Ctrl+Tab to Windows and the apps).
+fn key_action(
+    open: bool,
+    click: bool,
+    vk: u32,
+    flip_tab: bool,
+    mods: Mods,
+) -> (Option<HookEvent>, bool) {
+    if !open || mods.alt || mods.win || (mods.ctrl && click) {
         return (None, false);
     }
     match vk {
@@ -168,7 +201,12 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
                 inside_rect(x, y),
                 FLIP_SCROLL.load(Relaxed),
             ) {
-                Some(HookEvent::Flip) => flip(info.time),
+                Some(HookEvent::Flip) => {
+                    let now = info.time.max(1);
+                    if gesture_flip(LAST_WHEEL.swap(now, Relaxed), now) {
+                        send(HookEvent::Flip);
+                    }
+                }
                 Some(ev) => send(ev),
                 None => {}
             }
@@ -220,18 +258,24 @@ unsafe extern "system" fn key_proc(code: i32, wparam: WPARAM, lparam: LPARAM) ->
         // WM_SYSKEYDOWN (Alt held: Alt+Tab, Alt+Esc) is never touched.
         match wparam.0 as u32 {
             WM_KEYDOWN => {
+                let mods = Mods {
+                    ctrl: key_held(VK_CONTROL.0),
+                    alt: key_held(VK_MENU.0),
+                    win: key_held(VK_LWIN.0) || key_held(VK_RWIN.0),
+                };
                 let (ev, sw) = key_action(
                     true,
                     CLICK_MODE.load(Relaxed),
                     info.vkCode,
                     FLIP_TAB.load(Relaxed),
+                    mods,
                 );
                 swallow = sw;
                 match ev {
-                    // Key repeat while Tab is held does not flip again.
+                    // One flip per Tab press: key repeat while it is held does not flip again.
                     Some(HookEvent::Flip) => {
                         if !TAB_HELD.swap(true, Relaxed) {
-                            flip(info.time);
+                            send(HookEvent::Flip);
                         }
                     }
                     Some(ev) => send(ev),
@@ -244,6 +288,26 @@ unsafe extern "system" fn key_proc(code: i32, wparam: WPARAM, lparam: LPARAM) ->
     }
     let next = unsafe { CallNextHookEx(None, code, wparam, lparam) };
     if swallow { LRESULT(1) } else { next }
+}
+
+/// `EVENT_SYSTEM_FOREGROUND` (other processes only): the user switched to another window.
+unsafe extern "system" fn foreground_proc(
+    _hook: HWINEVENTHOOK,
+    _event: u32,
+    hwnd: HWND,
+    _object: i32,
+    _child: i32,
+    _thread: u32,
+    _time: u32,
+) {
+    if foreground_closes(
+        WHEEL_OPEN.load(Relaxed),
+        CLICK_MODE.load(Relaxed),
+        hwnd.0 as isize,
+        OPEN_FG.load(Relaxed),
+    ) {
+        send(HookEvent::Close);
+    }
 }
 
 /// Install the hooks once (idempotent). `on_event` runs on a dedicated consumer thread.
@@ -267,6 +331,19 @@ pub fn ensure_started(on_event: impl Fn(HookEvent) + Send + 'static) {
             // Without it the wheel still works; only Tab / Esc do nothing.
             if SetWindowsHookExW(WH_KEYBOARD_LL, Some(key_proc), module, 0).is_err() {
                 eprintln!("keyboard hook: install failed");
+            }
+            // Out of context: delivered through this thread's message loop, only on a switch.
+            let fg = SetWinEventHook(
+                EVENT_SYSTEM_FOREGROUND,
+                EVENT_SYSTEM_FOREGROUND,
+                None,
+                Some(foreground_proc),
+                0,
+                0,
+                WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
+            );
+            if fg.is_invalid() {
+                eprintln!("foreground hook: install failed");
             }
             let mut msg = MSG::default();
             while GetMessageW(&mut msg, None, 0, 0).as_bool() {
@@ -320,42 +397,114 @@ mod tests {
     const TAB: u32 = VK_TAB.0 as u32;
     const ESC: u32 = VK_ESCAPE.0 as u32;
     const A: u32 = 0x41;
+    const NONE: Mods = Mods {
+        ctrl: false,
+        alt: false,
+        win: false,
+    };
+    const CTRL: Mods = Mods { ctrl: true, ..NONE };
+    const ALT: Mods = Mods { alt: true, ..NONE };
+    const WIN: Mods = Mods { win: true, ..NONE };
 
     #[test]
     fn flip_keys_only_when_wheel_open() {
-        // Closed: everything passes through untouched, whatever the mode.
+        // Closed: everything passes through untouched, whatever the mode or modifiers.
         for click in [false, true] {
             for vk in [TAB, ESC, A] {
-                assert_eq!(key_action(false, click, vk, true), (None, false));
+                for mods in [NONE, CTRL, ALT, WIN] {
+                    assert_eq!(key_action(false, click, vk, true, mods), (None, false));
+                }
             }
         }
         // Open during a drag: act, but never swallow (Esc must still cancel the drag).
         assert_eq!(
-            key_action(true, false, TAB, true),
+            key_action(true, false, TAB, true, NONE),
             (Some(HookEvent::Flip), false)
         );
         assert_eq!(
-            key_action(true, false, ESC, true),
+            key_action(true, false, ESC, true, NONE),
             (Some(HookEvent::Close), false)
         );
         // Open in click mode: swallowed (the app under the wheel must not see them).
         assert_eq!(
-            key_action(true, true, TAB, true),
+            key_action(true, true, TAB, true, NONE),
             (Some(HookEvent::Flip), true)
         );
         assert_eq!(
-            key_action(true, true, ESC, true),
+            key_action(true, true, ESC, true, NONE),
             (Some(HookEvent::Close), true)
         );
         // Flipping with Tab turned off: Tab is ignored and passes through.
-        assert_eq!(key_action(true, false, TAB, false), (None, false));
-        assert_eq!(key_action(true, true, TAB, false), (None, false));
+        assert_eq!(key_action(true, false, TAB, false, NONE), (None, false));
+        assert_eq!(key_action(true, true, TAB, false, NONE), (None, false));
         assert_eq!(
-            key_action(true, true, ESC, false),
+            key_action(true, true, ESC, false, NONE),
             (Some(HookEvent::Close), true)
         );
         // Other keys are never touched.
-        assert_eq!(key_action(true, true, A, true), (None, false));
+        assert_eq!(key_action(true, true, A, true, NONE), (None, false));
+    }
+
+    #[test]
+    fn shortcuts_with_modifiers_pass_through() {
+        // Win+Tab, Alt+Esc, Win+Esc: never acted on or swallowed, in either mode.
+        for click in [false, true] {
+            for vk in [TAB, ESC] {
+                for mods in [ALT, WIN, Mods { ctrl: true, ..WIN }] {
+                    assert_eq!(key_action(true, click, vk, true, mods), (None, false));
+                }
+            }
+        }
+        // Click mode: Ctrl+Esc (Start), Ctrl+Shift+Esc (Task Manager), Ctrl+Tab pass through.
+        assert_eq!(key_action(true, true, ESC, true, CTRL), (None, false));
+        assert_eq!(key_action(true, true, TAB, true, CTRL), (None, false));
+        // During a Ctrl+drag, Ctrl is held anyway: Tab flips and Esc closes (not swallowed).
+        assert_eq!(
+            key_action(true, false, TAB, true, CTRL),
+            (Some(HookEvent::Flip), false)
+        );
+        assert_eq!(
+            key_action(true, false, ESC, true, CTRL),
+            (Some(HookEvent::Close), false)
+        );
+    }
+
+    /// How many flips a run of wheel events at these message times gives.
+    fn flips(times: &[u32]) -> usize {
+        let mut last = 0;
+        times
+            .iter()
+            .filter(|&&now| {
+                let go = gesture_flip(last, now);
+                last = now;
+                go
+            })
+            .count()
+    }
+
+    #[test]
+    fn one_flip_per_wheel_gesture() {
+        assert_eq!(flips(&[1000]), 1);
+        // A long scroll (events closer than 250 ms) is one gesture, however long it lasts.
+        assert_eq!(flips(&[1000, 1100, 1200, 1300, 1400, 1500, 1600]), 1);
+        // A quiet gap of 250 ms or more starts a new gesture.
+        assert_eq!(flips(&[1000, 1100, 1350, 1400]), 2);
+        assert_eq!(flips(&[1000, 1249]), 1);
+        assert_eq!(flips(&[1000, 1250]), 2);
+        // Message time wraps around (about every 49.7 days).
+        assert_eq!(flips(&[u32::MAX - 100, 50]), 1);
+        assert_eq!(flips(&[u32::MAX - 100, 200]), 2);
+    }
+
+    #[test]
+    fn switching_windows_closes_only_the_click_wheel() {
+        // Another window comes to the front (Alt+Tab, Win+1): the click wheel closes.
+        assert!(foreground_closes(true, true, 200, 100));
+        // The window it opened over (again), no window, a drag wheel or a closed wheel: no.
+        assert!(!foreground_closes(true, true, 100, 100));
+        assert!(!foreground_closes(true, true, 0, 100));
+        assert!(!foreground_closes(true, false, 200, 100));
+        assert!(!foreground_closes(false, true, 200, 100));
     }
 
     #[test]

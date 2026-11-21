@@ -192,7 +192,7 @@ impl AppState {
     // ---- wheel config (Task 6)
 
     /// The wheel config, loaded from `wheel.json` on first use (a missing or broken file gives
-    /// the built-ins). Do not hold the guard across `save_wheel_config`.
+    /// the built-ins). Do not hold the guard across `update_wheel_config`.
     pub fn wheel_config(&self) -> std::sync::MutexGuard<'_, WheelConfig> {
         self.wheel
             .get_or_init(|| Mutex::new(WheelConfig::load(&self.paths.wheel_file())))
@@ -200,11 +200,19 @@ impl AppState {
             .unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Write the current wheel config to `wheel.json` (callers validate first).
-    pub fn save_wheel_config(&self) -> fc_core::Result<()> {
-        // Held while writing, so concurrent saves never share the temp file.
-        let config = self.wheel_config();
-        config.save(&self.paths.wheel_file())
+    /// Change a copy of the wheel config with `f`, write it to `wheel.json`, and only then use
+    /// it: a failed change or save leaves the config as it was. Returns the new config. The lock
+    /// is held throughout, so updates never interleave or share the temp file.
+    pub fn update_wheel_config(
+        &self,
+        f: impl FnOnce(&mut WheelConfig) -> fc_core::Result<()>,
+    ) -> fc_core::Result<WheelConfig> {
+        let mut current = self.wheel_config();
+        let mut next = current.clone();
+        f(&mut next)?;
+        next.save(&self.paths.wheel_file())?;
+        *current = next.clone();
+        Ok(next)
     }
 }
 

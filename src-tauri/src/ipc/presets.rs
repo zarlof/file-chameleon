@@ -2,7 +2,7 @@
 //! (`run_preset`, shared by the wheel, the Convert view, the install toast and watch folders),
 //! and the `overlay://wheel-slots` payload.
 
-use super::{CmdError, CmdResult, submit};
+use super::{CmdError, CmdResult, submit_with};
 use crate::events::{NavPayload, WheelSlots, WheelStyle};
 use crate::state::AppState;
 use crate::windows;
@@ -22,38 +22,38 @@ pub fn get_wheel_config(state: State<'_, AppState>) -> WheelConfig {
     state.wheel_config().clone()
 }
 
-/// Replace the in-memory config with `config` and write it.
-fn store(state: &AppState, config: WheelConfig) -> CmdResult<WheelConfig> {
-    *state.wheel_config() = config.clone();
-    state.save_wheel_config()?;
-    Ok(config)
-}
-
 /// Validates (limits, ids, references, read-only built-ins) and saves; returns what was
-/// stored (normalized). Error code "invalid".
+/// stored (normalized). Error code "invalid". A failed save keeps the old config.
 #[tauri::command(async)]
 pub fn set_wheel_config(state: State<'_, AppState>, config: WheelConfig) -> CmdResult<WheelConfig> {
-    store(&state, config.validate()?)
+    let config = config.validate()?;
+    Ok(state.update_wheel_config(|c| {
+        *c = config;
+        Ok(())
+    })?)
 }
 
 /// Built-in profile back to its default arrangement. Custom or unknown id: "invalid".
 #[tauri::command(async)]
 pub fn reset_wheel_profile(state: State<'_, AppState>, id: String) -> CmdResult<WheelConfig> {
-    let config = {
-        let mut config = state.wheel_config();
-        if !config.reset_profile(&id) {
-            return Err(fc_core::Error::Invalid(format!("not a built-in profile: {id}")).into());
+    Ok(state.update_wheel_config(|c| {
+        if c.reset_profile(&id) {
+            Ok(())
+        } else {
+            Err(fc_core::Error::Invalid(format!(
+                "not a built-in profile: {id}"
+            )))
         }
-        config.clone()
-    };
-    state.save_wheel_config()?;
-    Ok(config)
+    })?)
 }
 
 /// Everything back to the built-ins (user presets, groups and profiles are removed).
 #[tauri::command(async)]
 pub fn reset_wheel_config(state: State<'_, AppState>) -> CmdResult<WheelConfig> {
-    store(&state, WheelConfig::builtin())
+    Ok(state.update_wheel_config(|c| {
+        *c = WheelConfig::builtin();
+        Ok(())
+    })?)
 }
 
 /// Preset ids usable for files with at least one of these extensions (`[]` = unknown files).
@@ -69,8 +69,9 @@ pub fn presets_for_extensions(state: State<'_, AppState>, extensions: Vec<String
 /// missing tool shows the `toolNeeded` toast (install, then run). Not interactive (watch
 /// folders): those cases return an error instead and nothing is shown. `output_dir` overrides
 /// the preset's and the settings' output folder. Clipboard-store files are never moved (copied
-/// instead). Convert presets update the recent targets (in `submit`). Interactive calls block
-/// on the folder picker: never make them on the main thread.
+/// instead). Interactive convert presets update the recent targets (in `submit_with`); watch
+/// folder runs do not. Interactive calls block on the folder picker: never make them on the
+/// main thread.
 pub fn run_preset(
     app: &AppHandle,
     paths: Vec<PathBuf>,
@@ -82,14 +83,12 @@ pub fn run_preset(
         return Err(CmdError::new("unsupported", "no inputs"));
     }
     let state = app.state::<AppState>();
-    let (preset, slot) = {
-        let config = state.wheel_config();
-        let Some(preset) = config.preset(preset_id).cloned() else {
-            return Err(fc_core::Error::Invalid(format!("unknown preset {preset_id}")).into());
-        };
-        let slot = probe(&config, preset_id, &paths);
-        (preset, slot)
+    // A copy: probing checks every file (`is_dir`), which must not block config saves.
+    let config = state.wheel_config().clone();
+    let Some(preset) = config.preset(preset_id).cloned() else {
+        return Err(fc_core::Error::Invalid(format!("unknown preset {preset_id}")).into());
     };
+    let slot = probe(&config, preset_id, &paths);
     let slot = slot.ok_or_else(|| {
         CmdError::new(
             "unsupported",
@@ -158,7 +157,8 @@ pub fn run_preset(
             if let Some(dir) = &output_dir {
                 req.options.output_dir = Some(dir.clone());
             }
-            ids.extend(submit(&state, req)?);
+            // Watch-folder runs are not the user's choice: no recent-target update.
+            ids.extend(submit_with(&state, req, interactive)?);
         }
     }
     Ok(ids)
@@ -227,10 +227,51 @@ pub fn wheel_slots_for(
     wheel_slots(&config, &s, paths, back, click, |t| engines.is_available(t))
 }
 
+/// The fallback profile: unknown files, folders, and profiles with nothing that fits.
+const OTHER: &str = "other";
+
+/// The slots of `profile` that are file operations (zip, copy, move; groups of them).
+fn file_ops(
+    config: &WheelConfig,
+    profile: &Profile,
+    files: &[PathBuf],
+) -> (Vec<WheelSlot>, Vec<WheelSlot>) {
+    let file_op = |s: &WheelSlot| s.kind.is_none() && s.children.iter().all(|c| c.kind.is_none());
+    let face = |f| {
+        config
+            .slots(profile, f, files)
+            .into_iter()
+            .filter(file_op)
+            .collect::<Vec<_>>()
+    };
+    (face(Face::Front), face(Face::Back))
+}
+
+/// A profile whose faces have nothing for these files (the user emptied it): the file
+/// operations of `other`, or of the built-in `other` when that one is empty too. Evaluated
+/// against `config`, so every slot is a preset `run_preset` can find.
+fn fallback_slots(
+    config: &WheelConfig,
+    files: &[PathBuf],
+) -> Option<(Profile, Vec<WheelSlot>, Vec<WheelSlot>)> {
+    let builtin = WheelConfig::builtin();
+    let user_other = config.profiles.iter().find(|p| p.id == OTHER);
+    let builtin_other = builtin.profiles.iter().find(|p| p.id == OTHER);
+    user_other
+        .into_iter()
+        .chain(builtin_other)
+        .map(|p| {
+            let (front, back) = file_ops(config, p, files);
+            (p.clone(), front, back)
+        })
+        .find(|(_, front, back)| !front.is_empty() || !back.is_empty())
+}
+
 /// The wheel payload for `paths`: their profile, the slots of both faces that fit every file,
 /// the tools those slots miss (`available` says which are installed) and the look from the
 /// settings. `back` asks for the back face first (Ctrl+Shift+drag); it is shown only when it
-/// has slots, and an empty front shows the back.
+/// has slots, and an empty front shows the back. A profile with no fitting slot on either face
+/// falls back to the file operations of `other`, so the wheel is never empty.
 pub fn wheel_slots(
     config: &WheelConfig,
     s: &Settings,
@@ -240,9 +281,15 @@ pub fn wheel_slots(
     available: impl Fn(&str) -> bool,
 ) -> WheelSlots {
     let files: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
-    let profile = config.profile_for(&files);
-    let front = config.slots(profile, Face::Front, &files);
-    let back_slots = config.slots(profile, Face::Back, &files);
+    let mut profile = config.profile_for(&files).clone();
+    let mut front = config.slots(&profile, Face::Front, &files);
+    let mut back_slots = config.slots(&profile, Face::Back, &files);
+    if front.is_empty()
+        && back_slots.is_empty()
+        && let Some((other, f, b)) = fallback_slots(config, &files)
+    {
+        (profile, front, back_slots) = (other, f, b);
+    }
     // Group slots already carry their members' tools. Each tool is checked once.
     let mut checked: Vec<(&str, bool)> = Vec::new();
     let mut missing_tools: Vec<String> = Vec::new();
@@ -270,8 +317,8 @@ pub fn wheel_slots(
         count: paths.len(),
         first_ext: first.and_then(|p| fc_core::engines::ext_of(p)),
         first_kind: first.and_then(|p| formats::detect_path(p)).map(|f| f.kind),
-        profile_id: profile.id.clone(),
-        profile_name: profile.name.clone(),
+        profile_id: profile.id,
+        profile_name: profile.name,
         paths,
         front,
         back: back_slots,
@@ -414,6 +461,31 @@ mod tests {
         assert_eq!(p.first_ext, None);
         assert_eq!(p.first_kind, None);
         assert!(!p.front.is_empty());
+    }
+
+    #[test]
+    fn empty_profile_falls_back_to_file_operations() {
+        let mut config = WheelConfig::builtin();
+        let images = config.profile_for(&[PathBuf::from("a.png")]).id.clone();
+        let clear = |config: &mut WheelConfig, id: &str| {
+            let p = config.profiles.iter_mut().find(|p| p.id == id).unwrap();
+            p.front.clear();
+            p.back.clear();
+        };
+        // The user emptied the images profile: the wheel shows the file operations of "other".
+        clear(&mut config, &images);
+        let s = Settings::default();
+        let p = wheel_slots(&config, &s, strings(&["a.png"]), false, false, |_| true);
+        assert_eq!(p.profile_id, "other");
+        assert!(!p.front.is_empty());
+        assert_eq!(p.face, Face::Front);
+        let file_op = |slot: &WheelSlot| slot.kind.is_none();
+        assert!(p.front.iter().chain(&p.back).all(file_op));
+        // "other" emptied too: the built-in file operations, never an empty wheel.
+        clear(&mut config, "other");
+        let p = wheel_slots(&config, &s, strings(&["a.png"]), false, false, |_| true);
+        assert!(!p.front.is_empty());
+        assert!(p.front.iter().chain(&p.back).all(file_op));
     }
 
     #[test]

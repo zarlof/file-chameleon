@@ -38,16 +38,22 @@ fn label(lang: &str) -> &'static str {
 }
 
 /// Write (or remove) the verb. Writing again refreshes the label and the exe path, which fixes
-/// a moved or reinstalled exe.
+/// a moved or reinstalled exe. A failed write removes the key again: Explorer never shows a
+/// half-written verb (so after an error the verb is off).
 pub fn set_enabled(enabled: bool, lang: &str) -> std::io::Result<()> {
     #[cfg(windows)]
     {
         if enabled {
-            let exe = std::env::current_exe()?;
-            let icon = format!("\"{}\",0", exe.to_string_lossy());
-            reg::set_string(KEY, "MUIVerb", label(lang))?;
-            reg::set_string(KEY, "Icon", &icon)?;
-            reg::set_string(&format!(r"{KEY}\command"), "", &command_line(&exe))
+            let written = std::env::current_exe().and_then(|exe| {
+                let icon = format!("\"{}\",0", exe.to_string_lossy());
+                reg::set_string(KEY, "MUIVerb", label(lang))?;
+                reg::set_string(KEY, "Icon", &icon)?;
+                reg::set_string(&format!(r"{KEY}\command"), "", &command_line(&exe))
+            });
+            if written.is_err() {
+                let _ = reg::delete_tree(KEY);
+            }
+            written
         } else {
             reg::delete_tree(KEY)
         }
