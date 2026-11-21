@@ -21,13 +21,17 @@ export interface FormatDef {
   kind: Kind;
 }
 
-/** Output formats (the core's convert presets), in presets-page order; labels as in `formats::FORMATS`. */
+/** Output formats (the core's convert presets), in presets-page order; labels as in `formats::FORMATS`.
+ *  `ogv` and `amr` are input-only in the shipped engines (`formats::INPUT_ONLY`) and never listed here. */
 export const OUTPUT_FORMATS: FormatDef[] = [
   ['png', 'PNG', 'image'], ['jpg', 'JPG', 'image'], ['webp', 'WebP', 'image'], ['gif', 'GIF', 'image'],
-  ['bmp', 'BMP', 'image'], ['tiff', 'TIFF', 'image'], ['ico', 'ICO', 'image'], ['pdf', 'PDF', 'pdf'],
+  ['bmp', 'BMP', 'image'], ['tiff', 'TIFF', 'image'], ['ico', 'ICO', 'image'], ['tga', 'TGA', 'image'], ['qoi', 'QOI', 'image'],
+  ['pnm', 'PNM', 'image'], ['pdf', 'PDF', 'pdf'],
   ['mp4', 'MP4', 'video'], ['webm', 'WebM', 'video'], ['mkv', 'MKV', 'video'], ['mov', 'MOV', 'video'], ['avi', 'AVI', 'video'],
+  ['m4v', 'M4V', 'video'], ['wmv', 'WMV', 'video'], ['flv', 'FLV', 'video'], ['mpg', 'MPG', 'video'], ['3gp', '3GP', 'video'], ['ts', 'TS', 'video'],
   ['mp3', 'MP3', 'audio'], ['m4a', 'M4A', 'audio'], ['wav', 'WAV', 'audio'], ['flac', 'FLAC', 'audio'], ['ogg', 'OGG', 'audio'],
-  ['opus', 'Opus', 'audio'], ['m4r', 'M4R', 'audio'],
+  ['opus', 'Opus', 'audio'], ['m4r', 'M4R', 'audio'], ['aac', 'AAC', 'audio'], ['wma', 'WMA', 'audio'], ['aiff', 'AIFF', 'audio'],
+  ['ac3', 'AC3', 'audio'], ['mka', 'MKA', 'audio'],
   ['csv', 'CSV', 'data'], ['tsv', 'TSV', 'data'], ['json', 'JSON', 'data'], ['yaml', 'YAML', 'data'], ['toml', 'TOML', 'data'],
   ['html', 'HTML', 'data'], ['txt', 'TXT', 'data'],
   ['srt', 'SRT', 'subtitle'], ['vtt', 'WebVTT', 'subtitle'],

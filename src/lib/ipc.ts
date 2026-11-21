@@ -91,11 +91,6 @@ export const api = {
   clipSetPaused: (paused: boolean) => invoke<void>('clip_set_paused', { paused }),
   clipGetPaused: () => invoke<boolean>('clip_get_paused'),
 
-  // ---- shelf window (Task 9)
-  showShelf: () => invoke<void>('show_shelf'),
-  shelfHide: () => invoke<void>('shelf_hide'),
-  /** Copy the items, hide the shelf and paste (Ctrl+V) into the app that was active before. */
-  shelfPaste: (ids: number[]) => invoke<void>('shelf_paste', { ids }),
   hotkeyStatus: () => invoke<HotkeyStatus[]>('hotkey_status'),
 
   // ---- presets & wheel (Task 6 implements the Rust side)
@@ -160,8 +155,6 @@ export const on = {
   clipUpdated: (cb: (c: ClipItem) => void) => listen<ClipItem>('clip://updated', (e) => cb(e.payload)),
   /** Bulk change (trash, restore, folders, prune): refetch. */
   clipChanged: (cb: () => void) => listen('clip://changed', () => cb()),
-  /** Shelf window: it was just shown. */
-  shelfOpen: (cb: () => void) => listen('shelf://open', () => cb()),
   /** The files rope changed (a file was added, converted, downloaded or pruned): refetch. */
   filesChanged: (cb: () => void) => listen('files://changed', () => cb()),
   watchStatus: (cb: (s: WatchStatus) => void) => listen<WatchStatus>('watch://status', (e) => cb(e.payload)),

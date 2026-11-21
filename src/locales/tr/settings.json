@@ -84,8 +84,6 @@
   "hotkeys": {
     "title": "Genel kısayollar",
     "hint": "Her uygulamada çalışır. Kutuya tıklayıp tuşlara basın; Esc vazgeçer, Geri silme kısayolu kapatır.",
-    "shelf": "Pano rafını aç",
-    "shelfHint": "Son kopyaladıklarınız ekranın üstünde açılır.",
     "library": "Pano kitaplığını aç",
     "libraryHint": "Bu penceredeki Pano sayfasını açar.",
     "downloadLink": "Kopyalanan bağlantıyı indir",
@@ -147,24 +145,6 @@
     "removeFolder": "Klasörü kaldır",
     "foldersEmpty": "İzlenen klasör yok.",
     "foldersFull": "En çok 3 klasör izlenebilir.",
-    "shelf": "Pano rafı",
-    "shelfHint": "Kısayolla ekranın üstünde açılan hızlı yapıştırma paneli.",
-    "rows": {
-      "images": "Görseller satırı",
-      "texts": "Metinler satırı",
-      "links": "Bağlantılar satırı"
-    },
-    "moveUp": "Yukarı taşı",
-    "moveDown": "Aşağı taşı",
-    "cardSize": "Kart boyutu",
-    "cardSizes": {
-      "small": "Küçük",
-      "medium": "Orta",
-      "large": "Büyük"
-    },
-    "click": "Karta tıklayınca",
-    "clickCopies": "Kopyala ve kapat",
-    "clickSelects": "Seç",
     "storage": "Depolama",
     "used": "Kullanılan alan",
     "usedValue": "{items} öğe · {size}",

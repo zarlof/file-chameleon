@@ -58,7 +58,21 @@
     "move-to": "Klasöre taşı",
     "copy-path": "Yolu kopyala",
     "open-terminal": "Terminalde aç",
-    "float": "Ekranda sabitle"
+    "float": "Ekranda sabitle",
+    "to-tga": "TGA",
+    "to-qoi": "QOI",
+    "to-pnm": "PNM",
+    "to-m4v": "M4V",
+    "to-wmv": "WMV",
+    "to-flv": "FLV",
+    "to-mpg": "MPG",
+    "to-3gp": "3GP",
+    "to-ts": "TS",
+    "to-aac": "AAC",
+    "to-wma": "WMA",
+    "to-aiff": "AIFF",
+    "to-ac3": "AC3",
+    "to-mka": "MKA"
   },
   "profile": {
     "images": "Görseller",

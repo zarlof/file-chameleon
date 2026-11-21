@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SIZES, bandTops, cardOpacity, ropeColor, windowHeight } from './layout';
+import { SIZES, bandTops, cardOpacity, cardVars, ropeColor, windowHeight } from './layout';
 
 describe('layout', () => {
   it('layout_table_and_symmetry', () => {
@@ -15,6 +15,11 @@ describe('layout', () => {
     }
   });
 
+  it('layout_four_ropes', () => {
+    expect(windowHeight(4, 'medium')).toBe(760);
+    expect(windowHeight(4, 'small')).toBe(624);
+  });
+
   it('card_opacity_floor', () => {
     expect(cardOpacity(30)).toBe(0.9);
     expect(cardOpacity(100)).toBe(1);
@@ -22,9 +27,21 @@ describe('layout', () => {
   });
 
   it('rope_color', () => {
+    expect(ropeColor('natural', 'X', 'dark')).toBe('#d9d4cc');
+    expect(ropeColor('natural', 'X', 'light')).toBe('#8a8378');
     expect(ropeColor('accent', 'X')).toBe('X');
     expect(ropeColor('#aabbcc', 'X')).toBe('#aabbcc');
     expect(ropeColor('red', 'X')).toBe('var(--red)');
     expect(ropeColor('javascript:1', 'X')).toBe('X');
+  });
+});
+
+describe('card look', () => {
+  it('card_vars', () => {
+    expect(cardVars('glassDark', 10, true)['--c-bg']).toBe('rgba(20,20,24,0.78)');
+    expect(cardVars('glassDark', 99, false)).toMatchObject({ '--c-radius': '16px', '--c-shadow': 'none' });
+    expect(cardVars('glassLight', 4, true)['--c-fg']).toBe('#16161a');
+    expect(cardVars('paper', 4, true)['--c-bg']).toBe('var(--elevated-bg)');
+    expect(cardVars('bogus', 4, true)['--c-bg']).toBe('rgba(20,20,24,0.78)');
   });
 });

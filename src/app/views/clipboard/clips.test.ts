@@ -13,7 +13,6 @@ import {
   gridColumns,
   linkHost,
   LoadGate,
-  moveShelfRow,
   pruneSelection,
   pushUndo,
   queryFor,
@@ -25,9 +24,7 @@ import {
   selectionAfterClick,
   selectionAfterMove,
   shelfOf,
-  shelfRowList,
   tagState,
-  toggleShelfRow,
   UNDO_LIMIT,
   withAdded,
 } from './clips';
@@ -234,30 +231,6 @@ describe('labels', () => {
 });
 
 describe('settings helpers', () => {
-  it('lists visible shelf rows in order, then the hidden ones', () => {
-    expect(shelfRowList(['links', 'images'])).toEqual([
-      { row: 'links', visible: true },
-      { row: 'images', visible: true },
-      { row: 'texts', visible: false },
-    ]);
-  });
-
-  it('shows and hides shelf rows, never hiding the last one', () => {
-    expect(toggleShelfRow(['images', 'texts'], 'links', true)).toEqual(['images', 'texts', 'links']);
-    expect(toggleShelfRow(['images', 'texts'], 'images', false)).toEqual(['texts']);
-    const one: ('images' | 'texts' | 'links')[] = ['texts'];
-    expect(toggleShelfRow(one, 'texts', false)).toBe(one);
-    expect(toggleShelfRow(one, 'texts', true)).toBe(one);
-  });
-
-  it('moves a visible shelf row up or down', () => {
-    expect(moveShelfRow(['images', 'texts', 'links'], 'links', -1)).toEqual(['images', 'links', 'texts']);
-    expect(moveShelfRow(['images', 'texts', 'links'], 'images', 1)).toEqual(['texts', 'images', 'links']);
-    const rows: ('images' | 'texts' | 'links')[] = ['images', 'texts'];
-    expect(moveShelfRow(rows, 'images', -1)).toBe(rows);
-    expect(moveShelfRow(rows, 'links', 1)).toBe(rows);
-  });
-
   it('adds up to three watched folders, ignoring duplicates', () => {
     expect(addFolderPath([], '  C:\\Shots\\ ')).toEqual(['C:\\Shots']);
     const one = ['C:\\Shots'];

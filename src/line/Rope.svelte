@@ -1,21 +1,26 @@
 <!--
-  Rope — one softly sagging cord across the strip with a knot at each end, a tiny label and the pegs
-  hanging from it. Positions are derived from the rope maths in physics.ts; the swing angles and
-  falling progress are owned by Line.svelte's shared animation loop.
+  Rope — one natural cord across the whole screen width (no band, no backdrop), a knot near each end,
+  a small label pill at the left end and the cards hanging from it by clothespins. The strokes come from
+  ropeStyle.ts (twisted / cord / thin); the swing angles and falling progress are owned by Line.svelte's
+  shared animation loop. The settings page draws its live preview with this same component.
 -->
 <script lang="ts">
-  import type { ClipItem } from '../lib/types';
   import { fall, ropePath, ropeY } from './physics';
+  import { ropeStrokes, type RopeStyle } from './ropeStyle';
+  import type { LineCard } from './logic';
   import Peg from './Peg.svelte';
   import { t } from './i18n';
 
-  /** Space between two cards, and the rope's inset at both ends (not scaled). */
+  /** Space between two cards, and the rope's inset at the first card (not scaled). */
   const GAP = 16;
   const MARGIN = 24;
+  /** The knots sit this far inside each screen edge. */
+  const KNOT_INSET = 6;
 
   let {
     label,
-    items,
+    showLabel = true,
+    cards,
     width,
     more,
     angles,
@@ -23,13 +28,17 @@
     selected,
     copiedId,
     focusedId = null,
+    numbers = false,
     top,
     band,
     card,
     scale,
     color,
     thickness,
-    opacity,
+    ropeStyle = 'twisted',
+    sag = 14,
+    pinStyle = 'plastic',
+    pinColor = 'auto',
     cardOp,
     zoomOn = false,
     onzoom,
@@ -43,7 +52,8 @@
     onmore,
   }: {
     label: string;
-    items: ClipItem[];
+    showLabel?: boolean;
+    cards: LineCard[];
     width: number;
     /** Items that did not fit (shown as "+N"). */
     more: number;
@@ -52,67 +62,82 @@
     selected: Set<number>;
     copiedId: number | null;
     focusedId?: number | null;
-    /** Where the band starts in the window and how tall it is (bandTops / SIZES in layout.ts). */
+    /** Show the 1-9 badges on the first nine cards. */
+    numbers?: boolean;
+    /** Where the rope's area starts in the window and how tall it is (bandTops / SIZES in layout.ts). */
     top: number;
     band: number;
     /** Card width and size factor. */
     card: number;
     scale: number;
-    /** Rope colour (any CSS colour), stroke width, backdrop opacity 0..1 and card opacity 0.9..1. */
+    /** Rope colour (any CSS colour), thickness 1..6, style and sag in px (0..40, before the size factor). */
     color: string;
     thickness: number;
-    opacity: number;
+    ropeStyle?: RopeStyle;
+    sag?: number;
+    pinStyle?: 'plastic' | 'wood' | 'metal';
+    pinColor?: string;
+    /** Card opacity 0.9..1. */
     cardOp: number;
     zoomOn?: boolean;
-    onzoom?: (item: ClipItem | null, rect: DOMRect | null) => void;
-    /** Shown in the band when a search leaves this rope empty. */
+    onzoom?: (item: NonNullable<LineCard['item']> | null, rect: DOMRect | null) => void;
+    /** Shown on the rope when a search leaves it empty. */
     emptyText?: string;
-    onclick: (item: ClipItem, e: MouseEvent) => void;
-    ondblclick: (item: ClipItem) => void;
-    ondragout: (item: ClipItem) => void;
-    onremove: (item: ClipItem) => void;
-    oncontext: (item: ClipItem, e: MouseEvent) => void;
-    onhover: (item: ClipItem, dir: number) => void;
+    onclick: (c: LineCard, e: MouseEvent) => void;
+    ondblclick: (c: LineCard) => void;
+    ondragout: (c: LineCard) => void;
+    onremove: (c: LineCard) => void;
+    oncontext: (c: LineCard, e: MouseEvent) => void;
+    onhover: (c: LineCard, dir: number) => void;
     onmore: () => void;
   } = $props();
 
-  const TOP = $derived(16 * scale);
-  const sag = $derived(18 * scale);
-  const centers = $derived(items.map((_, i) => MARGIN + i * (card + GAP) + card / 2));
-  const d = $derived(ropePath(width, centers, sag));
+  const TOP = $derived(22 * scale);
+  const sagPx = $derived(Math.min(40, Math.max(0, sag)) * scale);
+  const centers = $derived(cards.map((_, i) => MARGIN + i * (card + GAP) + card / 2));
+  const d = $derived(ropePath(width, centers, sagPx));
+  const layers = $derived(ropeStrokes(ropeStyle, color, thickness));
+  const knot = $derived(2 + thickness * 0.9);
+  const knotY = (x: number) => ropeY(width, x, centers, sagPx);
 </script>
 
-<div class="band" style:top="{top}px" style:height="{band}px" style:--op={opacity} style:--rope={color} style:--w="{thickness}px">
-  <svg class="cord" {width} height={TOP + sag + 22} viewBox="0 0 {width} {TOP + sag + 22}" aria-hidden="true">
-    <g transform="translate(0 {TOP})">
-      <path {d} class="shade" transform="translate(0 {1 + thickness / 2})" />
-      <path {d} class="strand" />
-      <circle cx="3" cy="0" r={3 + thickness * 0.9} class="knot" />
-      <circle cx={width - 3} cy="0" r={3 + thickness * 0.9} class="knot" />
+<div class="rope" style:top="{top}px" style:height="{band}px">
+  <svg class="cord" {width} height={TOP + sagPx + 24} viewBox="0 0 {width} {TOP + sagPx + 24}" aria-hidden="true">
+    <g transform="translate(0 {TOP})" class="g" class:thin={ropeStyle === 'thin'}>
+      {#each layers as l, i (i)}
+        <path {d} fill="none" stroke={l.stroke} stroke-width={l.width} stroke-dasharray={l.dash} stroke-linecap="round" stroke-linejoin="round" opacity={l.opacity} />
+      {/each}
+      {#if ropeStyle !== 'thin'}
+        <circle cx={KNOT_INSET} cy={knotY(KNOT_INSET)} r={knot} fill={color} stroke="rgba(0,0,0,0.35)" stroke-width="0.6" />
+        <circle cx={width - KNOT_INSET} cy={knotY(width - KNOT_INSET)} r={knot} fill={color} stroke="rgba(0,0,0,0.35)" stroke-width="0.6" />
+      {/if}
     </g>
   </svg>
-  <span class="label">{label}</span>
-  {#if items.length === 0 && emptyText}<span class="none">{emptyText}</span>{/if}
-  {#each items as item, i (item.id)}
-    <div class="slot" style:left="{centers[i] - card / 2}px" style:top="{TOP + ropeY(width, centers[i], centers, sag) + 8 * scale}px" style:width="{card}px">
+  {#if showLabel && label}<span class="label">{label}</span>{/if}
+  {#if cards.length === 0 && emptyText}<span class="none">{emptyText}</span>{/if}
+  {#each cards as c, i (c.id)}
+    <div class="slot" style:left="{centers[i] - card / 2}px" style:top="{TOP + ropeY(width, centers[i], centers, sagPx) + 8 * scale}px" style:width="{card}px">
       <Peg
-        {item}
-        theta={angles[item.id] ?? 0}
-        drop={fall(falls[item.id] ?? 1)}
-        selected={selected.has(item.id)}
-        copied={copiedId === item.id}
-        focused={focusedId === item.id}
+        card={c}
+        theta={angles[c.id] ?? 0}
+        drop={fall(falls[c.id] ?? 1)}
+        selected={selected.has(c.id)}
+        copied={copiedId === c.id}
+        focused={focusedId === c.id}
         {scale}
         width={card}
         {cardOp}
+        {pinStyle}
+        {pinColor}
+        num={numbers && i < 9 ? i + 1 : null}
         {zoomOn}
         {onzoom}
-        onclick={(e) => onclick(item, e)}
-        ondblclick={() => ondblclick(item)}
-        ondragout={() => ondragout(item)}
-        onremove={() => onremove(item)}
-        oncontext={(e) => oncontext(item, e)}
-        onhover={(dir) => onhover(item, dir)}
+        onclick={(e) => onclick(c, e)}
+        ondblclick={() => ondblclick(c)}
+        ondragout={() => ondragout(c)}
+        onremove={() => onremove(c)}
+        oncontext={(e) => oncontext(c, e)}
+        onhover={(dir) => onhover(c, dir)}
       />
     </div>
   {/each}
@@ -122,45 +147,52 @@
 </div>
 
 <style>
-  .band {
-    position: absolute;
-    left: 0;
-    right: 0;
-    border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--window-bg) calc(var(--op) * 38%), transparent);
-  }
+  .rope { position: absolute; left: 0; right: 0; }
   .cord { position: absolute; inset: 0 auto auto 0; overflow: visible; pointer-events: none; }
-  .strand { fill: none; stroke: var(--rope); stroke-width: var(--w); stroke-linecap: round; stroke-linejoin: round; opacity: calc(0.35 + 0.65 * var(--op)); }
-  .shade { fill: none; stroke: var(--text); stroke-width: var(--w); stroke-linecap: round; opacity: calc(0.12 * var(--op)); }
-  .knot { fill: var(--rope); opacity: calc(0.35 + 0.65 * var(--op)); }
+  .g { filter: drop-shadow(0 1.5px 1.5px rgba(0, 0, 0, 0.45)); }
+  .g.thin { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5)); }
   .label {
     position: absolute;
-    left: 16px;
-    top: 6px;
-    padding: 1px 9px;
+    left: 12px;
+    top: 0;
+    padding: 0 9px;
+    height: 17px;
+    line-height: 17px;
     border-radius: 999px;
-    background: var(--elevated-bg);
-    box-shadow: inset 0 0 0 1px var(--glass-edge);
+    background: rgba(20, 20, 24, 0.72);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
     font: var(--text-caption);
-    color: var(--text-secondary);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.82);
     pointer-events: none;
     z-index: 1;
   }
   .slot { position: absolute; transition: left var(--dur) var(--ease-out), top var(--dur) var(--ease-out); }
   :global([data-reduce-motion]) .slot { transition: none; }
-  .none { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-secondary); font: var(--text-callout); pointer-events: none; }
+  .none {
+    position: absolute;
+    inset: 22px 0 0 0;
+    display: grid;
+    place-items: center;
+    color: rgba(255, 255, 255, 0.8);
+    font: var(--text-callout);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+  }
   .more {
     position: absolute;
     right: 14px;
-    top: 34px;
+    top: 52px;
     min-width: 40px;
-    height: 28px;
+    height: 26px;
     padding: 0 var(--space-2);
     border: 0;
     border-radius: 999px;
-    background: var(--accent-soft);
-    color: var(--accent);
-    box-shadow: inset 0 0 0 1px var(--accent);
+    background: rgba(20, 20, 24, 0.78);
+    color: #fff;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
     font: var(--text-callout);
     font-weight: 600;
     cursor: default;

@@ -518,7 +518,7 @@ export interface ClipStats {
 }
 
 export interface HotkeyStatus {
-  name: 'shelf' | 'library' | 'downloadLink' | 'line' | 'lineSearch' | 'capture' | 'copyLatestImage';
+  name: 'library' | 'downloadLink' | 'line' | 'lineSearch' | 'capture' | 'copyLatestImage';
   keys: string;
   /** false = could not register (another app owns it, or invalid). */
   ok: boolean;

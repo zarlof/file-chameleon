@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { atRest, fall, impulse, ropePath, ropeY, step, type Pend } from './physics';
+import { atRest, fall, impulse, ropePath, ropeY, step, swingK, type Pend } from './physics';
 
 const DT = 1 / 60;
 
@@ -57,5 +57,24 @@ describe('fall', () => {
     expect(fall(1)).toBe(1);
     expect(fall(0.5)).toBeGreaterThan(0);
     expect(fall(0.5)).toBeLessThan(1);
+  });
+});
+
+describe('swing and damping scale', () => {
+  it('swing_and_damping_scale', () => {
+    expect(swingK(100, 100)).toEqual({ w: 4.2, c: 2.2, impulse: 1 });
+    expect(swingK(0, 100).impulse).toBe(0);
+    expect(swingK(200, 50).impulse).toBe(2);
+    expect(swingK(100, 200).c).toBeCloseTo(4.4);
+    const run = (c: number) => {
+      let p: Pend = { theta: 0.3, omega: 0 };
+      let n = 0;
+      while (!atRest(p) && n < 2000) {
+        p = step(p, DT, { w: 4.2, c });
+        n++;
+      }
+      return n;
+    };
+    expect(run(swingK(100, 200).c)).toBeLessThan(run(swingK(100, 50).c));
   });
 });

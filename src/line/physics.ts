@@ -53,3 +53,10 @@ export function fall(t: number): number {
   if (t < 0.7) return (t / 0.7) ** 2;
   return 1 - 0.07 * Math.sin((Math.PI * (t - 0.7)) / 0.3);
 }
+
+/** Pendulum constants and the impulse factor for the "swing" (0..200 %) and "damping" (50..200 %) settings. */
+export function swingK(swing: number, damping: number): { w: number; c: number; impulse: number } {
+  const sw = Math.min(200, Math.max(0, swing));
+  const dp = Math.min(200, Math.max(50, damping));
+  return { w: 4.2, c: (2.2 * dp) / 100, impulse: sw / 100 };
+}

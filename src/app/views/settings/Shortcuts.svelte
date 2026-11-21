@@ -1,7 +1,7 @@
 <!--
   Shortcuts settings — the Ctrl+drag wheel trigger: on/off, any app vs Explorer only, apps where it
   never opens, and how the open wheel flips between its faces; then the global hotkeys (clipboard
-  shelf, clipboard library, download the copied link) with a recorder and conflict reporting.
+  clipboard library, download the copied link) with a recorder and conflict reporting.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -32,9 +32,8 @@
   }
 
   // ---- global hotkeys
-  type HotkeyKey = 'hotkeyShelf' | 'hotkeyLibrary' | 'hotkeyDownloadLink' | 'hotkeyLine' | 'hotkeyLineSearch' | 'hotkeyCapture' | 'hotkeyCopyLatestImage';
+  type HotkeyKey = 'hotkeyLibrary' | 'hotkeyDownloadLink' | 'hotkeyLine' | 'hotkeyLineSearch' | 'hotkeyCapture' | 'hotkeyCopyLatestImage';
   const HOTKEYS: { key: HotkeyKey; name: HotkeyStatus['name'] }[] = [
-    { key: 'hotkeyShelf', name: 'shelf' },
     { key: 'hotkeyLibrary', name: 'library' },
     { key: 'hotkeyDownloadLink', name: 'downloadLink' },
     { key: 'hotkeyLine', name: 'line' },

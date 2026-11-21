@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ClipItem, ClipKind } from '../lib/types';
-import { cardText, fitCount, matches, overflow, splitRopes, visibleRopes } from './logic';
+import { cardText, fitCount, lineDefaults, matches, moveRope, overflow, ropeName, splitRopes, visibleRopes } from './logic';
 
 let n = 0;
 function item(kind: ClipKind, over: Partial<ClipItem> = {}): ClipItem {
@@ -86,5 +86,40 @@ describe('matches', () => {
     expect(matches(item('text', { text: 'abc' }), 'xyz')).toBe(false);
     expect(matches(item('link', { linkTitle: 'İstanbul Rehberi' }), 'istanbul')).toBe(true);
     expect(matches(item('text', { text: 'ILIK' }), 'ılık')).toBe(true);
+  });
+});
+
+describe('rope order and names', () => {
+  it('rope_order_and_names', () => {
+    const cfg = { images: true, text: true, links: false, files: true };
+    const ropes = splitRopes([item('image'), item('text')], cfg, ['files', 'text', 'images', 'links']);
+    expect(ropes.map((r) => r.key)).toEqual(['files', 'text', 'images']);
+    expect(splitRopes([], cfg).map((r) => r.key)).toEqual(['images', 'text', 'files']);
+    // missing keys in a stored order are appended
+    expect(splitRopes([], { ...cfg, links: true }, ['links']).map((r) => r.key)).toEqual(['links', 'images', 'text', 'files']);
+    const names = { images: 'Pics', text: '', links: '  ', files: '' };
+    expect(ropeName('images', names, 'Images')).toBe('Pics');
+    expect(ropeName('text', names, 'Texts')).toBe('Texts');
+    expect(ropeName('links', names, 'Links')).toBe('Links');
+  });
+  it('files_rope_is_fed_from_files', () => {
+    const f = { path: 'p', name: 'p', source: 'added' as const, at: 1, size: 1, kind: null, thumb: null };
+    const ropes = splitRopes([], { images: false, text: false, links: false, files: true }, undefined, [f]);
+    expect(ropes).toHaveLength(1);
+    expect(ropes[0].files).toEqual([f]);
+    expect(visibleRopes(ropes)).toHaveLength(1);
+  });
+});
+
+describe('settings helpers', () => {
+  it('rope_reorder', () => {
+    expect(moveRope(['images', 'text', 'links', 'files'], 'files', -1)).toEqual(['images', 'text', 'files', 'links']);
+    expect(moveRope(['images', 'text', 'links', 'files'], 'images', 1)).toEqual(['text', 'images', 'links', 'files']);
+    expect(moveRope(['images', 'text', 'links', 'files'], 'images', -1)).toEqual(['images', 'text', 'links', 'files']);
+    expect(moveRope(['links'], 'links', 1)).toEqual(['images', 'links', 'text', 'files']);
+  });
+  it('settings_reset_keeps_switch_and_hotkeys', () => {
+    const d = { lineEnabled: true, lineSag: 14, lineColor: 'natural', lineLookVersion: 3, hotkeyLine: 'X', theme: 'dark' };
+    expect(lineDefaults(d)).toEqual({ lineSag: 14, lineColor: 'natural' });
   });
 });

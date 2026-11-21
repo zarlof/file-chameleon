@@ -1,8 +1,10 @@
 // Pure helpers for the line: which clips hang on which rope, how many fit, what a card says.
-import type { ClipItem } from '../lib/types';
+import type { ClipItem, LineFile, LineRopeKey } from '../lib/types';
 
-export type RopeKey = 'images' | 'text' | 'links';
-export type Rope = { key: RopeKey; items: ClipItem[] };
+export type RopeKey = LineRopeKey;
+export type Rope = { key: RopeKey; items: ClipItem[]; files: LineFile[] };
+
+const DEFAULT_ORDER: RopeKey[] = ['images', 'text', 'links', 'files'];
 
 function ropeOf(item: ClipItem): RopeKey {
   if (item.kind === 'image') return 'images';
@@ -16,20 +18,47 @@ function order(a: ClipItem, b: ClipItem): number {
   return b.createdAt - a.createdAt || b.id - a.id;
 }
 
-/** Enabled ropes in the order images, text, links (empty ones kept; see `visibleRopes`). Trash is left out. */
-export function splitRopes(items: ClipItem[], ropes: { images: boolean; text: boolean; links: boolean }): Rope[] {
-  const out: Rope[] = (['images', 'text', 'links'] as const).filter((k) => ropes[k]).map((key) => ({ key, items: [] }));
+/** `o` made safe: unknown and repeated keys dropped, missing ones appended in the default order. */
+export function sanitizeOrder(o: readonly string[] | undefined): RopeKey[] {
+  const out: RopeKey[] = [];
+  for (const k of o ?? []) if ((DEFAULT_ORDER as string[]).includes(k) && !out.includes(k as RopeKey)) out.push(k as RopeKey);
+  for (const k of DEFAULT_ORDER) if (!out.includes(k)) out.push(k);
+  return out;
+}
+
+/** Enabled ropes in `ropeOrder` (empty ones kept; see `visibleRopes`). A rope missing from `ropes` is off. Trash is left out. */
+export function splitRopes(
+  items: ClipItem[],
+  ropes: { images: boolean; text: boolean; links: boolean; files?: boolean },
+  ropeOrder?: readonly string[],
+  files: LineFile[] = [],
+): Rope[] {
+  const out: Rope[] = sanitizeOrder(ropeOrder).filter((k) => ropes[k] === true).map((key) => ({ key, items: [], files: [] }));
   for (const item of items) {
     if (item.trashedAt !== null) continue;
     out.find((r) => r.key === ropeOf(item))?.items.push(item);
   }
-  for (const r of out) r.items.sort(order);
+  for (const r of out) {
+    r.items.sort(order);
+    if (r.key === 'files') r.files = files;
+  }
   return out;
+}
+
+/** A rope's label: the custom name when it has one, else the localized default. */
+export function ropeName(key: RopeKey, names: Partial<Record<RopeKey, string>> | undefined, fallback: string): string {
+  const n = names?.[key]?.trim();
+  return n ? n : fallback;
+}
+
+/** How many cards a rope holds. */
+export function ropeCount(r: Rope): number {
+  return r.key === 'files' ? r.files.length : r.items.length;
 }
 
 /** The ropes worth drawing: an empty rope is not shown (the window shrinks). */
 export function visibleRopes(ropes: Rope[]): Rope[] {
-  return ropes.filter((r) => r.items.length > 0);
+  return ropes.filter((r) => ropeCount(r) > 0);
 }
 
 /** How many cards fit in a rope `widthPx` wide. At least 1. */
@@ -87,4 +116,30 @@ export function matches(item: ClipItem, query: string): boolean {
   if (words.length === 0) return true;
   const hay = fold([item.text, item.title, item.note, ...item.tags, item.ocr, item.linkTitle].filter(Boolean).join('\n'));
   return words.every((w) => hay.includes(w));
+}
+
+/** One card on a rope: a clip or a file, with a number that is unique across both (files are negative). */
+export type LineCard = { id: number; item: ClipItem | null; file: LineFile | null };
+
+/** The cards of a rope in display order. */
+export function ropeCards(r: Rope, fileIdOf: (path: string) => number): LineCard[] {
+  if (r.key === 'files') return r.files.map((file) => ({ id: fileIdOf(file.path), item: null, file }));
+  return r.items.map((item) => ({ id: item.id, item, file: null }));
+}
+
+/** Move rope `key` by `delta` places in `order` (up = -1, down = 1). Same array when it cannot move. */
+export function moveRope(ropeOrder: readonly RopeKey[], key: RopeKey, delta: number): RopeKey[] {
+  const list = sanitizeOrder(ropeOrder);
+  const i = list.indexOf(key);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= list.length) return list;
+  [list[i], list[j]] = [list[j], list[i]];
+  return list;
+}
+
+/** The line look and behaviour settings of `defaults`, for the "reset" button. The on/off switch,
+ *  the hotkeys and the migration marker are not part of it. */
+export function lineDefaults<T extends Record<string, unknown>>(defaults: T): Partial<T> {
+  const keep = (k: string) => k.startsWith('line') && !['lineEnabled', 'lineLookVersion'].includes(k);
+  return Object.fromEntries(Object.entries(defaults).filter(([k]) => keep(k))) as Partial<T>;
 }

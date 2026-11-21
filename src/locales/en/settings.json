@@ -84,8 +84,6 @@
   "hotkeys": {
     "title": "Global shortcuts",
     "hint": "These work in every app. Click a box and press the keys; Esc cancels, Backspace turns the shortcut off.",
-    "shelf": "Open the clipboard shelf",
-    "shelfHint": "Your recent copies open at the top of the screen.",
     "library": "Open the clipboard library",
     "libraryHint": "Opens the Clipboard page in this window.",
     "downloadLink": "Download the copied link",
@@ -147,24 +145,6 @@
     "removeFolder": "Remove folder",
     "foldersEmpty": "No watched folders.",
     "foldersFull": "Up to 3 folders can be watched.",
-    "shelf": "Clipboard shelf",
-    "shelfHint": "The quick paste panel that opens at the top of the screen with a hotkey.",
-    "rows": {
-      "images": "Images row",
-      "texts": "Text row",
-      "links": "Links row"
-    },
-    "moveUp": "Move up",
-    "moveDown": "Move down",
-    "cardSize": "Card size",
-    "cardSizes": {
-      "small": "Small",
-      "medium": "Medium",
-      "large": "Large"
-    },
-    "click": "Clicking a card",
-    "clickCopies": "Copies and closes",
-    "clickSelects": "Selects it",
     "storage": "Storage",
     "used": "Space used",
     "usedValue": "{items} items · {size}",

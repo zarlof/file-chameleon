@@ -313,32 +313,6 @@ export function relativeTime(then: number, now: number, lang: string, nowLabel: 
 
 // ------------------------------------------------------------------ settings page
 
-export const SHELF_ROWS: ClipShelf[] = ['images', 'texts', 'links'];
-
-/** Visible rows in their order, then the hidden ones. */
-export function shelfRowList(rows: ClipShelf[]): { row: ClipShelf; visible: boolean }[] {
-  const visible = rows.filter((r, i) => SHELF_ROWS.includes(r) && rows.indexOf(r) === i);
-  return [...visible.map((row) => ({ row, visible: true })), ...SHELF_ROWS.filter((r) => !visible.includes(r)).map((row) => ({ row, visible: false }))];
-}
-
-/** Show (appended) or hide a row; the last visible row cannot be hidden. Same array when nothing changes. */
-export function toggleShelfRow(rows: ClipShelf[], row: ClipShelf, on: boolean): ClipShelf[] {
-  const has = rows.includes(row);
-  if (on === has) return rows;
-  if (!on) return rows.length > 1 ? rows.filter((r) => r !== row) : rows;
-  return [...rows, row];
-}
-
-/** Move a visible row by `delta`; same array when it cannot move. */
-export function moveShelfRow(rows: ClipShelf[], row: ClipShelf, delta: number): ClipShelf[] {
-  const i = rows.indexOf(row);
-  const j = i + delta;
-  if (i < 0 || j < 0 || j >= rows.length) return rows;
-  const next = [...rows];
-  [next[i], next[j]] = [next[j], next[i]];
-  return next;
-}
-
 /** Watched image folders: at most `max`, no duplicates (case and trailing separator ignored). */
 export function addFolderPath(list: string[], raw: string, max = 3): string[] {
   const trimmed = raw.trim();

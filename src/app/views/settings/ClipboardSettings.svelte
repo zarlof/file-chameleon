@@ -1,19 +1,18 @@
 <!--
   Clipboard settings ("Pano ayarları") — history on/off and pause, what is captured, suggestion toasts,
-  retention per kind and the item cap, ignored apps, OCR, link titles, watched image folders, the shelf
-  (rows, card size, click behaviour) and storage (used space, clear unsaved, empty trash).
+  retention per kind and the item cap, ignored apps, OCR, link titles, watched image folders and storage (used space, clear unsaved, empty trash).
   Every control writes through the settings store immediately; pause goes through `clipSetPaused`.
 -->
 <script lang="ts">
   import { open } from '@tauri-apps/plugin-dialog';
   import { onMount } from 'svelte';
-  import { ArrowDown, ArrowUp, Folder, FolderPlus, Plus, X } from '@lucide/svelte';
+  import { Folder, FolderPlus, Plus, X } from '@lucide/svelte';
   import { t } from '../../../lib/i18n';
   import { api, errorOf, on } from '../../../lib/ipc';
   import { settings } from '../../../lib/stores/settings.svelte';
-  import type { ClipShelf, ClipStats, Settings } from '../../../lib/types';
+  import type { ClipStats, Settings } from '../../../lib/types';
   import { Button, Card, formatBytes, IconButton, ListRow, SectionHeader, Select, Sheet, TextField, Toggle, toast } from '../../../lib/ui';
-  import { addFolderPath, moveShelfRow, shelfRowList, toggleShelfRow } from '../clipboard/clips';
+  import { addFolderPath } from '../clipboard/clips';
   import { addExe } from './logic';
 
   const MAX_FOLDERS = 3;
@@ -36,17 +35,6 @@
     return [...opts, { value: '0', label: days(0) }];
   };
   const itemOptions = $derived(numOptions([100, 300, 500, 1000, 2000], s.clipboardMaxItems, (n) => t('settings.clipboard.items', { count: n })));
-  const sizeOptions = $derived([
-    { value: 'small', label: t('settings.clipboard.cardSizes.small') },
-    { value: 'medium', label: t('settings.clipboard.cardSizes.medium') },
-    { value: 'large', label: t('settings.clipboard.cardSizes.large') },
-  ]);
-  const clickOptions = $derived([
-    { value: 'copy', label: t('settings.clipboard.clickCopies') },
-    { value: 'select', label: t('settings.clipboard.clickSelects') },
-  ]);
-  const rows = $derived(shelfRowList(s.shelfRows));
-  const visibleRows = $derived(rows.filter((r) => r.visible).length);
 
   // ---- pause (not a plain setting: the backend owns it, the tray can change it too)
   let paused = $state(settings.value.clipboardPaused);
@@ -83,16 +71,6 @@
   }
   function removeFolder(path: string) {
     set({ clipboardWatchFolders: s.clipboardWatchFolders.filter((p) => p !== path) });
-  }
-
-  // ---- shelf rows
-  function showRow(row: ClipShelf, on: boolean) {
-    const next = toggleShelfRow(s.shelfRows, row, on);
-    if (next !== s.shelfRows) set({ shelfRows: next });
-  }
-  function moveRow(row: ClipShelf, delta: number) {
-    const next = moveShelfRow(s.shelfRows, row, delta);
-    if (next !== s.shelfRows) set({ shelfRows: next });
   }
 
   // ---- storage
@@ -261,27 +239,6 @@
     {:else}
       <ListRow title={t('settings.clipboard.foldersEmpty')} />
     {/each}
-  </Card>
-
-  <SectionHeader title={t('settings.clipboard.shelf')} subtitle={t('settings.clipboard.shelfHint')} />
-  <Card>
-    {#each rows as r, i (r.row)}
-      <ListRow title={t(`settings.clipboard.rows.${r.row}`)}>
-        {#snippet trailing()}
-          <IconButton label={t('settings.clipboard.moveUp')} size={26} disabled={!r.visible || i === 0} onclick={() => moveRow(r.row, -1)}><ArrowUp size={14} /></IconButton>
-          <IconButton label={t('settings.clipboard.moveDown')} size={26} disabled={!r.visible || i >= visibleRows - 1} onclick={() => moveRow(r.row, 1)}><ArrowDown size={14} /></IconButton>
-          <Toggle checked={r.visible} disabled={r.visible && visibleRows === 1} label={t(`settings.clipboard.rows.${r.row}`)} onchange={(v) => showRow(r.row, v)} />
-        {/snippet}
-      </ListRow>
-    {/each}
-    <ListRow title={t('settings.clipboard.cardSize')}>
-      {#snippet trailing()}<Select value={s.shelfCardSize} options={sizeOptions} label={t('settings.clipboard.cardSize')}
-        onchange={(v) => set({ shelfCardSize: v as Settings['shelfCardSize'] })} />{/snippet}
-    </ListRow>
-    <ListRow title={t('settings.clipboard.click')}>
-      {#snippet trailing()}<Select value={s.shelfClickCopies ? 'copy' : 'select'} options={clickOptions} label={t('settings.clipboard.click')}
-        onchange={(v) => set({ shelfClickCopies: v === 'copy' })} />{/snippet}
-    </ListRow>
   </Card>
 
   <SectionHeader title={t('settings.clipboard.storage')} />

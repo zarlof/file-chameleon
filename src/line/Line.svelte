@@ -1,6 +1,6 @@
 <!--
-  Line — the clothesline: up to three ropes (images, texts, links) across the top of the screen with the
-  latest clips pinned on them. Click copies, drag leaves the window, right-click opens a menu.
+  Line — the clothesline: up to four ropes (images, texts, links, files) across the top (or bottom) of the screen
+  with the latest clips and files pinned on them. Click copies, drag leaves the window, right-click opens a menu.
   Zero work at rest: one shared rAF loop runs only while a card swings or falls, and there are no
   timers while the line is hidden. Reduce motion = no loop and no breeze.
   Never imports from src/app/.
@@ -9,35 +9,35 @@
   import { onMount, tick as afterRender } from 'svelte';
   import { convertFileSrc } from '@tauri-apps/api/core';
   import { api, errorOf, on } from '../lib/ipc';
-  import type { ClipItem, ClipShelf, Settings } from '../lib/types';
-  import { fitCount, matches, overflow, splitRopes, visibleRopes, type RopeKey } from './logic';
-  import { bandTops, cardOpacity, ropeColor, sizeInfo, windowHeight } from './layout';
+  import type { ClipItem, ClipShelf, LineFile, Settings } from '../lib/types';
+  import { fitCount, matches, overflow, ropeCards, ropeName, splitRopes, visibleRopes, type LineCard } from './logic';
+  import { fileId } from './files';
+  import { bandTops, cardOpacity, cardStyleAttr, ropeColor, sizeInfo, windowHeight } from './layout';
   import { isCommandKey, nextFocus, type Focus, type NavKey } from './keys';
   import { quiet, tick as hangTick } from './sound';
   import Preview from './Preview.svelte';
   import { setLang, getLang, t } from './i18n';
-  import { atRest, impulse, step, type Pend } from './physics';
+  import { atRest, impulse, step, swingK, type Pend } from './physics';
   import Rope from './Rope.svelte';
 
   const LIST_LIMIT = 200;
-  const SHELF: Record<RopeKey, ClipShelf> = { images: 'images', text: 'texts', links: 'links' };
-  const HIDE_DELAY = 400;
+  const SHELF: Record<'images' | 'text' | 'links', ClipShelf> = { images: 'images', text: 'texts', links: 'links' };
   const RELOAD_DEBOUNCE = 150;
-  const PEEK_MS = 2500;
   const MENU_W = 196;
   const ZOOM_W = 2;
 
   let settings = $state<Settings | null>(null);
   let items = $state<ClipItem[]>([]);
+  let files = $state<LineFile[]>([]);
   let paused = $state(false);
   let shown = $state(false);
   let width = $state(window.innerWidth);
   let selected = $state<number[]>([]);
   let anchor: number | null = null;
   let copiedId = $state<number | null>(null);
-  let hoverId: number | null = null;
+  let hoverId = $state<number | null>(null);
   let toast = $state<{ text: string; undo: boolean } | null>(null);
-  let menu = $state<{ x: number; y: number; item: ClipItem } | null>(null);
+  let menu = $state<{ x: number; y: number; card: LineCard } | null>(null);
   let menuEl = $state<HTMLElement | null>(null);
   let query = $state('');
   let searchOpen = $state(false);
@@ -47,31 +47,65 @@
   let focus = $state<Focus | null>(null);
   let previewOn = $state(false);
   let zoom = $state<{ item: ClipItem; rect: DOMRect } | null>(null);
+  let isDark = $state(true);
   const angles = $state<Record<number, number>>({});
   const falls = $state<Record<number, number>>({});
 
   const reduce = $derived(settings?.reduceMotion ?? false);
   const ropeCfg = $derived(settings?.lineRopes ?? { images: true, text: true, links: true, files: true });
   // The ropes that exist do not depend on the search (the window height does not jump while typing).
-  const baseRopes = $derived(visibleRopes(splitRopes(items, ropeCfg)));
-  const ropes = $derived(baseRopes.map((r) => ({ ...r, items: query.trim() ? r.items.filter((i) => matches(i, query)) : r.items })));
+  const shownFiles = $derived.by(() => {
+    const src = settings?.lineFilesSources ?? { added: true, converted: true, downloaded: true };
+    return files.filter((f) => src[f.source]);
+  });
+  const baseRopes = $derived(visibleRopes(splitRopes(items, ropeCfg, settings?.lineRopeOrder, shownFiles)));
+  const ropes = $derived(
+    baseRopes.map((r) => {
+      const q = query.trim();
+      const filtered = q
+        ? { ...r, items: r.items.filter((i) => matches(i, q)), files: r.files.filter((f) => matches(fileAsText(f), q)) }
+        : r;
+      return { ...filtered, cards: ropeCards(filtered, fileId) };
+    }),
+  );
   const size = $derived(sizeInfo(settings?.lineSize ?? 'medium'));
   const sizeName = $derived(settings?.lineSize ?? 'medium');
   const tops = $derived(bandTops(Math.max(1, ropes.length), sizeName));
   const stripH = $derived(windowHeight(Math.max(1, ropes.length), sizeName));
+  const bottom = $derived(settings?.lineEdge === 'bottom');
   const op = $derived(Math.min(100, Math.max(30, settings?.lineOpacity ?? 100)) / 100);
   const cardOp = $derived(cardOpacity(op * 100));
   const thickness = $derived(Math.min(6, Math.max(1, settings?.lineThickness ?? 2)));
-  const color = $derived(ropeColor(settings?.lineColor ?? 'accent', 'var(--accent)'));
-  const fit = $derived(fitCount(width - 72, size.card));
-  const order = $derived(ropes.map((r) => r.items.slice(0, fit).map((i) => i.id)));
+  const color = $derived(ropeColor(settings?.lineColor ?? 'natural', 'var(--accent)', isDark ? 'dark' : 'light'));
+  const cardVarsStyle = $derived(cardStyleAttr(settings?.lineCardStyle ?? 'glassDark', settings?.lineCardRadius ?? 10, settings?.lineCardShadow ?? true));
+  const maxPer = $derived(settings?.lineMaxPerRope ?? 0);
+  const baseFit = $derived(fitCount(width - 72, size.card));
+  const fit = $derived(maxPer >= 3 ? Math.min(baseFit, maxPer) : baseFit);
+  const peekMs = $derived(settings?.linePeekMs ?? 2500);
+  const hideDelay = $derived(settings?.lineHideDelayMs ?? 400);
+  const k = $derived(swingK(settings?.lineSwing ?? 100, settings?.lineDamping ?? 100));
+  /** The rope that shows the 1-9 badges: the keyboard-focused or hovered one, else the first. */
+  const numRope = $derived.by(() => {
+    if (focus) return focus.r;
+    if (hoverId !== null) {
+      const r = ropes.findIndex((x) => x.cards.some((c) => c.id === hoverId));
+      if (r >= 0) return r;
+    }
+    return 0;
+  });
+  const order = $derived(ropes.map((r) => r.cards.slice(0, fit).map((c) => c.id)));
   const empty = $derived(ropes.length === 0);
   const focusedId = $derived(focus ? (order[focus.r]?.[focus.i] ?? null) : null);
-  const byId = $derived(new Map(items.map((i) => [i.id, i])));
+  const byId = $derived(new Map(ropes.flatMap((r) => r.cards).map((c) => [c.id, c])));
   $effect(() => {
     if (focusedId === null) previewOn = false;
   });
-  const previewItem = $derived(previewOn && focusedId !== null ? (byId.get(focusedId) ?? null) : null);
+  const previewItem = $derived(previewOn && focusedId !== null ? (byId.get(focusedId)?.item ?? null) : null);
+
+  /** A file as a searchable clip-shaped record (only its name and extension count). */
+  function fileAsText(f: LineFile): ClipItem {
+    return { text: f.name, title: f.name, tags: [] } as unknown as ClipItem;
+  }
 
   const pend = new Map<number, Pend>();
   let raf = 0;
@@ -97,11 +131,15 @@
   let themeSetting: Settings['theme'] = 'system';
 
   function applyTheme() {
-    document.documentElement.dataset.theme = themeSetting === 'system' ? (dark.matches ? 'dark' : 'light') : themeSetting;
+    const t2 = themeSetting === 'system' ? (dark.matches ? 'dark' : 'light') : themeSetting;
+    document.documentElement.dataset.theme = t2;
+    isDark = t2 === 'dark';
   }
 
   function applySettings(s: Settings) {
-    const ropesChanged = settings !== null && JSON.stringify(settings.lineRopes) !== JSON.stringify(s.lineRopes);
+    const ropesChanged =
+      settings !== null &&
+      (JSON.stringify(settings.lineRopes) !== JSON.stringify(s.lineRopes) || JSON.stringify(settings.lineFilesSources) !== JSON.stringify(s.lineFilesSources));
     settings = s;
     themeSetting = s.theme;
     const root = document.documentElement;
@@ -136,7 +174,7 @@
     lastFrame = now;
     let moving = false;
     for (const [id, p] of pend) {
-      const next = step(p, dt);
+      const next = step(p, dt, k);
       if (atRest(next)) {
         pend.delete(id);
         delete angles[id];
@@ -151,7 +189,7 @@
       const tt = falls[id] + dt / 0.55;
       if (tt >= 1) {
         delete falls[id];
-        if (settings?.lineSound) hangTick();
+        if (settings?.lineSound) hangTick(settings.lineSoundVolume / 100);
       }
       else {
         falls[id] = tt;
@@ -162,25 +200,27 @@
   }
 
   function nudge(id: number, dOmega: number) {
-    if (reduce) return;
-    pend.set(id, impulse(pend.get(id) ?? { theta: 0, omega: 0 }, dOmega));
+    if (reduce || k.impulse === 0) return;
+    pend.set(id, impulse(pend.get(id) ?? { theta: 0, omega: 0 }, dOmega * k.impulse));
     kick();
   }
 
-  function onHover(item: ClipItem, dir: number) {
-    hoverId = item.id;
+  function onHover(c: LineCard, dir: number) {
+    hoverId = c.id;
     focus = null;
-    nudge(item.id, 0.6 * dir);
+    nudge(c.id, 0.6 * dir);
   }
 
   function scheduleBreeze() {
     clearTimeout(breezeTimer);
     if (!shown || reduce || !settings?.lineBreeze || document.hidden) return;
+    const strength = (settings.lineBreezeStrength ?? 100) / 100;
+    if (strength <= 0) return;
     breezeTimer = setTimeout(
       () => {
         const ids = order.flat();
         const n = Math.min(ids.length, 1 + Math.floor(Math.random() * 3));
-        for (let i = 0; i < n; i++) nudge(ids[Math.floor(Math.random() * ids.length)], (Math.random() < 0.5 ? -1 : 1) * 0.5);
+        for (let i = 0; i < n; i++) nudge(ids[Math.floor(Math.random() * ids.length)], (Math.random() < 0.5 ? -1 : 1) * 0.5 * strength);
         scheduleBreeze();
       },
       3000 + Math.random() * 3000,
@@ -201,8 +241,12 @@
     dirty = false;
     const wanted = (['images', 'text', 'links'] as const).filter((k) => ropeCfg[k]);
     let lists: ClipItem[][];
+    let nextFiles: LineFile[] = [];
     try {
-      lists = await Promise.all(wanted.map((k) => api.clipList({ shelf: SHELF[k], limit: LIST_LIMIT })));
+      [lists, nextFiles] = await Promise.all([
+        Promise.all(wanted.map((k) => api.clipList({ shelf: SHELF[k], limit: LIST_LIMIT }))),
+        ropeCfg.files ? api.lineFiles() : Promise.resolve([] as LineFile[]),
+      ]);
     } catch (e) {
       console.error(e);
       dirty = true;
@@ -210,12 +254,17 @@
     }
     if (my !== seq) return;
     const next = lists.flat();
-    const fresh = knownReady && shown && !reduce ? next.filter((i) => !known.has(i.id)).slice(0, 4) : [];
-    known = new Set(next.map((i) => i.id));
+    const nextIds = new Set<number>([...next.map((i) => i.id), ...nextFiles.map((f) => fileId(f.path))]);
+    const fresh =
+      knownReady && shown && !reduce && (settings?.lineFall ?? true)
+        ? [...next.map((i) => i.id), ...nextFiles.map((f) => fileId(f.path))].filter((id) => !known.has(id)).slice(0, 4)
+        : [];
+    known = nextIds;
     knownReady = true;
     items = next;
+    files = nextFiles;
     selected = selected.filter((id) => known.has(id));
-    for (const i of fresh) falls[i.id] = 0;
+    for (const id of fresh) falls[id] = 0;
     if (fresh.length > 0) kick();
   }
 
@@ -237,7 +286,7 @@
       void afterRender().then(() => searchEl?.focus());
     }
     if ((mode === 'peek' || mode === 'reveal') && !pointerInside) {
-      peekTimer = setTimeout(() => !pointerInside && !document.documentElement.matches(':hover') && void hide(), PEEK_MS);
+      peekTimer = setTimeout(() => !pointerInside && !document.documentElement.matches(':hover') && void hide(), peekMs);
     }
   }
 
@@ -283,7 +332,7 @@
     if (menu || searchFocused || query || previewOn) return; // in use: Esc or a click outside closes it
     hideTimer = setTimeout(() => {
       if (!dragging && !menu) void hide();
-    }, HIDE_DELAY);
+    }, hideDelay);
   }
 
   /** Close the context menu; with the pointer outside the window the hide timer starts again. */
@@ -311,18 +360,35 @@
     showToast(errorOf(e).message || t('failed'));
   }
 
-  function targetsFor(item: ClipItem | null): number[] {
-    if (item && !selected.includes(item.id)) return [item.id];
+  function cardsOf(ids: number[]): LineCard[] {
+    return ids.map((id) => byId.get(id)).filter((c): c is LineCard => !!c);
+  }
+
+  function targetsFor(card: LineCard | null): number[] {
+    if (card && !selected.includes(card.id)) return [card.id];
     if (selected.length > 0) return selected;
-    const id = item?.id ?? focusedId ?? hoverId;
+    const id = card?.id ?? focusedId ?? hoverId;
     return id === null ? [] : [id];
   }
 
-  /** True when the copy happened. */
+  /** Clip ids and file paths of a mixed target list. */
+  function splitTargets(ids: number[]): { clips: number[]; paths: string[] } {
+    const cs = cardsOf(ids);
+    return { clips: cs.filter((c) => c.item).map((c) => c.id), paths: cs.flatMap((c) => (c.file ? [c.file.path] : [])) };
+  }
+
+  /** True when the copy happened. A group is copied by the kind of its first card (clips or files). */
   async function copy(ids: number[]): Promise<boolean> {
     if (ids.length === 0) return false;
+    const { clips, paths } = splitTargets(ids);
     try {
-      await api.clipCopy(ids);
+      if (ids[0] < 0) {
+        if (paths.length === 0) return false;
+        await api.lineFileCopy(paths);
+      } else {
+        if (clips.length === 0) return false;
+        await api.clipCopy(clips);
+      }
       copiedId = ids[0];
       clearTimeout(copiedTimer);
       copiedTimer = setTimeout(() => (copiedId = null), 1100);
@@ -333,41 +399,60 @@
     }
   }
 
-  // A double-click delivers two clicks first: the single-click action waits a moment and is cancelled by dblclick.
-  let clickTimer: ReturnType<typeof setTimeout> | undefined;
-  function pick(item: ClipItem, e: MouseEvent) {
-    clearTimeout(clickTimer);
-    const mods = { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey } as MouseEvent;
-    clickTimer = setTimeout(() => pickNow(item, mods), 220);
+  /** The click action from the settings: copy, copy and close, or paste into the previous app. */
+  async function activate(ids: number[]) {
+    const action = settings?.lineClickAction ?? 'copy';
+    const { clips } = splitTargets(ids);
+    if (action === 'paste' && ids[0] > 0 && clips.length > 0) {
+      try {
+        await api.linePaste(clips);
+      } catch (e) {
+        fail(e);
+      }
+      return;
+    }
+    if ((await copy(ids)) && action !== 'copy') await hide();
   }
 
-  function pickNow(item: ClipItem, e: MouseEvent) {
+  // A double-click delivers two clicks first: the single-click action waits a moment and is cancelled by dblclick.
+  let clickTimer: ReturnType<typeof setTimeout> | undefined;
+  function pick(c: LineCard, e: MouseEvent) {
+    clearTimeout(clickTimer);
+    const mods = { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey } as MouseEvent;
+    clickTimer = setTimeout(() => pickNow(c, mods), 220);
+  }
+
+  function pickNow(c: LineCard, e: MouseEvent) {
     const ctrl = e.ctrlKey || e.metaKey;
     if (e.shiftKey || ctrl) {
-      const row = order.find((ids) => ids.includes(item.id)) ?? [];
+      const row = order.find((ids) => ids.includes(c.id)) ?? [];
       if (e.shiftKey && anchor !== null && row.includes(anchor)) {
         const a = row.indexOf(anchor);
-        const b = row.indexOf(item.id);
+        const b = row.indexOf(c.id);
         const range = row.slice(Math.min(a, b), Math.max(a, b) + 1);
         selected = ctrl ? [...new Set([...selected, ...range])] : range;
       } else {
-        selected = selected.includes(item.id) ? selected.filter((x) => x !== item.id) : [...selected, item.id];
-        anchor = item.id;
+        selected = selected.includes(c.id) ? selected.filter((x) => x !== c.id) : [...selected, c.id];
+        anchor = c.id;
       }
       return;
     }
     selected = [];
-    anchor = item.id;
-    void copy([item.id]);
+    anchor = c.id;
+    void activate([c.id]);
   }
 
-  async function openItem(item: ClipItem) {
+  async function openCard(c: LineCard) {
     clearTimeout(clickTimer);
+    const item = c.item;
     try {
-      if (item.kind === 'image' || item.kind === 'text') {
+      if (c.file) {
+        await api.lineFileOpen(c.file.path);
+        await hide();
+      } else if (item && (item.kind === 'image' || item.kind === 'text')) {
         await api.lineOpenItem(item.id);
         await hide();
-      } else if (item.text) {
+      } else if (item?.text) {
         await api.openUrl(item.text.trim());
         await hide();
       }
@@ -376,12 +461,13 @@
     }
   }
 
-  async function dragOut(item: ClipItem) {
+  async function dragOut(c: LineCard) {
     dragging = true;
     menu = null;
     zoom = null;
     try {
-      await api.lineDragOut(item.id);
+      if (c.file) await api.lineFileDragOut(c.file.path);
+      else if (c.item) await api.lineDragOut(c.item.id);
     } catch (e) {
       console.error(e);
       showToast(t('dragFailed'));
@@ -391,13 +477,19 @@
     }
   }
 
+  /** Delete: clips go to the trash (with undo), files only leave the list (the file stays on disk). */
   async function trash(ids: number[]) {
     if (ids.length === 0) return;
+    const { clips, paths } = splitTargets(ids);
     try {
-      await api.clipTrash(ids);
-      undoStack.push(ids);
+      if (clips.length > 0) {
+        await api.clipTrash(clips);
+        undoStack.push(clips);
+      }
+      if (paths.length > 0) await api.lineFileRemove(paths);
       selected = [];
-      showToast(t('trashed', { count: ids.length }), true);
+      if (clips.length > 0) showToast(t('trashed', { count: clips.length }), true);
+      else showToast(t('fileRemoved', { count: paths.length }));
       await load();
     } catch (e) {
       fail(e);
@@ -427,10 +519,10 @@
   }
 
   // ------------------------------------------------------------ context menu
-  function openMenu(item: ClipItem, e: MouseEvent) {
+  function openMenu(c: LineCard, e: MouseEvent) {
     zoom = null;
-    const h = item.kind === 'image' ? 250 : 190;
-    menu = { x: Math.max(4, Math.min(e.clientX, width - MENU_W - 4)), y: Math.max(4, Math.min(e.clientY, window.innerHeight - h - 4)), item };
+    const h = c.file ? 200 : c.item?.kind === 'image' ? 250 : 190;
+    menu = { x: Math.max(4, Math.min(e.clientX, width - MENU_W - 4)), y: Math.max(4, Math.min(e.clientY, window.innerHeight - h - 4)), card: c };
   }
 
   async function menuDo(fn: () => Promise<void> | void) {
@@ -450,7 +542,7 @@
   }
 
   function itemOf(id: number | null): ClipItem | null {
-    return id === null ? null : (byId.get(id) ?? null);
+    return id === null ? null : (byId.get(id)?.item ?? null);
   }
 
   /** Make sure the keyboard has a focus: the hovered card, else the first card. */
@@ -479,7 +571,11 @@
   /** Enter in the search field: copy the newest match and close. */
   async function copyNewestMatch() {
     const all = ropes.flatMap((r) => r.items);
-    if (all.length === 0) return;
+    if (all.length === 0) {
+      const f = ropes.flatMap((r) => r.files)[0];
+      if (f && (await copy([fileId(f.path)]))) await hide();
+      return;
+    }
     const best = all.reduce((a, b) => (b.createdAt > a.createdAt || (b.createdAt === a.createdAt && b.id > a.id) ? b : a));
     if (await copy([best.id])) await hide();
   }
@@ -522,8 +618,8 @@
     if (ctrl) {
       const k = key.toLowerCase();
       if (key === 'Enter') {
-        const ids = targetsFor(null);
-        if (ids.length > 0) void api.linePaste(ids).catch(fail);
+        const { clips } = splitTargets(targetsFor(null));
+        if (clips.length > 0) void api.linePaste(clips).catch(fail);
       } else if (k === 'z') void undo();
       else if (k === 'c' && e.shiftKey) {
         const it = itemOf(targetsFor(null)[0] ?? null);
@@ -534,14 +630,15 @@
     if (key === 'Enter') {
       void (async () => {
         const ids = targetsFor(null);
-        if (await copy(ids)) await hide();
+        if (settings?.lineClickAction === 'paste') await activate(ids);
+        else if (await copy(ids)) await hide();
       })();
     } else if (key === 'Delete') {
       if (!e.repeat) void trash(targetsFor(null));
     } else if (key === ' ') {
       if (e.repeat) return;
       if (previewOn) previewOn = false;
-      else if (ensureFocus()) {
+      else if (ensureFocus() && itemOf(focusedId)) {
         zoom = null;
         previewOn = true;
       }
@@ -559,7 +656,7 @@
       if (it && !e.repeat) void togglePin(it);
     } else if (key === 'e' || key === 'E') {
       const it = itemOf(targetsFor(null)[0] ?? null);
-      if (it && (it.kind === 'text' || it.kind === 'image')) void openItem(it);
+      if (it && (it.kind === 'text' || it.kind === 'image')) void openCard(byId.get(it.id)!);
     }
   }
 
@@ -587,6 +684,7 @@
       keep(await on.clipAdded(() => markDirty()));
       keep(await on.clipUpdated(() => markDirty()));
       keep(await on.clipChanged(() => markDirty()));
+      keep(await on.filesChanged(() => markDirty()));
       keep(await on.clipPaused((v) => (paused = v)));
       keep(await on.settingsChanged(applySettings));
       // A show may have happened before the listeners existed: ask Rust for the latest mode.
@@ -623,41 +721,46 @@
 <svelte:window bind:innerWidth={width} {onkeydown} {onpointerdown} />
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="strip" class:shown style:height="{stripH}px">
+<div class="strip" class:shown class:bottom style:height="{stripH}px" style={cardVarsStyle}>
   {#each ropes as rope, i (rope.key)}
     <Rope
-      label={t(`rope.${rope.key}`)}
-      items={rope.items.slice(0, fit)}
+      label={ropeName(rope.key, settings?.lineRopeNames, t(`rope.${rope.key}`))}
+      showLabel={settings?.lineShowLabels ?? true}
+      cards={rope.cards.slice(0, fit)}
       {width}
-      more={overflow(rope.items.length, fit)}
+      more={overflow(rope.cards.length, fit)}
       {angles}
       {falls}
       selected={new Set(selected)}
       {copiedId}
       {focusedId}
+      numbers={(settings?.lineShowNumbers ?? true) && i === numRope}
       top={tops[i]}
       band={size.band}
       card={size.card}
       scale={size.scale}
       {color}
       {thickness}
-      opacity={op}
+      ropeStyle={settings?.lineRopeStyle ?? 'twisted'}
+      sag={settings?.lineSag ?? 14}
+      pinStyle={settings?.linePinStyle ?? 'plastic'}
+      pinColor={settings?.linePinColor ?? 'auto'}
       {cardOp}
       zoomOn={settings?.lineZoomOnHover ?? false}
       onzoom={(item, rect) => (zoom = shown && item && rect ? { item, rect } : null)}
       emptyText={query.trim() ? t('search.none') : ''}
       onclick={pick}
-      ondblclick={openItem}
+      ondblclick={openCard}
       ondragout={dragOut}
-      onremove={(item) => void trash(targetsFor(item))}
+      onremove={(c) => void trash(targetsFor(c))}
       oncontext={openMenu}
       onhover={onHover}
-      onmore={() => void api.showShelf().then(hide).catch(fail)}
+      onmore={() => void api.showMain(rope.key === 'files' ? 'recent' : 'clipboard').then(hide).catch(fail)}
     />
   {/each}
   {#if paused && !empty}<span class="paused" class:shift={searchOpen}>{t('paused')}</span>{/if}
   {#if empty}
-    <div class="empty" style:top="{tops[0]}px" style:height="{size.band}px" style:--op={op}>
+    <div class="empty" style:top="{tops[0]}px">
       <span>{t('empty')}</span>
       {#if paused}<b>{t('paused')}</b>{/if}
     </div>
@@ -708,24 +811,35 @@
 {/if}
 
 {#if menu}
-  {@const it = menu.item}
+  {@const c = menu.card}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="menu" role="menu" tabindex="-1" bind:this={menuEl} style:left="{menu.x}px" style:top="{menu.y}px" style:width="{MENU_W}px">
-    <button type="button" role="menuitem" onclick={() => menuDo(async () => { await copy(targetsFor(it)); })}>{t('menu.copy')}</button>
-    <button type="button" role="menuitem" onclick={() => menuDo(() => api.linePaste(targetsFor(it)))}>{t('menu.paste')}</button>
-    {#if it.kind === 'image' || it.kind === 'text'}
-      <button type="button" role="menuitem" onclick={() => menuDo(() => openItem(it))}>{t('menu.edit')}</button>
-    {/if}
-    <button type="button" role="menuitem" onclick={() => menuDo(() => togglePin(it))}>{it.pinned ? t('menu.unpin') : t('menu.pin')}</button>
-    {#if it.kind === 'image'}
-      {@const file = it.edited ?? it.image}
-      {#if file}
-        <button type="button" role="menuitem" onclick={() => menuDo(async () => { await api.floatOpen([file]); })}>{t('menu.float')}</button>
+    {#if c.file}
+      {@const f = c.file}
+      <button type="button" role="menuitem" onclick={() => menuDo(() => openCard(c))}>{t('menu.open')}</button>
+      <button type="button" role="menuitem" onclick={() => menuDo(() => api.lineFileReveal(f.path))}>{t('menu.reveal')}</button>
+      <button type="button" role="menuitem" onclick={() => menuDo(async () => { await api.wheelOpen([f.path]); await hide(); })}>{t('menu.convert')}</button>
+      <button type="button" role="menuitem" onclick={() => menuDo(async () => { await navigator.clipboard.writeText(f.path); showToast(t('pathCopied')); })}>{t('menu.copyPath')}</button>
+      <hr />
+      <button type="button" role="menuitem" class="danger" onclick={() => menuDo(() => trash(targetsFor(c)))}>{t('menu.removeFromList')}</button>
+    {:else if c.item}
+      {@const it = c.item}
+      <button type="button" role="menuitem" onclick={() => menuDo(async () => { await copy(targetsFor(c)); })}>{t('menu.copy')}</button>
+      <button type="button" role="menuitem" onclick={() => menuDo(() => api.linePaste(splitTargets(targetsFor(c)).clips))}>{t('menu.paste')}</button>
+      {#if it.kind === 'image' || it.kind === 'text'}
+        <button type="button" role="menuitem" onclick={() => menuDo(() => openCard(c))}>{t('menu.edit')}</button>
       {/if}
-      <button type="button" role="menuitem" onclick={() => menuDo(async () => { await api.clipSaveImage(it.id, 'png'); showToast(t('saved')); })}>{t('menu.save')}</button>
+      <button type="button" role="menuitem" onclick={() => menuDo(() => togglePin(it))}>{it.pinned ? t('menu.unpin') : t('menu.pin')}</button>
+      {#if it.kind === 'image'}
+        {@const file = it.edited ?? it.image}
+        {#if file}
+          <button type="button" role="menuitem" onclick={() => menuDo(async () => { await api.floatOpen([file]); })}>{t('menu.float')}</button>
+        {/if}
+        <button type="button" role="menuitem" onclick={() => menuDo(async () => { await api.clipSaveImage(it.id, 'png'); showToast(t('saved')); })}>{t('menu.save')}</button>
+      {/if}
+      <hr />
+      <button type="button" role="menuitem" class="danger" onclick={() => menuDo(() => trash(targetsFor(c)))}>{t('menu.delete')}</button>
     {/if}
-    <hr />
-    <button type="button" role="menuitem" class="danger" onclick={() => menuDo(() => trash(targetsFor(it)))}>{t('menu.delete')}</button>
   </div>
 {/if}
 
@@ -738,6 +852,7 @@
     font: var(--text-body);
     color: var(--text);
   }
+  .strip.bottom { inset: auto 0 0 0; transform: translateY(104%); }
   .strip.shown { transform: none; }
   :global([data-reduce-motion]) .strip { transition: none; }
 
@@ -781,15 +896,19 @@
   }
   .empty {
     position: absolute;
-    left: 0;
-    right: 0;
+    left: 50%;
+    translate: -50% 0;
     display: flex;
     gap: var(--space-2);
     align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--window-bg) calc(var(--op) * 38%), transparent);
-    color: var(--text-secondary);
+    margin-top: 28px;
+    padding: 6px 16px;
+    border-radius: 999px;
+    background: rgba(20, 20, 24, 0.78);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.82);
     font: var(--text-callout);
   }
   .empty b { color: var(--accent); font-weight: 600; }

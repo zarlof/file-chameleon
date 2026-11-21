@@ -1,3 +1,5 @@
+import { naturalRope } from './ropeStyle';
+
 // Pure layout numbers for the line. The same table lives in src-tauri/src/line.rs (band_height); keep both in step.
 
 export type LineSize = 'small' | 'medium' | 'large';
@@ -40,9 +42,33 @@ export function cardOpacity(lineOpacity: number): number {
 const HEX = /^#[0-9a-f]{6}$/i;
 const NAMES = ['blue', 'purple', 'pink', 'red', 'orange', 'yellow', 'green', 'graphite'];
 
-/** A CSS colour for the rope: "accent" -> `accent`, a #rrggbb hex as is, an accent name -> its variable. */
-export function ropeColor(setting: string, accent: string): string {
+/** A CSS colour for the rope: "natural" -> the hemp grey for the theme, "accent" -> `accent`, a #rrggbb hex as is, an accent name -> its variable. */
+export function ropeColor(setting: string, accent: string, theme: 'dark' | 'light' = 'dark'): string {
+  if (setting === 'natural') return naturalRope(theme);
   if (HEX.test(setting)) return setting;
   if (NAMES.includes(setting)) return `var(--${setting})`;
   return accent;
+}
+
+export type CardStyle = 'glassDark' | 'glassLight' | 'paper';
+
+/** CSS custom properties for the card look (set on the strip and on the settings preview). */
+export function cardVars(style: string, radius: number, shadow: boolean): Record<string, string> {
+  const r = Math.min(16, Math.max(0, Math.round(radius)));
+  const base: Record<string, string> = {
+    '--c-radius': `${r}px`,
+    '--c-shadow': shadow ? '0 4px 12px rgba(0,0,0,0.35)' : 'none',
+  };
+  if (style === 'glassLight') {
+    return { ...base, '--c-bg': 'rgba(250,250,252,0.8)', '--c-fg': '#16161a', '--c-fg2': 'rgba(22,22,26,0.62)', '--c-edge': 'rgba(0,0,0,0.12)', '--c-blur': 'blur(10px)' };
+  }
+  if (style === 'paper') {
+    return { ...base, '--c-bg': 'var(--elevated-bg)', '--c-fg': 'var(--text)', '--c-fg2': 'var(--text-secondary)', '--c-edge': 'var(--glass-edge)', '--c-blur': 'none' };
+  }
+  return { ...base, '--c-bg': 'rgba(20,20,24,0.78)', '--c-fg': '#ffffff', '--c-fg2': 'rgba(255,255,255,0.66)', '--c-edge': 'rgba(255,255,255,0.1)', '--c-blur': 'blur(10px)' };
+}
+
+/** `cardVars` as an inline style string. */
+export function cardStyleAttr(style: string, radius: number, shadow: boolean): string {
+  return Object.entries(cardVars(style, radius, shadow)).map(([k, v]) => `${k}:${v}`).join(';');
 }
