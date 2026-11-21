@@ -23,47 +23,77 @@
 
 ### Dönüştür: internetsiz, kendi bilgisayarınızda
 
-Dosyaları pencereye bırakın ya da herhangi bir yerde **Ctrl'ye basılı tutarak dosya sürükleyin**.
-İmlecin altında bir format çarkı açılır. Bir formatın üstünde bırakınca dönüşüm arka planda yapılır.
-Dosyalarınız bilgisayarınızdan çıkmaz, orijinal dosyalar asla değiştirilmez veya silinmez.
+Dosyaları pencereye bırakın ya da Dosya Gezgini'nde **Ctrl'ye basılı tutarak dosya sürükleyin**.
+İmlecin altında bir çark açılır. Bir dilimin üstünde bırakınca iş arka planda yapılır. Dosyalarınız
+bilgisayarınızdan çıkmaz, orijinal dosyalar asla değiştirilmez veya silinmez.
 
-| Tür | Formatlar |
+- **Her dosya türüne ayrı çark.** Resim, video, ses, PDF, metin, veri, altyazı, arşiv, karışık seçim
+  ve diğer tüm dosyaların kendi çark profili vardır.
+- **Ön ve arka yüz.** Her çarkın bir ön yüzü (en fazla 8 dilim) ve bir arka yüzü (en fazla 12 dilim)
+  vardır. Fare tekerleği veya Tab ile çevirin ya da **Ctrl+Shift+sürükle** ile doğrudan arka yüzü açın.
+- **Gruplar.** Bir grup dilimi, en fazla 6 işlem daha olan bir dış halka açar.
+- **Hepsini düzenleyin.** Ayarlar → **Çark** bölümünde her profilin dilimlerini düzenleyebilir, kendi
+  profillerinizi ve dosya türlerinizi ekleyebilir, gruplar oluşturabilirsiniz. Ayarlar → **Hazır
+  ayarlar** bölümünde kendi hazır ayarlarınızı yaparsınız (format, kalite, boyut, düzenlemeler, hedef
+  klasör).
+- **Sağ tık menüsü (isteğe bağlı).** Dosya Gezgini'ndeki "File Chameleon ile dönüştür" aynı çarkı
+  imlecin yanında açar. Bir dilime tıklayın ya da kapatmak için Esc'ye basın.
+
+| Tür | Formatlar ve işlemler |
 |---|---|
-| Resim | PNG, JPG, WebP (kayıplı ve kayıpsız), BMP, GIF, TIFF, ICO (çok boyutlu); SVG → PNG/JPG/WebP/ICO |
-| Video | MP4, MKV, WebM, MOV, AVI; videodan GIF; GIF'ten MP4/WebM; sesi ayırma |
-| Ses | MP3, M4A, Opus/OGG, FLAC, WAV |
+| Resim | PNG, JPG, WebP, BMP, GIF, TIFF, ICO; SVG → PNG/JPG/WebP/ICO; gri tonlama, döndürme, aynalama, saydam kenarları kırpma, pikselleştirme, bulanıklaştırma, boyutlandırma, 16:9 / 9:16 / 1:1 / 4:3 kırpma, çizme ve yazma |
+| Video | MP4, MKV, WebM, MOV, AVI; videodan GIF; GIF'ten MP4/WebM; sesi ayırma; en-boy oranına göre kırpma; 2 kat veya yarı hız |
+| Ses | MP3, M4A, Opus/OGG, FLAC, WAV; iPhone zil sesi (M4R, en fazla 40 sn) |
 | PDF | birleştirme, bölme, resimlerden PDF, PDF'ten PNG/JPG |
-| Veri | Markdown → HTML, TXT → HTML, CSV ⇄ JSON ⇄ YAML ⇄ TOML |
+| Metin ve veri | Markdown → HTML, TXT → HTML, CSV ⇄ TSV ⇄ JSON ⇄ YAML ⇄ TOML |
+| Altyazı | SRT ⇄ WebVTT, → düz metin; ASS/SSA → SRT/WebVTT. Eski Türkçe (Windows-1254) ve UTF-16 dosyalar doğru okunur. |
+| Dosya ve klasör | tek ZIP'e paketleme, ZIP açma, bir klasöre kopyalama veya taşıma |
 
 Medya araçları: **sıkıştır** (kaliteye veya hedef boyuta göre), **kes**, **sessize al**, **hız** ve **kırp**.
 
-Farklı türde birden çok dosya bırakırsanız sadece hepsine uygun formatlar gösterilir.
+### İzlenen klasörler
+
+Ayarlar → **İzlenen klasörler** bölümünde bir klasör ve bir hazır ayar seçin. Oraya gelen yeni
+dosyalar, kopyalanmaları bitince otomatik olarak `converted` alt klasörüne dönüştürülür. Klasörde
+önceden olan dosyalara dokunulmaz.
 
 ### Linkten medya indirme
 
 YouTube, Instagram (reels ve gönderiler), TikTok, X/Twitter, Facebook, Reddit, Vimeo, Twitch klipleri
 ve Pinterest linklerini yapıştırabilirsiniz. Doğrudan resim veya video adresleri de olur. Video (MP4),
 ses (MP3), GIF veya orijinal dosya olarak, En iyi, 1080p ya da 720p kalitede kaydedebilirsiniz.
-İndirme bitince dosyayı klasörde gösterebilir veya tek tıkla dönüştürebilirsiniz.
+İndirme bitince dosyayı klasörde gösterebilir veya tek tıkla dönüştürebilirsiniz. **Ctrl+Alt+D**
+az önce kopyaladığınız linki indirir.
 
-### Akıllı pano
+### Pano
 
-- Bir medya linki kopyalayınca File Chameleon indirmeyi önerir.
-- Bir resim kopyalayınca kaydetmeyi veya dönüştürmeyi önerir.
-- Küçük bir raf son kopyaladıklarınızı tutar. Arama ve sabitleme vardır.
-- Parola yöneticilerinin gizli olarak işaretlediği içerik asla kaydedilmez.
-- Pano geçmişini istediğiniz an duraklatabilirsiniz.
+- **Raf:** **Ctrl+Alt+V** ekranın üstünde üç sıra (resimler, metinler, linkler) açar. Oklar ve Enter
+  kopyalar, **Ctrl+Enter** doğrudan önceki uygulamaya yapıştırır, 1–9 bir kart seçer, yazmak arar,
+  P sabitler, Delete çöp kutusuna taşır (Ctrl+Z geri getirir).
+- **Kütüphane:** **Pano** sayfasında klasörler, etiketler, sabitlenenler filtresi, çöp kutusu, ızgara
+  veya liste görünümü ve başlık, not ve metin düzenleme için bir ayrıntı paneli vardır. Öğeleri bir
+  klasöre dışa aktarabilirsiniz.
+- **Resimlerdeki yazı:** Windows'un kendi OCR'ı kopyalanan resimlerdeki yazıyı internetsiz okur.
+  Bu yazıda arama yapabilir ve onu kopyalayabilirsiniz.
+- **Resim düzenleyici:** kırpma, kalem, fosforlu kalem, dikdörtgen, elips, ok, çizgi ve yazı, geri
+  alma ile. Orijinal saklanır.
+- **Sizin kurallarınız:** metin, link ve resim kaydını ayrı ayrı açıp kapatın; her türü 1–30 gün ya
+  da süresiz saklayın; seçtiğiniz uygulamalardan gelenleri hiç kaydetmeyin. Parola yöneticisi
+  içeriği asla kaydedilmez. Sabitlenen, klasöre konan, etiketlenen veya başlık verilen öğeler hiç
+  silinmez. Link başlıkları sadece siz açarsanız internetten alınır.
+- Bir medya linki kopyalayınca File Chameleon indirmeyi, bir resim kopyalayınca kaydetmeyi veya
+  dönüştürmeyi önerir.
 
 ### Hafif olacak şekilde tasarlandı
 
-- **Küçük kurulum.** Kurulum dosyası yaklaşık 4 MB. Ağır motorlar (FFmpeg, yt-dlp, PDFium) bir özellik onlara ilk ihtiyaç duyduğunda
-  bir kez indirilir ve SHA-256 ile doğrulanır. Bilgisayarınızda `PATH` içinde FFmpeg varsa doğrudan o
-  kullanılır.
-- **Az bellek.** Arka plandaki işler (tepsi, Ctrl+sürükle kancası, pano dinleyici, iş kuyruğu) Rust
-  ile çalışır. Ana pencere kapatılınca tamamen kapanır, açılınca yeniden oluşturulur. Tepsideyken
-  uygulamanın tamamı (WebView2 dahil) yaklaşık 90 MB bellek kullanır.
-- **Doğal görünüm.** Windows 11 Mica, macOS tarzı pencere düğmeleri, Inter yazı tipi ve Lucide
-  ikonları. Açık ve koyu temaya uyar. Arayüz Türkçe ve İngilizcedir.
+- **Küçük kurulum.** Kurulum dosyası yaklaşık 4 MB. Ağır motorlar (FFmpeg, yt-dlp, PDFium) bir
+  özellik onlara ilk ihtiyaç duyduğunda bir kez indirilir ve SHA-256 ile doğrulanır. Bilgisayarınızda
+  `PATH` içinde FFmpeg varsa doğrudan o kullanılır.
+- **Az bellek.** Arka plandaki işler (tepsi, kancalar, kısayollar, pano dinleyici, iş kuyruğu) Rust
+  ile çalışır. Ana pencere kapatılınca tamamen kapanır, açılınca yeniden oluşturulur. Pano rafı
+  penceresi ancak ilk açtığınızda oluşturulur.
+- **Doğal görünüm.** Windows 11 Mica ve pencere düğmeleri, Inter yazı tipi ve Lucide ikonları. Açık
+  ve koyu temaya uyar, arayüz boyutu ayarlanabilir. Arayüz Türkçe ve İngilizcedir.
 
 ## Kurulum
 
@@ -75,14 +105,15 @@ Gereksinimler: Windows 10 (1809 ve üstü) veya Windows 11, 64 bit. WebView2 yok
 
 ## Kullanım ipuçları
 
-- Format çarkını açmak için Dosya Gezgini'nden veya masaüstünden dosyaları **Ctrl + sürükleyin**.
-  İptal etmek için **Esc**'ye basın ya da çarkın dışında bırakın.
-- Pencereyi kapatınca File Chameleon tepside çalışmaya devam eder. Çıkmak için tepsi menüsünde
-  **Çıkış**'ı seçin.
+- Çarkı açmak için Dosya Gezgini'nden veya masaüstünden dosya ya da klasörleri **Ctrl + sürükleyin**.
+  İptal etmek için **Esc**'ye basın ya da çarkın dışında bırakın. **Ctrl+Shift + sürükle** arka yüzü
+  açar.
+- **Ctrl+Alt+V** pano rafını açar, **Ctrl+Alt+D** kopyalanan linki indirir. Bu kısayolları Ayarlar →
+  **Kısayollar** bölümünden değiştirebilir veya kapatabilirsiniz.
+- Pencereyi kapatınca File Chameleon tepside çalışmaya devam eder (Ayarlar → **Genel** bölümünden
+  değiştirebilirsiniz). Çıkmak için tepsi menüsünde **Çıkış**'ı seçin.
 - Ayarlar → **Motorlar** bölümü hangi motorların kurulu olduğunu gösterir, güncelleme ve kaldırma
   yapmanızı sağlar.
-- Ayarlar → **Çark** bölümünden çarkı kapatabilir veya sadece Dosya Gezgini ve masaüstü yerine tüm
-  uygulamalarda açılmasına izin verebilirsiniz.
 
 ## Kaynaktan derleme
 

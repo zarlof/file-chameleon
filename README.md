@@ -23,47 +23,73 @@
 
 ### Convert: offline, on your PC
 
-Drop files on the window, or **hold Ctrl while dragging files** anywhere. A format wheel opens under
-your cursor: release on a format and the conversion runs in the background. Your files never leave
-your computer, and the originals are never changed or deleted.
+Drop files on the window, or **hold Ctrl while dragging files** in File Explorer. A wheel opens under
+your cursor: release on a slice and the job runs in the background. Your files never leave your
+computer, and the originals are never changed or deleted.
 
-| Kind | Formats |
+- **A wheel per file type.** Images, video, audio, PDF, text, data, subtitles, archives, mixed
+  selections and any other file each get their own wheel profile.
+- **Front and back.** Each wheel has a front face (up to 8 slices) and a back face (up to 12).
+  Flip it with the mouse wheel or Tab, or open the back directly with **Ctrl+Shift+drag**.
+- **Groups.** A group slice opens an outer ring with up to 6 more actions.
+- **Edit it all.** Settings → **Wheel** lets you arrange the slices of each profile, add your own
+  profiles and file types, and create groups. Settings → **Presets** lets you make your own presets
+  (format, quality, size, edits, target folder).
+- **Right-click menu (optional).** "Convert with File Chameleon" in Explorer opens the same wheel at
+  your cursor; click a slice, or press Esc to close.
+
+| Kind | Formats and actions |
 |---|---|
-| Images | PNG, JPG, WebP (lossy and lossless), BMP, GIF, TIFF, ICO (multi-size); SVG → PNG/JPG/WebP/ICO |
-| Video | MP4, MKV, WebM, MOV, AVI; video → GIF; GIF → MP4/WebM; extract audio |
-| Audio | MP3, M4A, Opus/OGG, FLAC, WAV |
+| Images | PNG, JPG, WebP, BMP, GIF, TIFF, ICO; SVG → PNG/JPG/WebP/ICO; grayscale, rotate, mirror, trim transparent edges, pixelate, blur, resize, crop to 16:9 / 9:16 / 1:1 / 4:3, draw and write |
+| Video | MP4, MKV, WebM, MOV, AVI; video → GIF; GIF → MP4/WebM; extract audio; crop to an aspect ratio; 2x or half speed |
+| Audio | MP3, M4A, Opus/OGG, FLAC, WAV; iPhone ringtone (M4R, up to 40 s) |
 | PDF | merge, split, images → PDF, PDF → PNG/JPG |
-| Data | Markdown → HTML, TXT → HTML, CSV ⇄ JSON ⇄ YAML ⇄ TOML |
+| Text and data | Markdown → HTML, TXT → HTML, CSV ⇄ TSV ⇄ JSON ⇄ YAML ⇄ TOML |
+| Subtitles | SRT ⇄ WebVTT, → plain text; ASS/SSA → SRT/WebVTT. Old Turkish (Windows-1254) and UTF-16 files are read correctly. |
+| Files and folders | pack into one ZIP, extract a ZIP, copy or move to a folder |
 
 Media tools: **compress** (by quality or target size), **trim**, **mute**, **speed** and **crop**.
 
-When you drop several files of different types, only the formats that work for all of them are shown.
+### Watch folders
+
+Pick a folder and a preset in Settings → **Watch folders**. New files that land there are converted
+automatically into a `converted` subfolder, once they have finished copying. Files that were already
+there are left alone.
 
 ### Download media from links
 
 Paste a link from YouTube, Instagram (reels and posts), TikTok, X/Twitter, Facebook, Reddit, Vimeo,
 Twitch clips, Pinterest, or a direct image or video URL. You can save it as video (MP4), audio (MP3),
 GIF or the original file, at Best, 1080p or 720p. After it finishes, you can show it in its folder or
-convert it in one click.
+convert it in one click. **Ctrl+Alt+D** downloads the link you just copied.
 
-### Smart clipboard
+### Clipboard
 
-- Copy a media link and File Chameleon offers to download it.
-- Copy an image and it offers to save or convert it.
-- A small shelf keeps your recent clips, with search and pinning.
-- Content that password managers mark as private is never recorded.
-- You can pause the clipboard history at any time.
+- **Shelf:** **Ctrl+Alt+V** opens three rows (images, texts, links) at the top of the screen.
+  Arrows and Enter copy, **Ctrl+Enter** pastes straight into the app you were in, 1–9 picks a card,
+  typing searches, P pins, Delete moves to the trash (Ctrl+Z brings it back).
+- **Library:** the **Clipboard** page has folders, tags, a pinned filter, a trash, a grid or list
+  view, and an inspector for titles, notes and editing text. Export items to a folder.
+- **Text in images:** the built-in Windows OCR reads text in copied images, offline. You can search
+  it and copy it.
+- **Image editor:** crop, pen, marker, rectangle, ellipse, arrow, line and text, with undo. The
+  original is kept.
+- **Your rules:** turn capture on or off for texts, links and images; keep each kind 1–30 days or
+  forever; never record chosen apps. Password-manager content is never recorded. Pinned, foldered,
+  tagged or titled items never expire. Link titles are fetched only if you turn that on.
+- Copy a media link and File Chameleon offers to download it; copy an image and it offers to save or
+  convert it.
 
 ### Light by design
 
-- **Small installer.** The installer is about 4 MB. Heavy engines (FFmpeg, yt-dlp, PDFium) are downloaded only the first time a
-  feature needs them, and each download is SHA-256 verified. An FFmpeg already on your `PATH` is
-  used as is.
-- **Low memory.** The background work (tray, Ctrl+drag hook, clipboard watcher, job queue) runs in
-  Rust. The main window is destroyed when you close it and rebuilt when you open it. Idle in
-  the tray, the whole app (including WebView2) uses about 90 MB of memory.
-- **Native feel.** Windows 11 Mica, macOS-style window controls, the Inter font and Lucide icons. It
-  follows light and dark mode, and the interface is in Turkish and English.
+- **Small installer.** The installer is about 4 MB. Heavy engines (FFmpeg, yt-dlp, PDFium) are
+  downloaded only the first time a feature needs them, and each download is SHA-256 verified. An
+  FFmpeg already on your `PATH` is used as is.
+- **Low memory.** The background work (tray, hooks, hotkeys, clipboard watcher, job queue) runs in
+  Rust. The main window is destroyed when you close it and rebuilt when you open it. The clipboard
+  shelf window is only created the first time you open it.
+- **Native feel.** Windows 11 Mica and caption buttons, the Inter font and Lucide icons. It follows
+  light and dark mode, has an interface size setting, and the interface is in Turkish and English.
 
 ## Install
 
@@ -76,12 +102,13 @@ is missing.
 
 ## Usage tips
 
-- **Ctrl + drag** files from File Explorer or the desktop to open the format wheel. Press **Esc** or
-  release outside the wheel to cancel.
-- Closing the window keeps File Chameleon in the tray. Use **Quit** in the tray menu to exit.
+- **Ctrl + drag** files or folders from File Explorer or the desktop to open the wheel. Press
+  **Esc** or release outside the wheel to cancel. **Ctrl+Shift + drag** opens the back face.
+- **Ctrl+Alt+V** opens the clipboard shelf; **Ctrl+Alt+D** downloads the copied link. Change or turn
+  off these shortcuts in Settings → **Shortcuts**.
+- Closing the window keeps File Chameleon in the tray (you can change that in Settings → **General**).
+  Use **Quit** in the tray menu to exit.
 - Settings → **Engines** shows which engines are installed and lets you update or remove them.
-- Settings → **Wheel** lets you turn the wheel off, or allow it in every app instead of only File
-  Explorer and the desktop.
 
 ## Build from source
 
