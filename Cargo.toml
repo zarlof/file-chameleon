@@ -23,5 +23,11 @@ lto = "fat"
 codegen-units = 1
 strip = true
 
+# Dev builds: line tables only for our crates and no debug info for dependencies. Full debug
+# info made each target folder 5-15 GB (one per worktree), with almost no benefit here.
+[profile.dev]
+debug = "line-tables-only"
+
 [profile.dev.package."*"]
 opt-level = 2
+debug = false

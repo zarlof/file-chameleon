@@ -45,6 +45,21 @@ describe('toggleSelect', () => {
     expect(toggleSelect([2], 4, { shift: true }, order)).toEqual([2, 3, 4]);
     expect(toggleSelect([4], 2, { shift: true }, order)).toEqual([2, 3, 4]);
   });
+  it('repeated shift steps from a fixed anchor grow, not slide', () => {
+    let sel = toggleSelect([], 2, { shift: true }, order, 2);
+    sel = toggleSelect(sel, 3, { shift: true }, order, 2);
+    sel = toggleSelect(sel, 4, { shift: true }, order, 2);
+    expect(sel).toEqual([2, 3, 4]);
+    sel = toggleSelect(sel, 5, { shift: true }, order, 2);
+    expect(sel).toEqual([2, 3, 4, 5]);
+  });
+  it('shift-left steps from the same anchor, and can cross it', () => {
+    let sel = toggleSelect([], 4, { shift: true }, order, 4);
+    sel = toggleSelect(sel, 3, { shift: true }, order, 4);
+    sel = toggleSelect(sel, 2, { shift: true }, order, 4);
+    expect(sel).toEqual([2, 3, 4]);
+    expect(toggleSelect(sel, 5, { shift: true }, order, 4)).toEqual([4, 5]);
+  });
   it('shift without a selection behaves like a plain click', () => {
     expect(toggleSelect([], 3, { shift: true }, order)).toEqual([3]);
   });
