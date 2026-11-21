@@ -68,3 +68,11 @@ export function cardText(item: ClipItem, maxLines = 3): { title: string; lines: 
   if (rest.length > maxLines && lines.length > 0) lines[lines.length - 1] += '…';
   return { title, lines };
 }
+
+export type ShowMode = 'hotkey' | 'peek' | 'reveal';
+
+/** The show mode Rust put in the page URL (`?mode=peek`) for the very first show; null when absent or unknown. */
+export function parseMode(search: string): ShowMode | null {
+  const m = new URLSearchParams(search).get('mode');
+  return m === 'hotkey' || m === 'peek' || m === 'reveal' ? m : null;
+}

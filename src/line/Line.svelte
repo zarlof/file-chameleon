@@ -9,7 +9,7 @@
   import { onMount } from 'svelte';
   import { api, errorOf, on } from '../lib/ipc';
   import type { ClipItem, ClipShelf, Settings } from '../lib/types';
-  import { fitCount, overflow, splitRopes, visibleRopes, type RopeKey } from './logic';
+  import { fitCount, overflow, parseMode, splitRopes, visibleRopes, type RopeKey } from './logic';
   import { setLang, getLang, t } from './i18n';
   import { atRest, impulse, step, type Pend } from './physics';
   import Rope from './Rope.svelte';
@@ -48,6 +48,8 @@
   let dirty = true;
   let seq = 0;
   let known = new Set<number>();
+  /** false until the first list is in (that one never plays the fall). */
+  let knownReady = false;
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
   let peekTimer: ReturnType<typeof setTimeout> | undefined;
   let breezeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -169,8 +171,9 @@
     }
     if (my !== seq) return;
     const next = lists.flat();
-    const fresh = known.size > 0 && shown && !reduce ? next.filter((i) => !known.has(i.id)).slice(0, 4) : [];
+    const fresh = knownReady && shown && !reduce ? next.filter((i) => !known.has(i.id)).slice(0, 4) : [];
     known = new Set(next.map((i) => i.id));
+    knownReady = true;
     items = next;
     selected = selected.filter((id) => known.has(id));
     for (const i of fresh) falls[i.id] = 0;
@@ -200,6 +203,7 @@
     clearTimeout(hideTimer);
     clearTimeout(peekTimer);
     clearTimeout(breezeTimer);
+    clearTimeout(clickTimer);
     stopLoop();
   }
 
@@ -217,8 +221,9 @@
     hoverId = null;
     clearTimeout(peekTimer);
     clearTimeout(hideTimer);
+    if (menu) return; // the menu lives outside the strip: the pointer going onto it is not leaving
     hideTimer = setTimeout(() => {
-      if (!dragging) void hide();
+      if (!dragging && !menu) void hide();
     }, HIDE_DELAY);
   }
 
@@ -259,7 +264,15 @@
     }
   }
 
+  // A double-click delivers two clicks first: the single-click action waits a moment and is cancelled by dblclick.
+  let clickTimer: ReturnType<typeof setTimeout> | undefined;
   function pick(item: ClipItem, e: MouseEvent) {
+    clearTimeout(clickTimer);
+    const mods = { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey } as MouseEvent;
+    clickTimer = setTimeout(() => pickNow(item, mods), 220);
+  }
+
+  function pickNow(item: ClipItem, e: MouseEvent) {
     const ctrl = e.ctrlKey || e.metaKey;
     if (e.shiftKey || ctrl) {
       const row = order.find((ids) => ids.includes(item.id)) ?? [];
@@ -280,6 +293,7 @@
   }
 
   async function openItem(item: ClipItem) {
+    clearTimeout(clickTimer);
     try {
       if (item.kind === 'image' || item.kind === 'text') {
         await api.lineOpenItem(item.id);
@@ -390,15 +404,8 @@
     applyTheme();
     document.addEventListener('visibilitychange', scheduleBreeze);
     (async () => {
-      try {
-        const [s, info, p] = await Promise.all([api.getSettings(), api.appInfo(), api.clipGetPaused()]);
-        systemLanguage = info.systemLanguage;
-        paused = p;
-        applySettings(s);
-      } catch (e) {
-        console.error(e);
-      }
-      await load();
+      // Listeners first: the window starts hidden and the first show must never be missed.
+      // While hidden nothing loads, animates or times: events only mark the list stale.
       const keep = (u: () => void) => (disposed ? u() : unlisten.push(u));
       keep(await on.lineShow((p) => show(p.mode)));
       keep(await on.lineHide(hidden));
@@ -407,15 +414,25 @@
       keep(await on.clipChanged(() => markDirty()));
       keep(await on.clipPaused((v) => (paused = v)));
       keep(await on.settingsChanged(applySettings));
-      shown = true;
-      scheduleBreeze();
+      // The first show may have happened before the listeners existed: Rust passes its mode in the URL.
+      const first = parseMode(window.location.search);
+      if (first && !shown) show(first);
+      try {
+        const [s, info, p] = await Promise.all([api.getSettings(), api.appInfo(), api.clipGetPaused()]);
+        systemLanguage = info.systemLanguage;
+        paused = p;
+        applySettings(s);
+      } catch (e) {
+        console.error(e);
+      }
+      if (shown) await load(); // shown while the settings were still loading
     })();
     return () => {
       disposed = true;
       dark.removeEventListener('change', applyTheme);
       document.removeEventListener('visibilitychange', scheduleBreeze);
       if (raf) cancelAnimationFrame(raf);
-      for (const timer of [hideTimer, peekTimer, breezeTimer, toastTimer, copiedTimer]) clearTimeout(timer);
+      for (const timer of [hideTimer, peekTimer, breezeTimer, toastTimer, copiedTimer, clickTimer]) clearTimeout(timer);
       unlisten.forEach((u) => u());
     };
   });
@@ -464,7 +481,8 @@
 
 {#if menu}
   {@const it = menu.item}
-  <div class="menu" role="menu" bind:this={menuEl} style:left="{menu.x}px" style:top="{menu.y}px" style:width="{MENU_W}px">
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="menu" role="menu" tabindex="-1" bind:this={menuEl} onpointerenter={enter} onpointerleave={leave} style:left="{menu.x}px" style:top="{menu.y}px" style:width="{MENU_W}px">
     <button type="button" role="menuitem" onclick={() => menuDo(() => copy(targetsFor(it)))}>{t('menu.copy')}</button>
     <button type="button" role="menuitem" onclick={() => menuDo(() => api.linePaste(targetsFor(it)))}>{t('menu.paste')}</button>
     {#if it.kind === 'image' || it.kind === 'text'}

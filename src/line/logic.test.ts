@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ClipItem, ClipKind } from '../lib/types';
-import { cardText, fitCount, overflow, splitRopes, visibleRopes } from './logic';
+import { cardText, fitCount, overflow, parseMode, splitRopes, visibleRopes } from './logic';
 
 let n = 0;
 function item(kind: ClipKind, over: Partial<ClipItem> = {}): ClipItem {
@@ -74,5 +74,15 @@ describe('cardText', () => {
     const c = cardText(item('link', { text: 'https://www.example.com/a/b?x=1', linkTitle: 'Example' }));
     expect(c.title).toBe('Example');
     expect(c.lines).toEqual(['example.com/a/b?x=1']);
+  });
+});
+
+describe('parseMode', () => {
+  it('reads_the_first_show_mode_from_the_url', () => {
+    expect(parseMode('?mode=hotkey')).toBe('hotkey');
+    expect(parseMode('?x=1&mode=peek')).toBe('peek');
+    expect(parseMode('?mode=reveal')).toBe('reveal');
+    expect(parseMode('?mode=bogus')).toBeNull();
+    expect(parseMode('')).toBeNull();
   });
 });

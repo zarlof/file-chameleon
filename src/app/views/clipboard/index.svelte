@@ -350,13 +350,15 @@
     const p = nav.pending && nav.consume('clipboard');
     if (p?.clip == null) return;
     wantedClip = p.clip;
-    const hadSearch = search !== '';
+    // Always reload: the list on screen may be stale (or filtered by a search) and must hold the clip.
     search = '';
-    setFilter({ type: 'all' });
-    if (hadSearch && filter.type === 'all') {
-      epoch++;
-      void loadItems();
-    }
+    filter = { type: 'all' };
+    items = [];
+    loaded = false;
+    selection = EMPTY_SELECTION;
+    focus = null;
+    epoch++;
+    void loadItems();
   });
   $effect(() => {
     if (wantedClip === null || !loaded) return;
