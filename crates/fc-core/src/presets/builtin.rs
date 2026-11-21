@@ -8,8 +8,11 @@ use crate::jobs::{CompressLevel, ConvertOptions, ImageOp, Operation};
 /// `to-<id>` convert presets, in presets-page order. `to-jpg-70` follows `to-jpg`.
 const CONVERT: &[&str] = &[
     "png", "jpg", "webp", "gif", "bmp", "tiff", "ico", "pdf", // images & documents
+    "tga", "qoi", "pnm", // more raster
     "mp4", "webm", "mkv", "mov", "avi", // video
+    "m4v", "wmv", "flv", "mpg", "3gp", "ts", // more video
     "mp3", "m4a", "wav", "flac", "ogg", "opus", "m4r", // audio
+    "aac", "wma", "aiff", "ac3", "mka", // more audio
     "csv", "tsv", "json", "yaml", "toml", "html", "txt", // text & data
     "srt", "vtt", // subtitles
 ];
