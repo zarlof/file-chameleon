@@ -8,7 +8,7 @@ use fc_core::engines::DefaultExecutor;
 use fc_core::jobs::queue::JobQueue;
 use fc_core::settings::Settings;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -60,6 +60,11 @@ pub struct AppState {
     /// Clipboard sequence number right after our own write (0 = none); updates with this number are not recorded.
     pub clip_self_write: AtomicU32,
     toast_seq: AtomicU64,
+    // ---- clipboard v2 and shelf (Task 9)
+    /// Foreground window (HWND as isize, 0 = none) when the shelf was opened; `shelf_paste` pastes there.
+    pub shelf_prev: AtomicIsize,
+    /// Watcher of `clipboard_watch_folders` (only while some are set and the clipboard is on).
+    pub clip_watcher: Mutex<Option<fc_core::watch::Watcher>>,
 }
 
 impl AppState {
@@ -87,6 +92,8 @@ impl AppState {
             clip_paused: AtomicBool::new(paused),
             clip_self_write: AtomicU32::new(0),
             toast_seq: AtomicU64::new(1),
+            shelf_prev: AtomicIsize::new(0),
+            clip_watcher: Mutex::new(None),
         })
     }
 
