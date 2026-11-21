@@ -1,40 +1,160 @@
 {
   "title": "Pano",
-  "search": "Pano geçmişinde ara",
-  "filter": {
+  "search": "Panoda ara",
+  "paused": "Kayıt duraklatıldı",
+  "resume": "Sürdür",
+  "filters": {
+    "label": "Pano filtreleri",
     "all": "Tümü",
+    "images": "Görseller",
+    "texts": "Metinler",
     "links": "Bağlantılar",
-    "text": "Metin",
-    "images": "Görseller"
+    "pinned": "Sabitlenenler",
+    "folders": "Klasörler",
+    "tags": "Etiketler",
+    "trash": "Çöp kutusu",
+    "noFolders": "Henüz klasör yok",
+    "noTags": "Henüz etiket yok"
   },
-  "pause": "Kaydı duraklat",
-  "paused": "Duraklatıldı",
-  "clearUnpinned": "Sabitlenmemişleri temizle",
-  "clear": {
-    "title": "Pano geçmişi temizlensin mi?",
-    "message": "Sabitlenmemiş tüm öğeler silinecek. Sabitlenenler kalır.",
-    "confirm": "Temizle"
+  "folder": {
+    "new": "Yeni klasör",
+    "namePlaceholder": "Klasör adı",
+    "rename": "Yeniden adlandır",
+    "delete": "Klasörü sil",
+    "deleteTitle": "“{name}” silinsin mi?",
+    "deleteMessage": "İçindeki öğeler silinmez, klasörsüz kalır.",
+    "deleteConfirm": "Klasörü sil",
+    "none": "Klasör yok"
   },
-  "empty": {
-    "title": "Henüz bir şey kopyalanmadı",
-    "message": "Kopyaladığın metinler, bağlantılar ve görseller burada görünür; istediğinde tekrar bulursun.",
-    "privacy": "Parola yöneticilerinden kopyalanan parolalar asla kaydedilmez."
+  "tags": {
+    "placeholder": "Etiket ekle",
+    "add": "Etiketi ekle",
+    "remove": "#{tag} etiketini kaldır"
   },
-  "noResults": {
-    "title": "Eşleşme yok",
-    "message": "Başka bir arama ya da filtre dene."
+  "view": {
+    "list": "Liste",
+    "grid": "Izgara",
+    "inspector": "Ayrıntılar paneli"
+  },
+  "batch": {
+    "label": "Seçili öğeler",
+    "selected": {
+      "one": "{count} seçili",
+      "other": "{count} seçili"
+    },
+    "move": "Taşı",
+    "moveNew": "Yeni klasöre taşı",
+    "tag": "Etiketle",
+    "export": "Klasöre aktar",
+    "deselect": "Seçimi kaldır"
   },
   "action": {
     "copy": "Kopyala",
     "pin": "Sabitle",
     "unpin": "Sabitlemeyi kaldır",
-    "delete": "Sil",
-    "download": "İndir",
+    "trash": "Çöp kutusuna taşı",
+    "restore": "Geri yükle",
+    "deleteForever": "Kalıcı olarak sil",
+    "edit": "Düzenle",
+    "revert": "Orijinale dön",
     "convert": "Dönüştür",
-    "save": "{format} olarak kaydet"
+    "download": "İndir",
+    "open": "Tarayıcıda aç",
+    "copyOcr": "Tanınan metni kopyala"
   },
-  "copied": "Panoya kopyalandı",
-  "saved": "İndirilenler'e kaydedildi: {name}",
+  "inspector": {
+    "label": "Öğe ayrıntıları",
+    "empty": "Ayrıntılarını görmek için bir öğe seçin.",
+    "many": {
+      "one": "{count} öğe seçildi.",
+      "other": "{count} öğe seçildi. Toplu işlemler alttaki çubukta."
+    },
+    "preview": "Büyük önizleme (Boşluk)",
+    "edited": "Düzenlendi",
+    "saveAs": "Kaydet:",
+    "text": "Metin",
+    "link": "Bağlantı",
+    "title": "Başlık",
+    "titlePlaceholder": "Başlık ekle",
+    "note": "Not",
+    "notePlaceholder": "Not ekle",
+    "tags": "Etiketler",
+    "folder": "Klasör",
+    "ocr": "Görseldeki metin",
+    "ocrNone": "Bu görselde metin bulunamadı.",
+    "ocrPending": "Metin henüz okunmadı.",
+    "ocrOff": "Metin tanıma kapalı.",
+    "source": "Kaynak",
+    "created": "Kopyalanma",
+    "trashed": "Çöpe atılma",
+    "dimensions": "Boyutlar",
+    "size": "Dosya boyutu",
+    "kept": "Saklama",
+    "keptSaved": "Hiç silinmez",
+    "keptRetention": "Saklama süresine göre"
+  },
+  "preview": {
+    "title": "Önizleme",
+    "hint": "Kapatmak için Boşluk ya da Esc tuşuna basın."
+  },
+  "trash": {
+    "note": "Çöp kutusundaki öğeler 30 gün sonra kalıcı olarak silinir.",
+    "empty": "Çöp kutusunu boşalt",
+    "emptyConfirmTitle": "Çöp kutusu boşaltılsın mı?",
+    "emptyTitle": "Çöp kutusu boş",
+    "emptyMessage": "Sildiğiniz öğeler 30 gün boyunca burada bekler."
+  },
+  "delete": {
+    "title": {
+      "one": "Öğe kalıcı olarak silinsin mi?",
+      "other": "{count} öğe kalıcı olarak silinsin mi?"
+    },
+    "message": "Bu işlem geri alınamaz.",
+    "confirm": "Kalıcı olarak sil"
+  },
+  "toast": {
+    "copied": {
+      "one": "Panoya kopyalandı",
+      "other": "{count} öğe panoya kopyalandı"
+    },
+    "trashed": {
+      "one": "Çöp kutusuna taşındı. Geri almak için Ctrl+Z.",
+      "other": "{count} öğe çöp kutusuna taşındı. Geri almak için Ctrl+Z."
+    },
+    "restored": {
+      "one": "Geri yüklendi",
+      "other": "{count} öğe geri yüklendi"
+    },
+    "moved": {
+      "one": "“{folder}” klasörüne taşındı",
+      "other": "{count} öğe “{folder}” klasörüne taşındı"
+    },
+    "unfiled": {
+      "one": "Klasörden çıkarıldı",
+      "other": "{count} öğe klasörden çıkarıldı"
+    },
+    "exported": {
+      "one": "{count} dosya aktarıldı",
+      "other": "{count} dosya aktarıldı"
+    },
+    "savedImage": "İndirilenler'e kaydedildi: {name}"
+  },
+  "empty": {
+    "title": "Henüz bir şey kopyalanmadı",
+    "message": "Kopyaladığınız metinler, bağlantılar ve görseller burada görünür; istediğinizde tekrar bulursunuz.",
+    "privacy": "Parola yöneticilerinden kopyalanan parolalar asla kaydedilmez."
+  },
+  "emptyFilter": {
+    "title": "Burada henüz bir şey yok",
+    "message": "Öğeleri sabitleyerek, bir klasöre taşıyarak ya da etiketleyerek buraya ekleyebilirsiniz."
+  },
+  "noResults": {
+    "title": "Eşleşme yok",
+    "message": "Başka bir arama ya da filtre deneyin."
+  },
+  "kind": {
+    "image": "Görsel"
+  },
   "imageSize": "{width} × {height}",
   "ago": {
     "now": "az önce"

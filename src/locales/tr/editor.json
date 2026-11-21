@@ -1,0 +1,51 @@
+{
+  "back": "Vazgeç",
+  "save": "Kaydet",
+  "undo": "Geri al (Ctrl+Z)",
+  "redo": "Yinele (Ctrl+Y)",
+  "tools": "Araçlar",
+  "tool": {
+    "crop": "Kırp",
+    "pen": "Kalem",
+    "marker": "İşaretleyici",
+    "rect": "Dikdörtgen",
+    "ellipse": "Elips",
+    "arrow": "Ok",
+    "line": "Çizgi",
+    "text": "Metin"
+  },
+  "color": "Renk",
+  "colors": {
+    "red": "Kırmızı",
+    "orange": "Turuncu",
+    "yellow": "Sarı",
+    "green": "Yeşil",
+    "blue": "Mavi",
+    "purple": "Mor",
+    "black": "Siyah",
+    "white": "Beyaz"
+  },
+  "width": "Kalınlık",
+  "widthValue": "{value} piksel",
+  "cropHint": "Kırpılacak alanı sürükleyerek seçin.",
+  "cropApplyHint": "Kenarları sürükleyerek ayarlayın, Enter ile uygulayın.",
+  "cropApply": "Kırp",
+  "textInput": "Eklenecek metin",
+  "textPlaceholder": "Yazın…",
+  "clipName": "Panodaki görsel",
+  "savedClip": "Düzenlenmiş kopya kaydedildi; orijinal de saklanıyor",
+  "savedFile": "Kaydedildi: {name}",
+  "reveal": "Klasörde göster",
+  "saveFailed": "Kaydedilemedi: {message}",
+  "loadFailed": "Görsel açılamadı.",
+  "notImage": "Bu öğe bir görsel değil.",
+  "errorTitle": "Görsel açılamadı",
+  "emptyTitle": "Düzenlenecek görsel yok",
+  "emptyMessage": "Panodaki bir görselde Düzenle'yi seçin ya da çarktaki Çiz ve yaz ayarını kullanın.",
+  "leave": {
+    "title": "Değişiklikler kaydedilmedi",
+    "message": "Çıkarsanız yaptığınız düzenlemeler kaybolur.",
+    "stay": "Düzenlemeye devam et",
+    "discard": "Kaydetmeden çık"
+  }
+}

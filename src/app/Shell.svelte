@@ -19,6 +19,7 @@
   import Clipboard from './views/clipboard/index.svelte';
   import Convert from './views/convert/index.svelte';
   import Download from './views/download/index.svelte';
+  import Editor from './views/editor/index.svelte';
   import Presets from './views/presets/index.svelte';
   import Recent from './views/recent/index.svelte';
   import About from './views/settings/About.svelte';
@@ -122,7 +123,7 @@
         {:else if nav.view === 'appearance'}<Appearance />
         {:else if nav.view === 'engines'}<Engines />
         {:else if nav.view === 'about'}<About />
-        {:else if nav.view === 'editor'}<Placeholder title={t('common.nav.editor')} />
+        {:else if nav.view === 'editor'}<Editor />
         {/if}
       </div>
     {/key}

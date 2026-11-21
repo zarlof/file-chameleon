@@ -1,0 +1,51 @@
+{
+  "back": "Cancel",
+  "save": "Save",
+  "undo": "Undo (Ctrl+Z)",
+  "redo": "Redo (Ctrl+Y)",
+  "tools": "Tools",
+  "tool": {
+    "crop": "Crop",
+    "pen": "Pen",
+    "marker": "Marker",
+    "rect": "Rectangle",
+    "ellipse": "Ellipse",
+    "arrow": "Arrow",
+    "line": "Line",
+    "text": "Text"
+  },
+  "color": "Colour",
+  "colors": {
+    "red": "Red",
+    "orange": "Orange",
+    "yellow": "Yellow",
+    "green": "Green",
+    "blue": "Blue",
+    "purple": "Purple",
+    "black": "Black",
+    "white": "White"
+  },
+  "width": "Stroke width",
+  "widthValue": "{value} pixels",
+  "cropHint": "Drag to select the area to keep.",
+  "cropApplyHint": "Drag the edges to adjust, press Enter to apply.",
+  "cropApply": "Crop",
+  "textInput": "Text to add",
+  "textPlaceholder": "Type…",
+  "clipName": "Clipboard image",
+  "savedClip": "Edited copy saved; the original is kept too",
+  "savedFile": "Saved: {name}",
+  "reveal": "Show in folder",
+  "saveFailed": "Couldn't save: {message}",
+  "loadFailed": "Couldn't open the image.",
+  "notImage": "This item is not an image.",
+  "errorTitle": "Couldn't open the image",
+  "emptyTitle": "No image to edit",
+  "emptyMessage": "Choose Edit on a clipboard image, or use the wheel's Draw and write preset.",
+  "leave": {
+    "title": "Unsaved changes",
+    "message": "If you leave now, your edits are lost.",
+    "stay": "Keep editing",
+    "discard": "Leave without saving"
+  }
+}

@@ -1,14 +1,17 @@
 <!--
   Shortcuts settings — the Ctrl+drag wheel trigger: on/off, any app vs Explorer only, apps where it
-  never opens, and how the open wheel flips between its faces. (A "Global shortcuts" section is
-  appended below by a later task.)
+  never opens, and how the open wheel flips between its faces; then the global hotkeys (clipboard
+  shelf, clipboard library, download the copied link) with a recorder and conflict reporting.
 -->
 <script lang="ts">
-  import { Plus, X } from '@lucide/svelte';
-  import { t } from '../../../lib/i18n';
+  import { onMount } from 'svelte';
+  import { Plus, TriangleAlert, X } from '@lucide/svelte';
+  import { formatHotkey, sameHotkey } from '../../../lib/hotkeys';
+  import { currentLang, t } from '../../../lib/i18n';
+  import { api } from '../../../lib/ipc';
   import { settings } from '../../../lib/stores/settings.svelte';
-  import type { Settings } from '../../../lib/types';
-  import { Button, Card, ListRow, SectionHeader, TextField, Toggle } from '../../../lib/ui';
+  import type { HotkeyStatus, Settings } from '../../../lib/types';
+  import { Button, Card, HotkeyRecorder, ListRow, SectionHeader, TextField, Toggle, toast } from '../../../lib/ui';
   import { addExe } from './logic';
 
   const s = $derived(settings.value);
@@ -26,6 +29,48 @@
   }
   function removeApp(name: string) {
     set({ wheelExcludedApps: s.wheelExcludedApps.filter((a) => a !== name) });
+  }
+
+  // ---- global hotkeys
+  type HotkeyKey = 'hotkeyShelf' | 'hotkeyLibrary' | 'hotkeyDownloadLink';
+  const HOTKEYS: { key: HotkeyKey; name: HotkeyStatus['name'] }[] = [
+    { key: 'hotkeyShelf', name: 'shelf' },
+    { key: 'hotkeyLibrary', name: 'library' },
+    { key: 'hotkeyDownloadLink', name: 'downloadLink' },
+  ];
+  let statuses = $state<HotkeyStatus[]>([]);
+  let statusTimer: ReturnType<typeof setTimeout> | undefined;
+
+  async function loadStatus() {
+    try {
+      statuses = await api.hotkeyStatus();
+    } catch {
+      statuses = []; // unknown: show no conflict
+    }
+  }
+  onMount(() => {
+    void loadStatus();
+    return () => clearTimeout(statusTimer);
+  });
+
+  /** The backend could not register the hotkey that is set now (another app owns it, or Windows reserves it). */
+  function conflict(h: (typeof HOTKEYS)[number]): boolean {
+    const value = s[h.key];
+    const st = statuses.find((x) => x.name === h.name);
+    return !!value && !!st && !st.ok && (st.keys === value || sameHotkey(st.keys, value));
+  }
+
+  async function setHotkey(key: HotkeyKey, value: string) {
+    const clash = HOTKEYS.find((h) => h.key !== key && sameHotkey(s[h.key], value));
+    if (clash) {
+      toast.show(t('settings.hotkeys.duplicate', { keys: formatHotkey(value, currentLang()), name: t(`settings.hotkeys.${clash.name}`) }), 'error');
+      return;
+    }
+    if (await settings.update({ [key]: value } as Partial<Settings>)) {
+      // The hotkey thread re-registers after the save; ask again once it had a moment.
+      clearTimeout(statusTimer);
+      statusTimer = setTimeout(() => void loadStatus(), 300);
+    }
   }
 </script>
 
@@ -85,6 +130,19 @@
       <p>{t('settings.shortcuts.howBody')}</p>
     </div>
   </Card>
+
+  <SectionHeader title={t('settings.hotkeys.title')} subtitle={t('settings.hotkeys.hint')} />
+  <Card>
+    {#each HOTKEYS as h (h.key)}
+      {@const clash = conflict(h)}
+      <ListRow title={t(`settings.hotkeys.${h.name}`)} subtitle={clash ? undefined : t(`settings.hotkeys.${h.name}Hint`)}>
+        {#if clash}<span class="conflict"><TriangleAlert size={13} />{t('settings.hotkeys.conflict')}</span>{/if}
+        {#snippet trailing()}
+          <HotkeyRecorder value={s[h.key]} status={clash ? false : undefined} label={t(`settings.hotkeys.${h.name}`)} onchange={(v) => setHotkey(h.key, v)} />
+        {/snippet}
+      </ListRow>
+    {/each}
+  </Card>
 </section>
 
 <style>
@@ -118,6 +176,7 @@
     font: var(--text-caption); font-family: var(--font);
   }
   .wheel { position: relative; width: 52px; height: 52px; border-radius: 50%; background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+  .conflict { display: inline-flex; align-items: center; gap: 5px; font: var(--text-callout); color: var(--red); white-space: normal; }
   .wheel i {
     position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; margin: -4px; border-radius: 50%; background: var(--accent);
     transform: rotate(var(--a)) translateY(-18px);
