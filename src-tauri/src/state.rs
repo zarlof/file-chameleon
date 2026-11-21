@@ -169,11 +169,18 @@ impl AppState {
     pub fn clips(&self) -> &Mutex<ClipStore> {
         self.clips.get_or_init(|| {
             let dir = self.paths.clipboard_dir();
+            let mut used = dir.clone();
             let mut store = ClipStore::open(&dir).unwrap_or_else(|_| {
                 // A broken store must never stop the app; start empty in a fresh folder.
                 let fallback = dir.with_file_name(format!("clipboard-{}", fc_core::now_ms()));
+                used = fallback.clone();
                 ClipStore::open(&fallback).expect("clipboard store")
             });
+            // The static scope pattern never matches a Windows path, so allow the store dir
+            // that is actually in use (Tauri escapes the path and adds `**`).
+            if let Err(e) = self.app.asset_protocol_scope().allow_directory(&used, true) {
+                eprintln!("asset scope for clip store: {e}");
+            }
             // Apply retention on open too, so expired items do not wait for the next copy.
             let s = self.settings();
             let _ = store.prune(

@@ -80,6 +80,7 @@ pub fn clip_pin(
 pub fn clip_trash(app: AppHandle, state: State<'_, AppState>, ids: Vec<u64>) -> CmdResult<()> {
     store(&state).trash(&ids, fc_core::now_ms())?;
     changed(&app);
+    crate::line::refit(&app);
     Ok(())
 }
 
@@ -87,6 +88,7 @@ pub fn clip_trash(app: AppHandle, state: State<'_, AppState>, ids: Vec<u64>) -> 
 pub fn clip_restore(app: AppHandle, state: State<'_, AppState>, ids: Vec<u64>) -> CmdResult<()> {
     store(&state).restore(&ids)?;
     changed(&app);
+    crate::line::refit(&app);
     Ok(())
 }
 

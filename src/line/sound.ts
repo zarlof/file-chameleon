@@ -2,6 +2,15 @@
 let ctx: AudioContext | null = null;
 let last = 0;
 
+/** The line is hidden: stop the audio clock (the next tick resumes it). */
+export function quiet() {
+  try {
+    void ctx?.suspend();
+  } catch {
+    // nothing to suspend
+  }
+}
+
 export function tick() {
   const now = performance.now();
   if (now - last < 60) return; // several cards landing together: one click is enough

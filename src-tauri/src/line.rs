@@ -392,6 +392,11 @@ pub fn apply_size(app: &AppHandle, s: &fc_core::settings::Settings) {
     let _ = (app, s);
 }
 
+/// A rope appeared or emptied: re-fit the window (if it is up) with the saved settings.
+pub fn refit(app: &AppHandle) {
+    apply_size(app, &app.state::<AppState>().settings());
+}
+
 /// Remember the foreground window so `line_paste` can paste into it. `force` (the hotkey) also
 /// records "none" (our own window, the taskbar); otherwise only a real foreign window counts.
 #[cfg(windows)]
@@ -580,6 +585,15 @@ pub fn activate(app: &AppHandle) {
 pub fn peek(app: &AppHandle) {
     let s = app.state::<AppState>().settings();
     if !(s.line_enabled && s.line_peek_on_copy) {
+        return;
+    }
+    peek_forced(app);
+}
+
+/// Like [`peek`] but ignores `line_peek_on_copy`: feedback for an action the user asked for
+/// (hang, capture). Still needs the line enabled and respects the full-screen guard (in `show`).
+pub fn peek_forced(app: &AppHandle) {
+    if !app.state::<AppState>().settings().line_enabled {
         return;
     }
     #[cfg(windows)]

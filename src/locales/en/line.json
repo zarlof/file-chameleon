@@ -49,6 +49,7 @@
   "settings.duplicate": "{keys} is already used for “{name}”.",
   "settings.showNow": "Show now",
   "settings.showNowHint": "Open the line now to see how it looks.",
+  "settings.needsClipboard": "Needs clipboard history",
   "settings.clipboardOff": "Clipboard history is off, so the line stays empty. You can turn it on in Clipboard settings.",
   "search.placeholder": "Search…",
   "search.none": "No matches",

@@ -47,12 +47,12 @@
   const custom = $derived(isHex(s.lineColor) && !SWATCHES.some((w) => w.id === s.lineColor));
   let thickness = $state(settings.value.lineThickness);
   let opacity = $state(settings.value.lineOpacity);
-  let slideTimer: ReturnType<typeof setTimeout> | undefined;
+  const slideTimers: Partial<Record<'lineThickness' | 'lineOpacity', ReturnType<typeof setTimeout>>> = {};
   function slide(key: 'lineThickness' | 'lineOpacity', v: number) {
     if (key === 'lineThickness') thickness = v;
     else opacity = v;
-    clearTimeout(slideTimer);
-    slideTimer = setTimeout(() => set({ [key]: v } as Partial<Settings>), 120);
+    clearTimeout(slideTimers[key]);
+    slideTimers[key] = setTimeout(() => set({ [key]: v } as Partial<Settings>), 120);
   }
 
   // live preview: one rope, three sample cards, drawn with the same maths as the line
@@ -92,7 +92,8 @@
     void loadStatus();
     return () => {
       clearTimeout(statusTimer);
-      clearTimeout(slideTimer);
+      clearTimeout(slideTimers.lineThickness);
+      clearTimeout(slideTimers.lineOpacity);
     };
   });
 
@@ -243,7 +244,7 @@
     {#each EXTRA as h (h.key)}
       {@const clash = failed(h.name, s[h.key])}
       <ListRow title={t(`line.settings.${h.label}`)} subtitle={clash ? undefined : t(`line.settings.${h.label}Hint`)}>
-        {#if clash}<span class="conflict"><TriangleAlert size={13} />{t('line.settings.conflict')}</span>{/if}
+        {#if clash}<span class="conflict"><TriangleAlert size={13} />{t('line.settings.conflict')}</span>{:else if !s.clipboardEnabled && (h.key === 'hotkeyCapture' || h.key === 'hotkeyCopyLatestImage')}<span class="needs"><TriangleAlert size={13} />{t('line.settings.needsClipboard')}</span>{/if}
         {#snippet trailing()}
           <HotkeyRecorder value={s[h.key]} disabled={off} status={clash ? false : undefined} label={t(`line.settings.${h.label}`)} onchange={(v) => setExtra(h.key, v)} />
         {/snippet}
@@ -288,5 +289,6 @@
     position: absolute; display: grid; place-items: center; height: calc(var(--s) * 80px); border-radius: var(--radius-xs);
     background: var(--elevated-bg); box-shadow: var(--shadow-md); font: var(--text-callout); font-size: calc(var(--s) * 12px); color: var(--text-secondary);
   }
+  .needs { display: inline-flex; align-items: center; gap: 5px; font: var(--text-callout); color: var(--text-2, inherit); white-space: normal; }
   .conflict { display: inline-flex; align-items: center; gap: 5px; font: var(--text-callout); color: var(--red); white-space: normal; }
 </style>

@@ -532,6 +532,7 @@ fn import_image_file(app: &AppHandle, path: &Path) {
     }
     if let Ok(Some(item)) = added {
         let _ = app.emit(events::CLIP_ADDED, &item);
+        crate::line::refit(app);
         crate::line::peek(app);
         enrich(app, &item, &s);
     }
@@ -752,6 +753,7 @@ mod imp {
             let _ = app.emit(events::CLIP_CHANGED, ());
         }
         let _ = app.emit(events::CLIP_ADDED, &item);
+        crate::line::refit(app);
         crate::line::peek(app);
         super::enrich(app, &item, &settings);
         suggest(app, &item, &settings);

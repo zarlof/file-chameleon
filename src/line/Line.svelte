@@ -13,7 +13,7 @@
   import { fitCount, matches, overflow, splitRopes, visibleRopes, type RopeKey } from './logic';
   import { bandTops, cardOpacity, ropeColor, sizeInfo, windowHeight } from './layout';
   import { isCommandKey, nextFocus, type Focus, type NavKey } from './keys';
-  import { tick as hangTick } from './sound';
+  import { quiet, tick as hangTick } from './sound';
   import Preview from './Preview.svelte';
   import { setLang, getLang, t } from './i18n';
   import { atRest, impulse, step, type Pend } from './physics';
@@ -243,6 +243,7 @@
 
   function hidden() {
     shown = false;
+    quiet();
     // WebView2 may not send pointerleave when the window hides under the pointer.
     pointerInside = false;
     hoverId = null;
@@ -498,6 +499,11 @@
       if (e.key === 'Enter') {
         e.preventDefault();
         void copyNewestMatch();
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || (e.key === 'Tab' && !e.shiftKey)) {
+        // leave the field: arrows, digits, Space and Del now act on the cards
+        e.preventDefault();
+        searchEl?.blur();
+        ensureFocus();
       }
       return; // everything else is text
     }

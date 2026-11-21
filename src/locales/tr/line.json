@@ -49,6 +49,7 @@
   "settings.duplicate": "{keys} zaten “{name}” için kullanılıyor.",
   "settings.showNow": "Şimdi göster",
   "settings.showNowHint": "İpi şimdi açıp nasıl göründüğüne bak.",
+  "settings.needsClipboard": "Pano geçmişi kapalıyken çalışmaz",
   "settings.clipboardOff": "Pano geçmişi kapalı olduğu için ip boş kalır. Pano ayarlarından açabilirsin.",
   "search.placeholder": "Ara…",
   "search.none": "Eşleşen yok",

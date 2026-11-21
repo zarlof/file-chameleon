@@ -18,7 +18,7 @@ const MAX_TEXT_BYTES: u64 = 1024 * 1024;
 const IMAGE_EXTS: [&str; 9] = [
     "png", "jpg", "jpeg", "gif", "bmp", "webp", "tif", "tiff", "ico",
 ];
-const TEXT_EXTS: [&str; 4] = ["txt", "md", "markdown", "log"];
+const TEXT_EXTS: [&str; 6] = ["txt", "md", "markdown", "log", "csv", "json"];
 
 /// What the verb makes of a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -146,7 +146,8 @@ fn announce(app: &AppHandle, added: fc_core::Result<Option<fc_core::clip::ClipIt
     if let Ok(Some(item)) = added {
         let s = app.state::<AppState>().settings();
         let _ = app.emit(events::CLIP_ADDED, &item);
-        crate::line::peek(app);
+        crate::line::refit(app);
+        crate::line::peek_forced(app);
         crate::platform::clipboard::enrich(app, &item, &s);
     }
 }
@@ -206,10 +207,33 @@ pub fn copy_latest_image(app: &AppHandle) {
         })
         .first()
         .map(|i| i.id);
-    if let Some(id) = id
-        && let Err(e) = crate::ipc::clipboard::copy_items(&state, &[id])
-    {
-        eprintln!("copy latest image: {e:?}");
+    let lang = crate::platform::ui_language(&state.settings().language);
+    let message = match id {
+        None => none_message(&lang),
+        Some(id) => match crate::ipc::clipboard::copy_items(&state, &[id]) {
+            Ok(_) => copied_message(&lang),
+            Err(e) => {
+                eprintln!("copy latest image: {e:?}");
+                return;
+            }
+        },
+    };
+    crate::windows::show_toast(app, message, serde_json::json!({}), Some(2000));
+}
+
+fn copied_message(lang: &str) -> &'static str {
+    if lang == "tr" {
+        "Kopyalandı"
+    } else {
+        "Copied"
+    }
+}
+
+fn none_message(lang: &str) -> &'static str {
+    if lang == "tr" {
+        "Kopyalanacak görsel yok"
+    } else {
+        "No image to copy"
     }
 }
 

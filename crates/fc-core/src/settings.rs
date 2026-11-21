@@ -82,7 +82,7 @@ pub struct Settings {
     /// The clips sway gently (off with reduce motion).
     pub line_breeze: bool,
     pub line_ropes: LineRopes,
-    /// Rope colour: "accent" or an accent name.
+    /// Rope colour: "accent", an accent name, or a `#rrggbb` hex colour (anything else is accent).
     pub line_color: String,
     /// Rope thickness in px, 1..=6.
     pub line_thickness: u8,
@@ -90,7 +90,7 @@ pub struct Settings {
     pub line_opacity: u8,
     /// "small" | "medium" | "large" (anything else is medium).
     pub line_size: String,
-    /// Cards grow when hovered.
+    /// Hovering an image card for a moment shows an enlarged preview of it.
     pub line_zoom_on_hover: bool,
     /// A soft sound when clips hang or fall.
     pub line_sound: bool,
