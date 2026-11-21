@@ -32,6 +32,8 @@ pub fn start(app: &AppHandle) {
     ocr::set_enabled(s.clipboard_ocr);
     clipboard::configure_folders(app, &s);
     clipboard::start_maintenance(app);
+    // Watch folders (Task 10).
+    crate::watchfolders::configure(app, &s);
 }
 
 fn configure_wheel(app: &AppHandle, s: &Settings) {
@@ -165,6 +167,10 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
         || old.clipboard_enabled != new.clipboard_enabled
     {
         clipboard::configure_folders(app, &new);
+    }
+    // Watch folders (Task 10).
+    if old.watch_folders != new.watch_folders {
+        crate::watchfolders::configure(app, &new);
     }
     if old.language != new.language {
         crate::tray::refresh(app);

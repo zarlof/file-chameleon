@@ -72,6 +72,8 @@ pub struct AppState {
     pub shelf_prev: AtomicIsize,
     /// Watcher of `clipboard_watch_folders` (only while some are set and the clipboard is on).
     pub clip_watcher: Mutex<Option<fc_core::watch::Watcher>>,
+    // ---- watch folders (Task 10)
+    pub watch: crate::watchfolders::Holder,
 }
 
 impl AppState {
@@ -102,6 +104,7 @@ impl AppState {
             wheel: OnceLock::new(),
             shelf_prev: AtomicIsize::new(0),
             clip_watcher: Mutex::new(None),
+            watch: Default::default(),
         })
     }
 

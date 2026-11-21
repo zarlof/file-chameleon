@@ -8,6 +8,7 @@ mod platform;
 mod shelf;
 mod state;
 mod tray;
+mod watchfolders;
 mod windows;
 
 use tauri::Manager;
@@ -131,6 +132,8 @@ pub fn run() {
             ipc::presets::presets_for_extensions,
             ipc::images::read_image_preview,
             ipc::images::save_annotated,
+            // watch folders (Task 10)
+            watchfolders::watch_status,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build File Chameleon")

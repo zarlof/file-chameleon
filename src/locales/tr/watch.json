@@ -1,0 +1,28 @@
+{
+  "title": "İzlenen klasörler",
+  "intro": "İzlenen klasöre yeni gelen dosyalar seçtiğin hazır ayarla otomatik dönüştürülür. Sonuçlar klasörün içindeki “converted” klasörüne gider.",
+  "add": "Klasör ekle",
+  "empty": {
+    "title": "Dosyalar gelir gelmez dönüştür",
+    "message": "Bir klasör ve bir hazır ayar seç. Klasöre eklenen her yeni dosya, kopyalanması bitince işlenir; zaten orada olan dosyalara dokunulmaz ve sonuçlar “converted” alt klasörüne kaydedilir."
+  },
+  "preset": "Hazır ayar",
+  "subfolders": "Alt klasörleri de izle",
+  "enabled": "Etkin",
+  "remove": "Bu klasörü izlemeyi bırak",
+  "openFolder": "Klasörü göster",
+  "noPresets": "Tek başına çalışabilen hazır ayar yok. Hazır ayarlar sayfasında bir tane oluştur.",
+  "status": {
+    "on": "Etkin",
+    "off": "Kapalı",
+    "processed": {
+      "one": "1 dosya işlendi",
+      "other": "{count} dosya işlendi"
+    },
+    "last": "son: {name}"
+  },
+  "errors": {
+    "presetMissing": "Bu hazır ayar artık yok. Başka bir tane seç.",
+    "presetNotUnattended": "Bu hazır ayar klasör seçimi ya da düzenleyici gerektirdiği için kendi başına çalışamaz. Başka bir tane seç."
+  }
+}

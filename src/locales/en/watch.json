@@ -1,0 +1,28 @@
+{
+  "title": "Watch folders",
+  "intro": "New files that appear in a watched folder are converted automatically with the preset you choose. Results go to a “converted” folder inside it.",
+  "add": "Add folder",
+  "empty": {
+    "title": "Convert files as they arrive",
+    "message": "Pick a folder and a preset. Every new file in that folder is processed once it has finished copying; files already there are left alone and results are saved in its “converted” subfolder."
+  },
+  "preset": "Preset",
+  "subfolders": "Include subfolders",
+  "enabled": "Enabled",
+  "remove": "Stop watching this folder",
+  "openFolder": "Show folder",
+  "noPresets": "No preset can run on its own. Make one on the Presets page.",
+  "status": {
+    "on": "Active",
+    "off": "Off",
+    "processed": {
+      "one": "1 file processed",
+      "other": "{count} files processed"
+    },
+    "last": "last: {name}"
+  },
+  "errors": {
+    "presetMissing": "This preset no longer exists. Choose another one.",
+    "presetNotUnattended": "This preset needs a folder choice or the editor, so it can't run on its own. Choose another one."
+  }
+}
