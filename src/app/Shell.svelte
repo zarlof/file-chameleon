@@ -27,6 +27,7 @@
   import ClipboardSettings from './views/settings/ClipboardSettings.svelte';
   import Engines from './views/settings/Engines.svelte';
   import General from './views/settings/General.svelte';
+  import Line from './views/settings/Line.svelte';
   import Shortcuts from './views/settings/Shortcuts.svelte';
   import Watch from './views/watch/index.svelte';
   import WheelEditor from './views/wheel/index.svelte';
@@ -120,6 +121,7 @@
         {:else if nav.view === 'shortcuts'}<Shortcuts />
         {:else if nav.view === 'watch'}<Watch />
         {:else if nav.view === 'clipboardSettings'}<ClipboardSettings />
+        {:else if nav.view === 'line'}<Line />
         {:else if nav.view === 'appearance'}<Appearance />
         {:else if nav.view === 'engines'}<Engines />
         {:else if nav.view === 'about'}<About />

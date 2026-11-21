@@ -90,6 +90,8 @@
     "libraryHint": "Bu penceredeki Pano sayfasını açar.",
     "downloadLink": "Kopyalanan bağlantıyı indir",
     "downloadLinkHint": "Panodaki medya bağlantısını İndir sayfasında açar.",
+    "line": "İpi aç",
+    "lineHint": "Ekranın üstündeki pano ipini açar ve odağı ona verir.",
     "conflict": "Bu kısayol başka bir uygulamada kullanılıyor ya da Windows tarafından ayrılmış. Başka bir kısayol seçin.",
     "duplicate": "{keys} zaten “{name}” için kullanılıyor.",
     "recorder": {

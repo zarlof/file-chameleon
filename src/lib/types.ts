@@ -450,7 +450,7 @@ export interface ClipStats {
 }
 
 export interface HotkeyStatus {
-  name: 'shelf' | 'library' | 'downloadLink';
+  name: 'shelf' | 'library' | 'downloadLink' | 'line';
   keys: string;
   /** false = could not register (another app owns it, or invalid). */
   ok: boolean;
@@ -477,6 +477,7 @@ export type View =
   | 'shortcuts'
   | 'watch'
   | 'clipboardSettings'
+  | 'line'
   | 'appearance'
   | 'engines'
   | 'about'

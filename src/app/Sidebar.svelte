@@ -7,7 +7,7 @@
 <script lang="ts">
   import {
     CircleDot, Clipboard, ClipboardList, Clock, Cpu, Download, FolderSync, GitBranch, Info, Keyboard, Palette,
-    RefreshCw, Settings2, SlidersHorizontal,
+    RefreshCw, Settings2, SlidersHorizontal, Spline,
   } from '@lucide/svelte';
   import appIcon from '../../src-tauri/icons/128x128.png';
   import type { Component } from 'svelte';
@@ -31,6 +31,7 @@
     shortcuts: Keyboard,
     watch: FolderSync,
     clipboardSettings: ClipboardList,
+    line: Spline,
     appearance: Palette,
     engines: Cpu,
     about: Info,

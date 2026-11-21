@@ -90,6 +90,8 @@
     "libraryHint": "Opens the Clipboard page in this window.",
     "downloadLink": "Download the copied link",
     "downloadLinkHint": "Opens the media link on the clipboard in the Download page.",
+    "line": "Open the line",
+    "lineHint": "Opens the clipboard line at the top of the screen and gives it focus.",
     "conflict": "Another app already uses this shortcut, or Windows reserves it. Choose a different one.",
     "duplicate": "{keys} is already used for “{name}”.",
     "recorder": {

@@ -343,6 +343,41 @@
     nav.goto({ view: 'editor', paths: [`clip:${c.id}`], url: null });
   }
 
+  // ---- opened from the line ("Düzenle"): nav.pending.clip = the clip to select; images open the editor,
+  // text stays selected with the inspector showing (title / note editing live there).
+  let wantedClip = $state<number | null>(null);
+  $effect(() => {
+    const p = nav.pending && nav.consume('clipboard');
+    if (p?.clip == null) return;
+    wantedClip = p.clip;
+    const hadSearch = search !== '';
+    search = '';
+    setFilter({ type: 'all' });
+    if (hadSearch && filter.type === 'all') {
+      epoch++;
+      void loadItems();
+    }
+  });
+  $effect(() => {
+    if (wantedClip === null || !loaded) return;
+    const id = wantedClip;
+    wantedClip = null;
+    const it = items.find((i) => i.id === id);
+    if (!it) return;
+    selection = { ids: [id], anchor: id };
+    focus = id;
+    if (it.kind === 'image') {
+      edit(it);
+      return;
+    }
+    if (!wide) drawer = true;
+    void tick().then(() => {
+      const index = order.indexOf(id);
+      if (mode === 'list') listView?.reveal(index);
+      else gridView?.reveal(index);
+    });
+  });
+
   function preview(id: number | null) {
     if (id === null) return;
     previewId = id;
