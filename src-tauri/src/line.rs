@@ -284,12 +284,16 @@ fn get_or_create(app: &AppHandle) -> Option<(WebviewWindow, bool)> {
 
 /// How many ropes the window needs right now (see [`rope_count_of`]).
 fn rope_count(app: &AppHandle) -> usize {
-    let ropes = app.state::<AppState>().settings().line_ropes;
-    rope_count_with(app, &ropes)
+    let s = app.state::<AppState>().settings();
+    rope_count_with(app, &s.line_ropes, &s.line_files_sources)
 }
 
 /// Like [`rope_count`] for rope switches that are not saved yet.
-fn rope_count_with(app: &AppHandle, r: &fc_core::settings::LineRopes) -> usize {
+fn rope_count_with(
+    app: &AppHandle,
+    r: &fc_core::settings::LineRopes,
+    sources: &fc_core::settings::LineFilesSources,
+) -> usize {
     use fc_core::clip::{ClipQuery, Shelf};
     let state = app.state::<AppState>();
     let enabled = [r.images, r.text, r.links, r.files];
@@ -311,7 +315,7 @@ fn rope_count_with(app: &AppHandle, r: &fc_core::settings::LineRopes) -> usize {
             has(enabled[0], Shelf::Images),
             has(enabled[1], Shelf::Texts),
             has(enabled[2], Shelf::Links),
-            enabled[3] && crate::files::any_listed(app),
+            enabled[3] && crate::files::any_listed(app, sources),
         ]
     };
     rope_count_of(enabled, present)
@@ -372,7 +376,7 @@ fn resize(app: &AppHandle, w: &WebviewWindow, s: &fc_core::settings::Settings) {
     let Some(work) = crate::platform::win::work_area_at(pos.x, pos.y) else {
         return;
     };
-    let ropes = rope_count_with(app, &s.line_ropes);
+    let ropes = rope_count_with(app, &s.line_ropes, &s.line_files_sources);
     let (x, y, width, height) = line_rect(work, scale, ropes, &s.line_size, &s.line_edge);
     if (x, y) != (pos.x, pos.y) {
         let _ = w.set_position(PhysicalPosition::new(x, y));

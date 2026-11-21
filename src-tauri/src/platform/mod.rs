@@ -192,6 +192,7 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
     if old.line_size != new.line_size
         || old.line_ropes != new.line_ropes
         || old.line_edge != new.line_edge
+        || old.line_files_sources != new.line_files_sources
     {
         crate::line::apply_size(app, &new);
     }

@@ -168,8 +168,9 @@ pub fn record(app: &AppHandle, paths: Vec<PathBuf>, source: FileSource) {
     }
 }
 
-/// Is there anything on the rope for the sources the settings show? Answered from the cache.
-pub fn any_listed(app: &AppHandle) -> bool {
+/// Is there anything on the rope for `sources` (the NEW settings may not be saved yet)? Answered
+/// from the cache of which sources have entries.
+pub fn any_listed(app: &AppHandle, sources: &LineFilesSources) -> bool {
     let state = app.state::<AppState>();
     let cached = *PRESENT.lock().unwrap_or_else(|e| e.into_inner());
     let p = cached.unwrap_or_else(|| {
@@ -177,7 +178,7 @@ pub fn any_listed(app: &AppHandle) -> bool {
         *PRESENT.lock().unwrap_or_else(|e| e.into_inner()) = Some(p);
         p
     });
-    any_shown(p, &state.settings().line_files_sources)
+    any_shown(p, sources)
 }
 
 /// Thumbnails that could not be made this session (not an image we can read, over the pixel cap,
