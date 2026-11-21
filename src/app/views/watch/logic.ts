@@ -6,10 +6,14 @@ import { presetLabel, type Translate } from '../../../lib/wheel/labels';
 /** Preset a new rule starts with, when it exists. */
 export const DEFAULT_PRESET = 'to-webp';
 
-/** Presets that can run without anyone watching: not the image editor (`annotate`) and not a
- *  copy/move that asks for its folder (`copyTo` without one). Mirrors `rule_problem` in Rust. */
+/** Presets the shell handles itself and never queues: the image editor and the file actions. */
+const SHELL_ONLY = new Set(['annotate', 'copyPath', 'openTerminal', 'float']);
+
+/** Presets that can run without anyone watching: not the shell-only ones (`annotate`, `copyPath`,
+ *  `openTerminal`, `float`) and not a copy/move that asks for its folder (`copyTo` without one).
+ *  Mirrors `rule_problem` in Rust. */
 export function usablePresets(presets: Preset[]): Preset[] {
-  return presets.filter((p) => p.op.type !== 'annotate' && !(p.op.type === 'copyTo' && p.op.dir === null));
+  return presets.filter((p) => !SHELL_ONLY.has(p.op.type) && !(p.op.type === 'copyTo' && p.op.dir === null));
 }
 
 let counter = 0;

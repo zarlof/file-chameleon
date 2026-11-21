@@ -15,13 +15,16 @@ const PRESETS: Preset[] = [
   preset('annotate', { type: 'annotate' }),
   preset('pick', { type: 'copyTo', dir: null, moveFiles: false }),
   preset('fixed', { type: 'copyTo', dir: 'D:\\x', moveFiles: false }),
+  preset('copy-path', { type: 'copyPath' }),
+  preset('terminal', { type: 'openTerminal' }),
+  preset('float', { type: 'float' }),
 ];
 
 const rule = (over: Partial<WatchFolder> = {}): WatchFolder => ({ id: 'w', path: 'C:\\in', preset: 'to-webp', subfolders: false, enabled: true, ...over });
 const status = (over: Partial<WatchStatus> = {}): WatchStatus => ({ id: 'w', active: true, error: null, processed: 0, lastFile: null, ...over });
 
 describe('usablePresets', () => {
-  it('drops annotate and a copy without a folder', () => {
+  it('drops annotate, the file actions and a copy without a folder', () => {
     expect(usablePresets(PRESETS).map((p) => p.id)).toEqual(['to-png', 'to-webp', 'fixed']);
   });
 });

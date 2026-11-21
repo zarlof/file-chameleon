@@ -91,6 +91,10 @@ pub fn open(app: &AppHandle, paths: Vec<PathBuf>) {
 
 fn open_one(app: &AppHandle, path: &std::path::Path, index: usize) -> Result<(), String> {
     let dims = image_size(path).ok_or_else(|| format!("not an image: {}", path.display()))?;
+    // The static asset scope only covers the clip store: let the page show this one file.
+    app.asset_protocol_scope()
+        .allow_file(path)
+        .map_err(|e| e.to_string())?;
     // Work area of the monitor under the cursor.
     #[cfg(windows)]
     let (work, scale) = {

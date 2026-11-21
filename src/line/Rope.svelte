@@ -9,6 +9,7 @@
   import Peg from './Peg.svelte';
   import { t } from './i18n';
 
+  /** Band height in px. Keep in step with ROPE_HEIGHT (this + 4 px margin) in src-tauri/src/line.rs. */
   const BAND = 178;
   const PEG_W = 112;
   const GAP = 16;
@@ -99,11 +100,16 @@
   .knot { fill: var(--text-secondary); opacity: 0.9; }
   .label {
     position: absolute;
-    left: 20px;
-    top: 2px;
+    left: 16px;
+    top: 6px;
+    padding: 1px 9px;
+    border-radius: 999px;
+    background: var(--elevated-bg);
+    box-shadow: inset 0 0 0 1px var(--glass-edge);
     font: var(--text-caption);
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
     pointer-events: none;
+    z-index: 1;
   }
   .slot { position: absolute; width: 112px; }
   .more {

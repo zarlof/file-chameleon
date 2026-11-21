@@ -125,6 +125,7 @@ pub fn run() {
             ipc::line::line_show,
             ipc::line::line_hide,
             ipc::line::line_activate,
+            ipc::line::line_state,
             ipc::line::line_drag_out,
             ipc::line::line_open_item,
             ipc::line::line_paste,

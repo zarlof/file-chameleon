@@ -49,12 +49,15 @@ pub struct Holder {
 }
 
 /// Why a rule cannot run, as a code the UI translates; `None` = fine. `copyTo` without a
-/// folder needs a picker and `annotate` the editor: neither works unattended.
+/// folder needs a picker, `annotate` the editor, and the file actions (`copyPath`, `openTerminal`,
+/// `float`) belong to the shell: none of them works unattended.
 pub fn rule_problem(config: &WheelConfig, preset_id: &str) -> Option<&'static str> {
     use fc_core::jobs::Operation;
     match config.preset(preset_id).map(|p| &p.op) {
         None => Some("presetMissing"),
-        Some(Operation::Annotate) => Some("presetNotUnattended"),
+        Some(
+            Operation::Annotate | Operation::CopyPath | Operation::OpenTerminal | Operation::Float,
+        ) => Some("presetNotUnattended"),
         Some(Operation::CopyTo { dir: None, .. }) => Some("presetNotUnattended"),
         Some(_) => None,
     }
@@ -383,6 +386,18 @@ mod tests {
             },
         ));
         config.presets.push(user("edit", Operation::Annotate));
+        for (id, op) in [
+            ("cp", Operation::CopyPath),
+            ("term", Operation::OpenTerminal),
+            ("fl", Operation::Float),
+        ] {
+            config.presets.push(user(id, op));
+            assert_eq!(
+                rule_problem(&config, id),
+                Some("presetNotUnattended"),
+                "{id}"
+            );
+        }
         assert_eq!(rule_problem(&config, "pick"), Some("presetNotUnattended"));
         assert_eq!(rule_problem(&config, "edit"), Some("presetNotUnattended"));
         assert_eq!(rule_problem(&config, "fixed"), None);

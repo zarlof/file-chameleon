@@ -46,8 +46,8 @@ describe('rope', () => {
     expect(Math.max(...ys)).toBeGreaterThanOrEqual(18);
   });
 
-  it('dips_under_pins', () => {
-    expect(ropeY(1000, 300, [300], 18, 4)).toBeGreaterThan(ropeY(1000, 300, [], 18, 4));
+  it('no_dips_under_pins', () => {
+    for (const x of [100, 300, 640]) expect(ropeY(1000, x, [300, 640], 18)).toBe(ropeY(1000, x, [], 18));
   });
 });
 

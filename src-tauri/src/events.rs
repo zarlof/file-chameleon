@@ -33,14 +33,11 @@ pub const SHELF_OPEN: &str = "shelf://open";
 
 // ---- clothesline
 /// Line window: it was shown (`LineShow`).
-#[allow(dead_code)] // used by the line window (Task 2)
 pub const LINE_SHOW: &str = "line://show";
 /// Line window: it was hidden (no payload).
-#[allow(dead_code)] // used by the line window (Task 2)
 pub const LINE_HIDE: &str = "line://hide";
 
 /// `mode` is "hotkey" | "peek" | "reveal".
-#[allow(dead_code)] // used by the line window (Task 2)
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LineShow {

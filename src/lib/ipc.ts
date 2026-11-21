@@ -118,6 +118,7 @@ export const api = {
   lineShow: (mode: 'hotkey') => invoke<void>('line_show', { mode }),
   lineHide: () => invoke<void>('line_hide'),
   lineActivate: () => invoke<void>('line_activate'),
+  lineState: () => invoke<{ mode: 'hotkey' | 'peek' | 'reveal' | null; visible: boolean }>('line_state'),
   lineDragOut: (id: number) => invoke<void>('line_drag_out', { id }),
   lineOpenItem: (id: number) => invoke<void>('line_open_item', { id }),
   linePaste: (ids: number[]) => invoke<void>('line_paste', { ids }),

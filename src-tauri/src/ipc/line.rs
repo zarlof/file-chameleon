@@ -50,3 +50,10 @@ pub fn open_url(url: String) -> CmdResult<()> {
 pub fn float_open(app: AppHandle, paths: Vec<String>) {
     crate::float::open(&app, paths.into_iter().map(Into::into).collect());
 }
+
+/// The latest requested show mode and whether the line is up: the page pulls it once its
+/// listeners are attached, so a show that happened while the page was loading is not missed.
+#[tauri::command]
+pub fn line_state(app: AppHandle) -> crate::line::LineState {
+    crate::line::state(&app)
+}
