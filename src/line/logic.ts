@@ -123,7 +123,15 @@ export type LineCard = { id: number; item: ClipItem | null; file: LineFile | nul
 
 /** The cards of a rope in display order. */
 export function ropeCards(r: Rope, fileIdOf: (path: string) => number): LineCard[] {
-  if (r.key === 'files') return r.files.map((file) => ({ id: fileIdOf(file.path), item: null, file }));
+  if (r.key === 'files') {
+    const used = new Set<number>();
+    return r.files.map((file) => {
+      let id = fileIdOf(file.path);
+      while (used.has(id)) id -= 1; // a hash collision never drops a card
+      used.add(id);
+      return { id, item: null, file };
+    });
+  }
   return r.items.map((item) => ({ id: item.id, item, file: null }));
 }
 

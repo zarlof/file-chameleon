@@ -136,7 +136,7 @@
   "settings.filesConverted": "Dönüştürülenler",
   "settings.filesDownloaded": "İndirilenler",
   "settings.maxPerRope": "İp başına kart",
-  "settings.maxPerRopeHint": "Otomatik, ekrana sığdığı kadar kart gösterir. Diğerleri seçtiğiniz sayıyla sınırlar.",
+  "settings.maxPerRopeHint": "Otomatik, ekrana sığdığı kadar kart gösterir. Diğerleri seçtiğin sayıyla sınırlar.",
   "settings.maxAuto": "Otomatik",
   "settings.edge": "Ekran kenarı",
   "settings.edgeHint": "İplerin ekranın üstünden mi altından mı açılacağı.",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ClipItem, ClipKind } from '../lib/types';
-import { cardText, fitCount, lineDefaults, matches, moveRope, overflow, ropeName, splitRopes, visibleRopes } from './logic';
+import { cardText, fitCount, lineDefaults, matches, moveRope, overflow, ropeCards, ropeName, splitRopes, visibleRopes } from './logic';
 
 let n = 0;
 function item(kind: ClipKind, over: Partial<ClipItem> = {}): ClipItem {
@@ -121,5 +121,15 @@ describe('settings helpers', () => {
   it('settings_reset_keeps_switch_and_hotkeys', () => {
     const d = { lineEnabled: true, lineSag: 14, lineColor: 'natural', lineLookVersion: 3, hotkeyLine: 'X', theme: 'dark' };
     expect(lineDefaults(d)).toEqual({ lineSag: 14, lineColor: 'natural' });
+  });
+});
+
+describe('ropeCards', () => {
+  it('colliding_file_ids_keep_every_card', () => {
+    const f = (path: string) => ({ path, name: path, source: 'added' as const, at: 1, size: 1, kind: null, thumb: null });
+    const rope = { key: 'files' as const, items: [], files: [f('a'), f('b'), f('c')] };
+    const cards = ropeCards(rope, () => -5);
+    expect(cards).toHaveLength(3);
+    expect(new Set(cards.map((c) => c.id)).size).toBe(3);
   });
 });

@@ -424,6 +424,12 @@
 
   function pickNow(c: LineCard, e: MouseEvent) {
     const ctrl = e.ctrlKey || e.metaKey;
+    if ((e.shiftKey || ctrl) && selected.length > 0 && selected[0] < 0 !== c.id < 0) {
+      // a selection holds clips or files, never both: the other kind starts a new one
+      selected = [c.id];
+      anchor = c.id;
+      return;
+    }
     if (e.shiftKey || ctrl) {
       const row = order.find((ids) => ids.includes(c.id)) ?? [];
       if (e.shiftKey && anchor !== null && row.includes(anchor)) {

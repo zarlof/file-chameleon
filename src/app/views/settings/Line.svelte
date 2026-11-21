@@ -101,8 +101,16 @@
   function move(key: RopeKey, delta: number) {
     set({ lineRopeOrder: moveRope(order, key, delta) });
   }
+  let nameTimer: ReturnType<typeof setTimeout> | undefined;
+  const pendingNames: Partial<Record<RopeKey, string>> = {};
   function setName(key: RopeKey, v: string) {
-    set({ lineRopeNames: { ...s.lineRopeNames, [key]: v.trim().slice(0, 24) } });
+    pendingNames[key] = v.trim().slice(0, 24);
+    clearTimeout(nameTimer);
+    nameTimer = setTimeout(() => {
+      const names = { ...s.lineRopeNames, ...pendingNames };
+      for (const k of Object.keys(pendingNames) as RopeKey[]) delete pendingNames[k];
+      set({ lineRopeNames: names });
+    }, 300);
   }
   function setSource(key: keyof Settings['lineFilesSources'], v: boolean) {
     set({ lineFilesSources: { ...s.lineFilesSources, [key]: v } });
@@ -159,8 +167,8 @@
     void loadStatus();
     return () => {
       clearTimeout(statusTimer);
-      clearTimeout(slideTimers.lineThickness);
-      clearTimeout(slideTimers.lineOpacity);
+      for (const k of SLIDERS) clearTimeout(slideTimers[k]);
+      clearTimeout(nameTimer);
     };
   });
 
@@ -344,16 +352,19 @@
           </span>
         {/snippet}
       </ListRow>
+      {#if key === 'files'}
+        <ListRow title={t('line.settings.filesSources')} />
+      <ListRow title={t('line.settings.filesAdded')}>
+        {#snippet trailing()}<Toggle checked={s.lineFilesSources.added} disabled={off || !s.lineRopes.files} label={t('line.settings.filesAdded')} onchange={(v) => setSource('added', v)} />{/snippet}
+      </ListRow>
+      <ListRow title={t('line.settings.filesConverted')}>
+        {#snippet trailing()}<Toggle checked={s.lineFilesSources.converted} disabled={off || !s.lineRopes.files} label={t('line.settings.filesConverted')} onchange={(v) => setSource('converted', v)} />{/snippet}
+      </ListRow>
+      <ListRow title={t('line.settings.filesDownloaded')}>
+        {#snippet trailing()}<Toggle checked={s.lineFilesSources.downloaded} disabled={off || !s.lineRopes.files} label={t('line.settings.filesDownloaded')} onchange={(v) => setSource('downloaded', v)} />{/snippet}
+      </ListRow>
+      {/if}
     {/each}
-    <ListRow title={t('line.settings.filesAdded')}>
-      {#snippet trailing()}<Toggle checked={s.lineFilesSources.added} disabled={off || !s.lineRopes.files} label={t('line.settings.filesAdded')} onchange={(v) => setSource('added', v)} />{/snippet}
-    </ListRow>
-    <ListRow title={t('line.settings.filesConverted')}>
-      {#snippet trailing()}<Toggle checked={s.lineFilesSources.converted} disabled={off || !s.lineRopes.files} label={t('line.settings.filesConverted')} onchange={(v) => setSource('converted', v)} />{/snippet}
-    </ListRow>
-    <ListRow title={t('line.settings.filesDownloaded')}>
-      {#snippet trailing()}<Toggle checked={s.lineFilesSources.downloaded} disabled={off || !s.lineRopes.files} label={t('line.settings.filesDownloaded')} onchange={(v) => setSource('downloaded', v)} />{/snippet}
-    </ListRow>
     <ListRow title={t('line.settings.maxPerRope')} subtitle={t('line.settings.maxPerRopeHint')}>
       {#snippet trailing()}<Select value={String(s.lineMaxPerRope)} options={maxOptions} disabled={off} label={t('line.settings.maxPerRope')} onchange={(v) => set({ lineMaxPerRope: Number(v) })} />{/snippet}
     </ListRow>
