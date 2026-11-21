@@ -216,16 +216,17 @@ pub fn submit_with(state: &AppState, mut req: JobRequest, remember: bool) -> Cmd
     if req.inputs.is_empty() {
         return Err(CmdError::new("unsupported", "no inputs"));
     }
+    // Annotate and folderless copy/move are resolved before submitting (code "invalid").
+    req.op.queueable()?;
     if remember {
-        // Files the user put into a conversion by hand (not watch-folder runs).
+        // Files the user put into a conversion by hand (not watch-folder runs), once the
+        // request is known to be valid.
         crate::files::record(
             &state.app,
             req.inputs.clone(),
             fc_core::files::FileSource::Added,
         );
     }
-    // Annotate and folderless copy/move are resolved before submitting (code "invalid").
-    req.op.queueable()?;
     let s = state.settings();
     if req.options.output_dir.is_none() {
         req.options.output_dir = s.output_dir.clone();

@@ -200,9 +200,8 @@ impl AppState {
     /// The files rope's store. A broken or missing `files.json` is an empty list.
     pub fn files(&self) -> &Mutex<FileStore> {
         self.files.get_or_init(|| {
-            Mutex::new(FileStore::open(&self.paths.data).unwrap_or_else(|_| {
-                FileStore::open(&self.paths.data.join("files-fallback")).expect("files store")
-            }))
+            // `open` treats a missing or broken file as an empty list; it has no other failure.
+            Mutex::new(FileStore::open(&self.paths.data).expect("files.json load cannot fail"))
         })
     }
 

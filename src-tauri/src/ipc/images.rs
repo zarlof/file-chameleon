@@ -122,7 +122,10 @@ pub fn write_file_thumbnail(src: &Path, dst: &Path, side: u32) -> bool {
         if let Some(dir) = dst.parent() {
             std::fs::create_dir_all(dir).ok()?;
         }
-        let tmp = dst.with_extension("png.tmp");
+        // A temp name of its own: another thread may be writing a thumbnail at the same time.
+        static TMP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = TMP.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = dst.with_extension(format!("png.{}-{n}.tmp", std::process::id()));
         let saved = img
             .to_rgba8()
             .save_with_format(&tmp, image::ImageFormat::Png);

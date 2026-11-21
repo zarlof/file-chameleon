@@ -777,11 +777,8 @@ pub async fn drag_out(app: &AppHandle, id: u64) -> CmdResult<()> {
 
 /// `line_file_drag_out`: the same drag for a file of the files rope.
 pub async fn drag_out_file(app: &AppHandle, path: PathBuf) -> CmdResult<()> {
-    if !path.is_file() {
-        crate::files::forget_missing(app);
-        return Err(CmdError::new("notFound", "the file is gone"));
-    }
-    run_drag(app, DragPlan::File(path)).await
+    let found = existing_files(app, &[path.to_string_lossy().into_owned()])?;
+    run_drag(app, DragPlan::File(found[0].clone())).await
 }
 
 async fn run_drag(app: &AppHandle, plan: DragPlan) -> CmdResult<()> {
@@ -818,18 +815,12 @@ async fn run_drag(app: &AppHandle, plan: DragPlan) -> CmdResult<()> {
     }
 }
 
-/// The existing files of `paths`; `notFound` (and the rope forgets them) when none exists.
+/// The files of `paths` that are on the files rope (and still exist); `notFound` when there is
+/// none. The file commands never act on a path that is not a current entry of the rope.
 fn existing_files(app: &AppHandle, paths: &[String]) -> CmdResult<Vec<PathBuf>> {
-    let found: Vec<PathBuf> = paths
-        .iter()
-        .map(PathBuf::from)
-        .filter(|p| p.exists())
-        .collect();
-    if found.len() < paths.len() {
-        crate::files::forget_missing(app);
-    }
+    let found = crate::files::listed(app, paths);
     if found.is_empty() {
-        return Err(CmdError::new("notFound", "the file is gone"));
+        return Err(CmdError::new("notFound", "not on the files rope or gone"));
     }
     Ok(found)
 }

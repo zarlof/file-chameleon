@@ -79,6 +79,8 @@ pub fn run() {
                     &state.paths.staging_dir(),
                     std::time::Duration::from_secs(5 * 60),
                 );
+                // Thumbnails of files that left the files rope (at most once a day).
+                files::sweep_thumbs(&h);
             });
             Ok(())
         })
