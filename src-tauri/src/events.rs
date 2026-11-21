@@ -12,8 +12,12 @@ pub const SETTINGS_CHANGED: &str = "settings://changed";
 pub const NAV_GOTO: &str = "nav://goto";
 /// Overlay: switch to wheel mode (`WheelPayload`).
 pub const OVERLAY_WHEEL: &str = "overlay://wheel";
-/// Overlay: targets for the files that entered the wheel (`WheelTargets`).
-pub const OVERLAY_WHEEL_TARGETS: &str = "overlay://wheel-targets";
+/// Overlay: the slots for the files on the wheel (`WheelSlots`).
+pub const OVERLAY_WHEEL_SLOTS: &str = "overlay://wheel-slots";
+/// Overlay: flip front <-> back (mouse wheel / Tab caught by the global hooks). No payload.
+pub const OVERLAY_WHEEL_FLIP: &str = "overlay://wheel-flip";
+/// Overlay: small thumbnail of the first file when it is an image (`WheelThumb`).
+pub const OVERLAY_WHEEL_THUMB: &str = "overlay://wheel-thumb";
 /// Overlay: show a toast (`ToastPayload`).
 pub const OVERLAY_TOAST: &str = "overlay://toast";
 /// Overlay: hide everything.
@@ -51,19 +55,55 @@ pub struct NavPayload {
 pub struct WheelPayload {
     /// Device pixel ratio of the monitor the wheel is on.
     pub scale: f64,
+    /// Click mode (context menu / "open the wheel"): no drag in progress.
+    pub click: bool,
 }
 
+/// How the wheel looks (from the settings). Mirrors TS `WheelStyle`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WheelStyle {
+    /// "auto" | "iconText" | "text" | "icon"
+    pub labels: String,
+    /// Percent, 40..=100.
+    pub opacity: u8,
+    /// Hovered-slice colour as "#RRGGBB".
+    pub color: String,
+    /// 0.8..=1.3
+    pub scale: f64,
+    pub show_detail: bool,
+    pub reduce_motion: bool,
+}
+
+/// `overlay://wheel-slots`: what the wheel shows for the dragged / chosen files.
+/// Mirrors TS `WheelSlots`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WheelSlots {
+    pub paths: Vec<String>,
+    pub count: usize,
+    /// Lowercase extension of the first file ("jpg"), None for folders and extensionless files.
+    pub first_ext: Option<String>,
+    pub first_kind: Option<fc_core::formats::Kind>,
+    pub profile_id: String,
+    /// "" for built-in profiles.
+    pub profile_name: String,
+    pub front: Vec<fc_core::presets::WheelSlot>,
+    pub back: Vec<fc_core::presets::WheelSlot>,
+    /// Face to show first.
+    pub face: fc_core::presets::Face,
+    pub click: bool,
+    /// Tool ids some slot needs that are not installed (those slots show a download badge).
+    pub missing_tools: Vec<String>,
+    pub style: WheelStyle,
+}
+
+/// `overlay://wheel-thumb`. `path` equals `WheelSlots.paths[0]`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WheelTargets {
-    pub paths: Vec<String>,
-    /// Kind of the first dragged file (centre icon), None if unknown.
-    pub first_kind: Option<fc_core::formats::Kind>,
-    pub targets: Vec<fc_core::formats::planner::TargetOption>,
-    /// Recently used target ids that are valid here, newest first (max 7).
-    pub recent: Vec<String>,
-    /// Tool ids some target needs that are not installed (those slices show a download glyph).
-    pub missing_tools: Vec<String>,
+pub struct WheelThumb {
+    pub path: String,
+    pub data_url: String,
 }
 
 /// Toasts carry data, not text: the overlay localizes and picks actions per `kind`.
@@ -71,8 +111,8 @@ pub struct WheelTargets {
 /// - "jobDone"    { jobId, outputs: [path], inputName }      actions: reveal, open
 /// - "jobFailed"  { jobId, inputName, errorCode, error }     actions: details (opens Recent)
 /// - "jobsBatch"  { done, failed, total }                    actions: reveal (first output)
-/// - "toolNeeded" { tool, name, size, paths, target }        actions: install (then converts
-///   `paths` to `target`), dismiss
+/// - "toolNeeded" { tool, name, size, paths, target }        actions: install (then runs preset
+///   `target` on `paths`), dismiss
 /// - "toolInstalling" { tool, name }                         no actions
 /// - "toolFailed" { tool, name, errorCode, error }           no actions
 /// - "clipLink"   { url, site }                              actions: download, dismiss

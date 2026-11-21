@@ -12,12 +12,22 @@ mod windows;
 use tauri::Manager;
 
 pub fn run() {
-    let background = std::env::args().any(|a| a == "--background");
+    // Lossy: `std::env::args` panics on a file name that is not valid Unicode, and the Explorer
+    // verb passes file names.
+    let args: Vec<String> = std::env::args_os()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    // Explorer's "Convert with File Chameleon" verb: open the wheel, not the window.
+    let wheel_args = platform::contextmenu::wheel_paths(&args);
+    let background = args.iter().any(|a| a == "--background") || !wheel_args.is_empty();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            // A second autostart launch (--background) must not pop the window up.
-            if !args.iter().any(|a| a == "--background") {
+            let wheel = platform::contextmenu::wheel_paths(&args);
+            if !wheel.is_empty() {
+                windows::queue_wheel_paths(app, wheel);
+            } else if !args.iter().any(|a| a == "--background") {
+                // A second autostart launch (--background) must not pop the window up.
                 windows::show_main(app, None);
             }
         }))
@@ -37,6 +47,8 @@ pub fn run() {
                 windows::show_main(&handle, None);
             }
             platform::start(&handle);
+            // Opens once the overlay page is ready (with paths of further invocations).
+            windows::queue_wheel_paths(&handle, wheel_args);
             // Apply clipboard retention shortly after start (opening the store prunes it), so
             // expired items are removed even if nothing is copied, and remove download leftovers
             // of earlier runs (crash, failed cleanup). Delayed to keep startup light.
@@ -90,6 +102,16 @@ pub fn run() {
             ipc::overlay_hide,
             ipc::overlay_toast_action,
             ipc::wheel_drop,
+            // presets & wheel v2, image editor (Task 6)
+            ipc::run_preset,
+            ipc::wheel_open,
+            ipc::presets::get_wheel_config,
+            ipc::presets::set_wheel_config,
+            ipc::presets::reset_wheel_profile,
+            ipc::presets::reset_wheel_config,
+            ipc::presets::presets_for_extensions,
+            ipc::images::read_image_preview,
+            ipc::images::save_annotated,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build File Chameleon")

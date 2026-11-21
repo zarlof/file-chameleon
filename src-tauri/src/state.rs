@@ -6,6 +6,7 @@ use fc_core::clip::ClipStore;
 use fc_core::engine_mgr::{EngineManager, Manifest};
 use fc_core::engines::DefaultExecutor;
 use fc_core::jobs::queue::JobQueue;
+use fc_core::presets::WheelConfig;
 use fc_core::settings::Settings;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
@@ -43,6 +44,10 @@ impl Paths {
     pub fn staging_dir(&self) -> PathBuf {
         self.data.join("staging")
     }
+    /// Presets, groups and wheel profiles (Task 6).
+    pub fn wheel_file(&self) -> PathBuf {
+        self.config.join("wheel.json")
+    }
 }
 
 pub struct AppState {
@@ -60,6 +65,8 @@ pub struct AppState {
     /// Clipboard sequence number right after our own write (0 = none); updates with this number are not recorded.
     pub clip_self_write: AtomicU32,
     toast_seq: AtomicU64,
+    /// Wheel config (`wheel.json`), loaded on first use (Task 6).
+    wheel: OnceLock<Mutex<WheelConfig>>,
 }
 
 impl AppState {
@@ -87,6 +94,7 @@ impl AppState {
             clip_paused: AtomicBool::new(paused),
             clip_self_write: AtomicU32::new(0),
             toast_seq: AtomicU64::new(1),
+            wheel: OnceLock::new(),
         })
     }
 
@@ -172,6 +180,24 @@ impl AppState {
             .download_dir
             .or_else(|| self.app.path().download_dir().ok())
             .unwrap_or_else(|| PathBuf::from("."))
+    }
+
+    // ---- wheel config (Task 6)
+
+    /// The wheel config, loaded from `wheel.json` on first use (a missing or broken file gives
+    /// the built-ins). Do not hold the guard across `save_wheel_config`.
+    pub fn wheel_config(&self) -> std::sync::MutexGuard<'_, WheelConfig> {
+        self.wheel
+            .get_or_init(|| Mutex::new(WheelConfig::load(&self.paths.wheel_file())))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Write the current wheel config to `wheel.json` (callers validate first).
+    pub fn save_wheel_config(&self) -> fc_core::Result<()> {
+        // Held while writing, so concurrent saves never share the temp file.
+        let config = self.wheel_config();
+        config.save(&self.paths.wheel_file())
     }
 }
 

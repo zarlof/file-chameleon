@@ -9,6 +9,8 @@
 
 pub mod clipboard;
 pub mod downloads;
+pub mod images;
+pub mod presets;
 
 use crate::events::{self, NavPayload, ToolDone, ToolProgress};
 use crate::state::AppState;
@@ -19,7 +21,6 @@ use fc_core::formats::planner::{self, TargetOption};
 use fc_core::jobs::{ConvertOptions, JobId, JobRequest, JobSnapshot, Operation};
 use fc_core::settings::Settings;
 use serde::Serialize;
-use serde_json::json;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -129,7 +130,8 @@ pub fn describe_inputs(paths: &[String]) -> Vec<InputInfo> {
         .iter()
         .map(|p| {
             let path = PathBuf::from(p);
-            let f = formats::detect_path(&path);
+            // A folder is never a format, even when named like "photos.png".
+            let f = formats::detect_path(&path).filter(|_| !path.is_dir());
             InputInfo {
                 path: p.clone(),
                 name: path
@@ -475,56 +477,39 @@ pub fn overlay_toast_action(
     windows::toast_action(&app, &state, &kind, &action, &data);
 }
 
-/// Files were dropped on a wheel slice: convert them to `target` ("more" opens the main window).
-/// When the route needs a tool that is not installed, a `toolNeeded` toast offers to download it
-/// (and convert afterwards) instead. Async: it may create the main window.
+/// Files were dropped on (or clicked in) a wheel slot: run preset `target` on them (see
+/// `presets::run_preset`: copy/move without a folder asks for one, annotate opens the editor,
+/// a missing tool shows the `toolNeeded` toast). Async: it may create the main window or show
+/// a folder picker.
 #[tauri::command(async)]
-pub fn wheel_drop(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    paths: Vec<String>,
-    target: String,
-) -> CmdResult<Vec<JobId>> {
+pub fn wheel_drop(app: AppHandle, paths: Vec<String>, target: String) -> CmdResult<Vec<JobId>> {
     windows::hide_overlay(&app);
-    if target == "more" {
-        windows::show_main(
-            &app,
-            Some(NavPayload {
-                view: "convert".into(),
-                paths,
-                url: None,
-            }),
-        );
-        return Ok(vec![]);
-    }
-    let (_, targets) = targets_for_paths(&paths);
-    let needs = targets
-        .iter()
-        .find(|t| t.id == target)
-        .map(|t| t.needs_tools.clone())
-        .unwrap_or_default();
-    if let Some(tool) = needs.iter().find(|id| !state.engines().is_available(id)) {
-        let entry = state.engines().manifest().get(tool);
-        windows::show_toast(
-            &app,
-            "toolNeeded",
-            json!({
-                "tool": tool,
-                "name": entry.map(|e| e.name.clone()).unwrap_or_else(|| tool.to_string()),
-                "size": entry.map(|e| e.size).unwrap_or(0),
-                "paths": paths,
-                "target": target,
-            }),
-            Some(12000),
-        );
-        return Ok(vec![]);
-    }
-    let req = JobRequest {
-        inputs: paths.into_iter().map(PathBuf::from).collect(),
-        op: Operation::Convert { to: target },
-        options: Default::default(),
-    };
-    submit(&state, req)
+    presets::run_preset(
+        &app,
+        paths.into_iter().map(PathBuf::from).collect(),
+        &target,
+        true,
+        None,
+    )
+}
+
+/// Run a preset on files from the app (Convert view). Same rules as `wheel_drop`.
+#[tauri::command(async)]
+pub fn run_preset(app: AppHandle, paths: Vec<String>, preset_id: String) -> CmdResult<Vec<JobId>> {
+    presets::run_preset(
+        &app,
+        paths.into_iter().map(PathBuf::from).collect(),
+        &preset_id,
+        true,
+        None,
+    )
+}
+
+/// Open the wheel in click mode at the cursor for these files. Async: builds the slots (file
+/// checks) off the main thread.
+#[tauri::command(async)]
+pub fn wheel_open(app: AppHandle, paths: Vec<String>) {
+    windows::open_wheel_click(&app, paths);
 }
 
 #[cfg(test)]

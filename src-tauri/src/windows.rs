@@ -1,9 +1,10 @@
 //! Window management: the main window (created on demand, destroyed on close) and the
 //! single always-alive overlay window used for the drag wheel and toasts.
 
-use crate::events::{self, NavPayload, ToastPayload, WheelPayload, WheelTargets};
+use crate::events::{self, NavPayload, ToastPayload, WheelPayload, WheelThumb};
 use crate::state::AppState;
 use fc_core::jobs::{JobSnapshot, JobState};
+use serde::Serialize;
 use serde_json::json;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -15,8 +16,13 @@ use tauri::{
 pub const MAIN: &str = "main";
 pub const OVERLAY: &str = "overlay";
 
-/// Logical size of the wheel window (the wheel itself is drawn inside with a shadow margin).
-pub const WHEEL_SIZE: f64 = 440.0;
+/// Logical size of the wheel window at wheel size 100 % (`ringRadii(1).size` in
+/// `src/lib/wheel/geometry.ts`: the wheel, its group fans and a shadow margin). The window is
+/// `WHEEL_SIZE × wheelScale / 100` and the page draws the wheel centred in it.
+pub const WHEEL_SIZE: f64 = 540.0;
+/// Paths from several `--wheel` invocations (one per selected file) arriving within this time
+/// open one wheel.
+const WHEEL_ARGS_MS: u64 = 350;
 /// Logical size of the toast window (card + shadow margin).
 pub const TOAST_W: f64 = 404.0;
 pub const TOAST_H: f64 = 150.0;
@@ -42,6 +48,16 @@ struct OverlayCtl {
     /// Latest toast sent before `ready`; shown once the page is ready.
     queued_toast: Option<QueuedToast>,
     pending_nav: Option<NavPayload>,
+    /// The wheel is in click mode (opened for files, not by a drag).
+    click: bool,
+    /// The drag that opened the wheel started with Shift.
+    shift: bool,
+    /// Bumped on every wheel show; late slots / thumbnails of an older wheel are dropped.
+    wheel_id: u64,
+    /// Paths whose slots this wheel already got (a drag re-entering sends nothing new).
+    slots_for: Option<Vec<String>>,
+    /// Click-mode wheel requested before the page was ready; opened by `overlay_ready`.
+    pending_wheel: Option<Vec<String>>,
 }
 
 static CTL: Mutex<OverlayCtl> = Mutex::new(OverlayCtl {
@@ -51,6 +67,11 @@ static CTL: Mutex<OverlayCtl> = Mutex::new(OverlayCtl {
     ready: false,
     queued_toast: None,
     pending_nav: None,
+    click: false,
+    shift: false,
+    wheel_id: 0,
+    slots_for: None,
+    pending_wheel: None,
 });
 
 fn ctl() -> std::sync::MutexGuard<'static, OverlayCtl> {
@@ -158,14 +179,19 @@ pub fn create_overlay(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// The overlay page is listening: show a toast that arrived before it was.
+/// The overlay page is listening: open a click-mode wheel or show a toast that arrived before
+/// it was (the wheel wins, as it would have then).
 pub fn overlay_ready(app: &AppHandle) {
-    let queued = {
+    let (queued, wheel) = {
         let mut c = ctl();
         c.ready = true;
-        c.queued_toast.take()
+        (c.queued_toast.take(), c.pending_wheel.take())
     };
-    if let Some((kind, data, timeout_ms)) = queued {
+    if let Some(paths) = wheel {
+        // Builds the slots (file checks): not in this WebView2 callback.
+        let app = app.clone();
+        std::thread::spawn(move || open_wheel_click(&app, paths));
+    } else if let Some((kind, data, timeout_ms)) = queued {
         show_toast(app, &kind, data, timeout_ms);
     }
 }
@@ -192,7 +218,10 @@ fn hide_overlay_now(app: &AppHandle) {
         c.mode = Mode::Hidden;
         c.generation += 1;
         c.entered = false;
+        c.click = false;
+        c.slots_for = None;
     }
+    crate::platform::set_wheel_open(false, false, (0, 0, 0, 0));
     if let Some(w) = overlay(app) {
         let _ = w.emit(events::OVERLAY_HIDE, ());
         #[cfg(windows)]
@@ -222,49 +251,200 @@ fn hide_overlay_later(app: &AppHandle, ms: u64, only_if_not_entered: bool) {
     });
 }
 
-/// Show the wheel centred on the physical screen point (x, y). Called from the mouse hook.
-/// The window shows nothing until files enter it (`overlay://wheel-targets`), so other
-/// Ctrl+drags (text, a marquee selection) leave no trace.
-pub fn show_wheel_at(app: &AppHandle, x: i32, y: i32) {
-    let Some(w) = overlay(app) else { return };
-    if !ctl().ready {
-        return; // the page is still loading and could not draw or hit-test the wheel
-    }
+/// The monitor scale factor at the physical point (x, y) and the physical rect (left, top,
+/// right, bottom) of the wheel window centred there, kept inside the work area.
+fn wheel_rect(app: &AppHandle, x: i32, y: i32) -> (f64, (i32, i32, i32, i32)) {
     let scale = app
         .monitor_from_point(x as f64, y as f64)
         .ok()
         .flatten()
         .map(|m| m.scale_factor())
         .unwrap_or(1.0);
-    let size = (WHEEL_SIZE * scale).round() as i32;
+    let wheel = crate::ipc::presets::wheel_scale(&app.state::<AppState>().settings());
+    let size = (WHEEL_SIZE * wheel * scale).round() as i32;
+    let (left, top) = (x - size / 2, y - size / 2);
+    #[cfg(windows)]
+    let (left, top) = match crate::platform::win::work_area_at(x, y) {
+        Some((wl, wt, wr, wb)) => (
+            left.clamp(wl, (wr - size).max(wl)),
+            top.clamp(wt, (wb - size).max(wt)),
+        ),
+        None => (left, top),
+    };
+    (scale, (left, top, left + size, top + size))
+}
+
+/// Show the overlay as the wheel at `rect` (the mode is already set): reset the page, show the
+/// window without activating it, and let the hooks act on input.
+fn show_wheel_window(w: &WebviewWindow, scale: f64, rect: (i32, i32, i32, i32), click: bool) {
+    let _ = w.emit(events::OVERLAY_WHEEL, WheelPayload { scale, click });
+    #[cfg(windows)]
+    if let Ok(hwnd) = w.hwnd() {
+        let h = hwnd.0 as isize;
+        if !click {
+            crate::platform::win::share_drop_target(h);
+        }
+        let (l, t, r, b) = rect;
+        crate::platform::win::show_no_activate(h, l, t, r - l, b - t);
+    }
+    crate::platform::set_wheel_open(true, click, rect);
+}
+
+/// Show the wheel centred on the physical screen point (x, y). Called from the mouse hook.
+/// The window shows nothing until files enter it (`overlay://wheel-slots`), so other
+/// Ctrl+drags (text, a marquee selection) leave no trace. `shift`: Ctrl+Shift+drag.
+pub fn show_wheel_at(app: &AppHandle, x: i32, y: i32, shift: bool) {
+    let Some(w) = overlay(app) else { return };
+    if !ctl().ready {
+        return; // the page is still loading and could not draw or hit-test the wheel
+    }
+    let (scale, rect) = wheel_rect(app, x, y);
     {
         let mut c = ctl();
         c.mode = Mode::Wheel;
         c.generation += 1;
         c.entered = false;
+        c.click = false;
+        c.shift = shift;
+        c.wheel_id += 1;
+        c.slots_for = None;
     }
-    let _ = w.emit(events::OVERLAY_WHEEL, WheelPayload { scale });
-    #[cfg(windows)]
-    if let Ok(hwnd) = w.hwnd() {
-        crate::platform::win::share_drop_target(hwnd.0 as isize);
-        let (mut left, mut top) = (x - size / 2, y - size / 2);
-        if let Some((wl, wt, wr, wb)) = crate::platform::win::work_area_at(x, y) {
-            left = left.clamp(wl, (wr - size).max(wl));
-            top = top.clamp(wt, (wb - size).max(wt));
-        }
-        crate::platform::win::show_no_activate(hwnd.0 as isize, left, top, size, size);
-    }
+    show_wheel_window(&w, scale, rect, false);
     // No files dragged in shortly -> it was not a file drag (e.g. text selection): go away.
     hide_overlay_later(app, 700, true);
 }
 
+fn cursor() -> (i32, i32) {
+    #[cfg(windows)]
+    return crate::platform::win::cursor_pos();
+    #[cfg(not(windows))]
+    (0, 0)
+}
+
+/// Open the wheel in click mode at the cursor for `paths` (Explorer verb, "open the wheel").
+/// Callable from any thread. The window takes clicks but never focus: Esc, Tab, the mouse wheel
+/// and clicks outside it come from the global hooks. No auto-hide: Esc, a click outside or a
+/// choice closes it. Before the page is ready, `overlay_ready` opens it.
+pub fn open_wheel_click(app: &AppHandle, paths: Vec<String>) {
+    if paths.is_empty() {
+        return;
+    }
+    crate::platform::ensure_hooks(app);
+    on_main(app, move |app| {
+        let Some(w) = overlay(app) else { return };
+        let (x, y) = cursor();
+        let (scale, rect) = wheel_rect(app, x, y);
+        let wheel_id = {
+            let mut c = ctl();
+            if !c.ready {
+                c.pending_wheel = Some(paths);
+                return;
+            }
+            c.mode = Mode::Wheel;
+            c.generation += 1;
+            c.entered = true;
+            c.click = true;
+            c.shift = false;
+            c.wheel_id += 1;
+            c.slots_for = Some(paths.clone());
+            c.wheel_id
+        };
+        show_wheel_window(&w, scale, rect, true);
+        send_slots(app, wheel_id, paths, false, true);
+    });
+}
+
+static WHEEL_ARGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// Paths of an Explorer "Convert with File Chameleon" invocation (`--wheel`). Explorer starts one
+/// process per selected file, so the paths arriving within `WHEEL_ARGS_MS` open one wheel.
+pub fn queue_wheel_paths(app: &AppHandle, paths: Vec<String>) {
+    if paths.is_empty() {
+        return;
+    }
+    let first = {
+        let mut q = WHEEL_ARGS.lock().unwrap_or_else(|e| e.into_inner());
+        let first = q.is_empty();
+        for p in paths {
+            if !q.contains(&p) {
+                q.push(p);
+            }
+        }
+        first
+    };
+    if !first {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(WHEEL_ARGS_MS));
+        let paths = std::mem::take(&mut *WHEEL_ARGS.lock().unwrap_or_else(|e| e.into_inner()));
+        open_wheel_click(&app, paths);
+    });
+}
+
+/// Hook: mouse wheel or Tab while the wheel is open.
+pub fn wheel_flip(app: &AppHandle) {
+    on_main(app, |app| {
+        let open = ctl().mode == Mode::Wheel;
+        if open && let Some(w) = overlay(app) {
+            let _ = w.emit(events::OVERLAY_WHEEL_FLIP, ());
+        }
+    });
+}
+
+/// Hook: Esc, or a press outside the click-mode wheel.
+pub fn wheel_close(app: &AppHandle) {
+    on_main(app, |app| {
+        let open = ctl().mode == Mode::Wheel;
+        if open {
+            hide_overlay_now(app);
+        }
+    });
+}
+
+/// Build the slots for `paths` off the main thread (file checks for every preset) and send
+/// them, then the first file's thumbnail when it is an image, to wheel `wheel_id`.
+fn send_slots(app: &AppHandle, wheel_id: u64, paths: Vec<String>, shift: bool, click: bool) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let first = paths.first().cloned();
+        let slots = crate::ipc::presets::wheel_slots_for(&app, paths, shift, click);
+        emit_to_wheel(&app, wheel_id, events::OVERLAY_WHEEL_SLOTS, slots);
+        if let Some(path) = first
+            && let Some(data_url) = crate::ipc::images::wheel_thumbnail(&path)
+        {
+            let thumb = WheelThumb { path, data_url };
+            emit_to_wheel(&app, wheel_id, events::OVERLAY_WHEEL_THUMB, thumb);
+        }
+    });
+}
+
+/// Emit to the overlay on the main thread, only if wheel `wheel_id` is still the one shown.
+fn emit_to_wheel<S: Serialize + Clone + Send + 'static>(
+    app: &AppHandle,
+    wheel_id: u64,
+    event: &'static str,
+    payload: S,
+) {
+    on_main(app, move |app| {
+        let current = {
+            let c = ctl();
+            c.mode == Mode::Wheel && c.wheel_id == wheel_id
+        };
+        if current && let Some(w) = overlay(app) {
+            let _ = w.emit(event, payload);
+        }
+    });
+}
+
 /// Mouse button released somewhere: if nothing entered the wheel, hide it.
 pub fn on_drag_released(app: &AppHandle) {
-    let (mode, entered) = {
+    let (mode, entered, click) = {
         let c = ctl();
-        (c.mode, c.entered)
+        (c.mode, c.entered, c.click)
     };
-    if mode == Mode::Wheel {
+    if mode == Mode::Wheel && !click {
         // A drop on the wheel is handled by the page; give it a moment, then clean up anyway.
         hide_overlay_later(app, if entered { 1500 } else { 120 }, false);
     }
@@ -465,7 +645,8 @@ pub fn toast_action(
     }
 }
 
-/// `toolNeeded` → "Download": install in the background, then convert the dropped files.
+/// `toolNeeded` → "Download": install in the background, then run the preset `target` on the
+/// dropped files.
 fn install_then_convert(app: &AppHandle, state: &AppState, tool: String, data: &serde_json::Value) {
     let name = state
         .engines()
@@ -511,78 +692,70 @@ fn install_then_convert(app: &AppHandle, state: &AppState, tool: String, data: &
             );
             return;
         }
-        let (Some(to), false) = (target, paths.is_empty()) else {
+        let (Some(preset), false) = (target, paths.is_empty()) else {
             return;
         };
-        let req = fc_core::jobs::JobRequest {
-            inputs: paths,
-            op: fc_core::jobs::Operation::Convert { to },
-            options: Default::default(),
-        };
         // Results come back as the usual job toasts.
-        let _ = crate::ipc::submit(&state, req);
+        if let Err(e) = crate::ipc::presets::run_preset(&app, paths, &preset, true, None) {
+            eprintln!("run preset {preset} after install: {}", e.message);
+        }
     });
 }
 
 // ------------------------------------------------------------------ window events
 
 pub fn on_window_event(window: &Window, event: &WindowEvent) {
+    let app = window.app_handle();
+    if window.label() == MAIN {
+        // "Close button: quit" (Settings > General): closing the window ends the app, through
+        // the tray's quit (running jobs are cancelled and their partial files removed).
+        if let WindowEvent::CloseRequested { .. } = event
+            && !app.state::<AppState>().settings().close_to_tray
+        {
+            crate::tray::quit(app);
+        }
+        return;
+    }
     if window.label() != OVERLAY {
         return;
     }
-    let app = window.app_handle();
     if let WindowEvent::DragDrop(dd) = event {
         match dd {
             DragDropEvent::Enter { paths, .. } => {
-                // No files: not a file drag. The wheel stays invisible and goes away.
-                if ctl().mode != Mode::Wheel || paths.is_empty() {
-                    return;
-                }
-                {
-                    let mut c = ctl();
-                    c.entered = true;
-                    c.generation += 1; // cancels a pending "leave" hide
-                }
                 let paths: Vec<String> = paths
                     .iter()
                     .map(|p| p.to_string_lossy().into_owned())
                     .collect();
-                let (inputs, targets) = crate::ipc::targets_for_paths(&paths);
-                let first_kind = inputs.first().and_then(|i| i.kind);
-                let state = app.state::<AppState>();
-                let recent = state
-                    .settings()
-                    .recent_targets
-                    .into_iter()
-                    .filter(|r| targets.iter().any(|t| t.id == r))
-                    .collect();
-                // Only these get the download glyph (managed or PATH copies count as present).
-                let mut missing_tools: Vec<String> = Vec::new();
-                for tool in targets.iter().flat_map(|t| t.needs_tools.iter()) {
-                    if !missing_tools.iter().any(|m| m.as_str() == *tool)
-                        && !state.engines().is_available(tool)
-                    {
-                        missing_tools.push(tool.to_string());
+                let send = {
+                    let mut c = ctl();
+                    // No files: not a file drag. The wheel stays invisible and goes away.
+                    // Click mode ignores drags (the page does too).
+                    if c.mode != Mode::Wheel || c.click || paths.is_empty() {
+                        return;
                     }
+                    c.entered = true;
+                    c.generation += 1; // cancels a pending "leave" hide
+                    // Re-entering with the same files keeps the face and hover state.
+                    (c.slots_for.as_ref() != Some(&paths)).then(|| {
+                        c.slots_for = Some(paths.clone());
+                        (c.wheel_id, c.shift)
+                    })
+                };
+                if let Some((wheel_id, shift)) = send {
+                    send_slots(app, wheel_id, paths, shift, false);
                 }
-                let _ = window.emit(
-                    events::OVERLAY_WHEEL_TARGETS,
-                    WheelTargets {
-                        paths,
-                        first_kind,
-                        targets,
-                        recent,
-                        missing_tools,
-                    },
-                );
             }
             DragDropEvent::Leave => {
-                if ctl().mode == Mode::Wheel {
+                let drag = {
+                    let c = ctl();
+                    c.mode == Mode::Wheel && !c.click
+                };
+                if drag {
                     hide_overlay_later(app, 150, false);
                 }
             }
-            DragDropEvent::Drop { .. } => {
-                // The page hit-tests the drop and calls `wheel_drop` or `overlay_hide`.
+            // The page hit-tests the drop and calls `wheel_drop` or `overlay_hide`.
+            DragDropEvent::Drop { .. } if !ctl().click => {
                 hide_overlay_later(app, 2000, false);
             }
             _ => {}
