@@ -56,8 +56,10 @@
   }
 
   // live preview: one rope, three sample cards, drawn with the same maths as the line
-  const PW = 420;
   const size = $derived(sizeInfo(s.lineSize));
+  const PW = $derived(48 + 3 * size.card + 2 * 16);
+  let wrapW = $state(0);
+  const fitScale = $derived(wrapW > 0 ? Math.min(1, wrapW / PW) : 1);
   const pcolor = $derived(ropeColor(s.lineColor, 'var(--accent)'));
   const pop = $derived(Math.min(100, Math.max(30, opacity)) / 100);
   const pcenters = $derived([0, 1, 2].map((i) => 24 + i * (size.card + 16) + size.card / 2));
@@ -106,9 +108,12 @@
   }
 
   async function setHotkey(value: string) {
-    const clash = OTHERS.find((h) => sameHotkey(s[h.key], value));
+    const clash = [
+      ...OTHERS.map((h) => ({ k: h.key as keyof Settings, n: t(h.name) })),
+      ...EXTRA.map((h) => ({ k: h.key as keyof Settings, n: t(`line.settings.${h.label}`) })),
+    ].find((h) => value && sameHotkey(String(s[h.k]), value));
     if (clash) {
-      toast.show(t('line.settings.duplicate', { keys: formatHotkey(value, currentLang()), name: t(clash.name) }), 'error');
+      toast.show(t('line.settings.duplicate', { keys: formatHotkey(value, currentLang()), name: clash.n }), 'error');
       return;
     }
     if (await settings.update({ hotkeyLine: value })) reloadStatusSoon();
@@ -197,7 +202,8 @@
     <ListRow title={t('line.settings.sound')} subtitle={t('line.settings.soundHint')}>
       {#snippet trailing()}<Toggle checked={s.lineSound} disabled={off || s.reduceMotion} label={t('line.settings.sound')} onchange={(v) => set({ lineSound: v })} />{/snippet}
     </ListRow>
-    <div class="pv" aria-hidden="true" style:--op={pop} style:--rope={pcolor} style:--w="{Math.min(6, Math.max(1, thickness))}px" style:height="{size.band}px" style:--s={size.scale}>
+    <div class="pvwrap" bind:clientWidth={wrapW} style:height="{size.band * fitScale}px">
+    <div class="pv" aria-hidden="true" style:width="{PW}px" style:transform="scale({fitScale})" style:--op={pop} style:--rope={pcolor} style:--w="{Math.min(6, Math.max(1, thickness))}px" style:height="{size.band}px" style:--s={size.scale}>
       <svg width={PW} height={sag + 40} viewBox="0 0 {PW} {sag + 40}">
         <g transform="translate(0 {16 * size.scale})">
           <path d={pd} class="strand" />
@@ -209,6 +215,7 @@
         <span class="pcard" style:left="{c - size.card / 2}px" style:width="{size.card}px" style:top="{16 * size.scale + ropeY(PW, c, pcenters, sag) + 8 * size.scale}px"
           style:opacity={cardOpacity(opacity)}>{samples[i]}</span>
       {/each}
+    </div>
     </div>
   </Card>
 
@@ -270,9 +277,10 @@
   .slider { display: inline-flex; align-items: center; gap: var(--space-2); width: 200px; }
   .slider output { min-width: 36px; text-align: right; font: var(--text-callout); color: var(--text-secondary); }
   .pv {
-    position: relative; width: 420px; max-width: calc(100% - 2 * var(--space-3)); margin: var(--space-2) var(--space-3) var(--space-3);
+    position: relative; transform-origin: 0 0;
     border-radius: var(--radius-lg); overflow: hidden; background: color-mix(in srgb, var(--text) calc(var(--op) * 6%), transparent);
   }
+  .pvwrap { margin: var(--space-2) var(--space-3) var(--space-3); }
   .pv svg { position: absolute; left: 0; top: 0; overflow: visible; }
   .pv .strand { fill: none; stroke: var(--rope); stroke-width: var(--w); stroke-linecap: round; opacity: calc(0.35 + 0.65 * var(--op)); }
   .pv .knot { fill: var(--rope); opacity: calc(0.35 + 0.65 * var(--op)); }

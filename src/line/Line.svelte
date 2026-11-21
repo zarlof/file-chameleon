@@ -68,6 +68,9 @@
   const empty = $derived(ropes.length === 0);
   const focusedId = $derived(focus ? (order[focus.r]?.[focus.i] ?? null) : null);
   const byId = $derived(new Map(items.map((i) => [i.id, i])));
+  $effect(() => {
+    if (focusedId === null) previewOn = false;
+  });
   const previewItem = $derived(previewOn && focusedId !== null ? (byId.get(focusedId) ?? null) : null);
 
   const pend = new Map<number, Pend>();
@@ -314,15 +317,18 @@
     return id === null ? [] : [id];
   }
 
-  async function copy(ids: number[]) {
-    if (ids.length === 0) return;
+  /** True when the copy happened. */
+  async function copy(ids: number[]): Promise<boolean> {
+    if (ids.length === 0) return false;
     try {
       await api.clipCopy(ids);
       copiedId = ids[0];
       clearTimeout(copiedTimer);
       copiedTimer = setTimeout(() => (copiedId = null), 1100);
+      return true;
     } catch (e) {
       fail(e);
+      return false;
     }
   }
 
@@ -474,8 +480,7 @@
     const all = ropes.flatMap((r) => r.items);
     if (all.length === 0) return;
     const best = all.reduce((a, b) => (b.createdAt > a.createdAt || (b.createdAt === a.createdAt && b.id > a.id) ? b : a));
-    await copy([best.id]);
-    await hide();
+    if (await copy([best.id])) await hide();
   }
 
   function onkeydown(e: KeyboardEvent) {
@@ -503,7 +508,7 @@
       // Any other printable character starts a search (the shelf does the same).
       if (key.length === 1 && !ctrl && (!e.altKey || altGr) && !previewOn && !menu) {
         e.preventDefault();
-        startSearch(key);
+        startSearch(searchOpen ? query + key : key);
       }
       return;
     }
@@ -523,8 +528,7 @@
     if (key === 'Enter') {
       void (async () => {
         const ids = targetsFor(null);
-        await copy(ids);
-        if (ids.length > 0) await hide();
+        if (await copy(ids)) await hide();
       })();
     } else if (key === 'Delete') {
       if (!e.repeat) void trash(targetsFor(null));
@@ -634,7 +638,7 @@
       opacity={op}
       {cardOp}
       zoomOn={settings?.lineZoomOnHover ?? false}
-      onzoom={(item, rect) => (zoom = item && rect ? { item, rect } : null)}
+      onzoom={(item, rect) => (zoom = shown && item && rect ? { item, rect } : null)}
       emptyText={query.trim() ? t('search.none') : ''}
       onclick={pick}
       ondblclick={openItem}
@@ -701,7 +705,7 @@
   {@const it = menu.item}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="menu" role="menu" tabindex="-1" bind:this={menuEl} style:left="{menu.x}px" style:top="{menu.y}px" style:width="{MENU_W}px">
-    <button type="button" role="menuitem" onclick={() => menuDo(() => copy(targetsFor(it)))}>{t('menu.copy')}</button>
+    <button type="button" role="menuitem" onclick={() => menuDo(async () => { await copy(targetsFor(it)); })}>{t('menu.copy')}</button>
     <button type="button" role="menuitem" onclick={() => menuDo(() => api.linePaste(targetsFor(it)))}>{t('menu.paste')}</button>
     {#if it.kind === 'image' || it.kind === 'text'}
       <button type="button" role="menuitem" onclick={() => menuDo(() => openItem(it))}>{t('menu.edit')}</button>
