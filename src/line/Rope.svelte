@@ -9,12 +9,9 @@
   import Peg from './Peg.svelte';
   import { t } from './i18n';
 
-  /** Band height in px. Keep in step with ROPE_HEIGHT (this + 4 px margin) in src-tauri/src/line.rs. */
-  const BAND = 178;
-  const PEG_W = 112;
+  /** Space between two cards, and the rope's inset at both ends (not scaled). */
   const GAP = 16;
   const MARGIN = 24;
-  const TOP = 16;
 
   let {
     label,
@@ -25,6 +22,18 @@
     falls,
     selected,
     copiedId,
+    focusedId = null,
+    top,
+    band,
+    card,
+    scale,
+    color,
+    thickness,
+    opacity,
+    cardOp,
+    zoomOn = false,
+    onzoom,
+    emptyText = '',
     onclick,
     ondblclick,
     ondragout,
@@ -42,6 +51,22 @@
     falls: Record<number, number>;
     selected: Set<number>;
     copiedId: number | null;
+    focusedId?: number | null;
+    /** Where the band starts in the window and how tall it is (bandTops / SIZES in layout.ts). */
+    top: number;
+    band: number;
+    /** Card width and size factor. */
+    card: number;
+    scale: number;
+    /** Rope colour (any CSS colour), stroke width, backdrop opacity 0..1 and card opacity 0.9..1. */
+    color: string;
+    thickness: number;
+    opacity: number;
+    cardOp: number;
+    zoomOn?: boolean;
+    onzoom?: (item: ClipItem | null, rect: DOMRect | null) => void;
+    /** Shown in the band when a search leaves this rope empty. */
+    emptyText?: string;
     onclick: (item: ClipItem, e: MouseEvent) => void;
     ondblclick: (item: ClipItem) => void;
     ondragout: (item: ClipItem) => void;
@@ -51,28 +76,37 @@
     onmore: () => void;
   } = $props();
 
-  const centers = $derived(items.map((_, i) => MARGIN + i * (PEG_W + GAP) + PEG_W / 2));
-  const d = $derived(ropePath(width, centers));
+  const TOP = $derived(16 * scale);
+  const sag = $derived(18 * scale);
+  const centers = $derived(items.map((_, i) => MARGIN + i * (card + GAP) + card / 2));
+  const d = $derived(ropePath(width, centers, sag));
 </script>
 
-<div class="band" style:height="{BAND}px">
-  <svg class="cord" {width} height={TOP + 40} viewBox="0 0 {width} {TOP + 40}" aria-hidden="true">
+<div class="band" style:top="{top}px" style:height="{band}px" style:--op={opacity} style:--rope={color} style:--w="{thickness}px">
+  <svg class="cord" {width} height={TOP + sag + 22} viewBox="0 0 {width} {TOP + sag + 22}" aria-hidden="true">
     <g transform="translate(0 {TOP})">
-      <path {d} class="shade" transform="translate(0 2)" />
+      <path {d} class="shade" transform="translate(0 {1 + thickness / 2})" />
       <path {d} class="strand" />
-      <circle cx="3" cy="0" r="4.5" class="knot" />
-      <circle cx={width - 3} cy="0" r="4.5" class="knot" />
+      <circle cx="3" cy="0" r={3 + thickness * 0.9} class="knot" />
+      <circle cx={width - 3} cy="0" r={3 + thickness * 0.9} class="knot" />
     </g>
   </svg>
   <span class="label">{label}</span>
+  {#if items.length === 0 && emptyText}<span class="none">{emptyText}</span>{/if}
   {#each items as item, i (item.id)}
-    <div class="slot" style:left="{centers[i] - PEG_W / 2}px" style:top="{TOP + ropeY(width, centers[i], centers) + 8}px">
+    <div class="slot" style:left="{centers[i] - card / 2}px" style:top="{TOP + ropeY(width, centers[i], centers, sag) + 8 * scale}px" style:width="{card}px">
       <Peg
         {item}
         theta={angles[item.id] ?? 0}
         drop={fall(falls[item.id] ?? 1)}
         selected={selected.has(item.id)}
         copied={copiedId === item.id}
+        focused={focusedId === item.id}
+        {scale}
+        width={card}
+        {cardOp}
+        {zoomOn}
+        {onzoom}
         onclick={(e) => onclick(item, e)}
         ondblclick={() => ondblclick(item)}
         ondragout={() => ondragout(item)}
@@ -89,15 +123,16 @@
 
 <style>
   .band {
-    position: relative;
-    margin-bottom: 4px;
+    position: absolute;
+    left: 0;
+    right: 0;
     border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--window-bg) 38%, transparent);
+    background: color-mix(in srgb, var(--window-bg) calc(var(--op) * 38%), transparent);
   }
   .cord { position: absolute; inset: 0 auto auto 0; overflow: visible; pointer-events: none; }
-  .strand { fill: none; stroke: var(--text-secondary); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
-  .shade { fill: none; stroke: var(--text); stroke-width: 2.4; stroke-linecap: round; opacity: 0.12; }
-  .knot { fill: var(--text-secondary); opacity: 0.9; }
+  .strand { fill: none; stroke: var(--rope); stroke-width: var(--w); stroke-linecap: round; stroke-linejoin: round; opacity: calc(0.35 + 0.65 * var(--op)); }
+  .shade { fill: none; stroke: var(--text); stroke-width: var(--w); stroke-linecap: round; opacity: calc(0.12 * var(--op)); }
+  .knot { fill: var(--rope); opacity: calc(0.35 + 0.65 * var(--op)); }
   .label {
     position: absolute;
     left: 16px;
@@ -111,7 +146,9 @@
     pointer-events: none;
     z-index: 1;
   }
-  .slot { position: absolute; width: 112px; }
+  .slot { position: absolute; transition: left var(--dur) var(--ease-out), top var(--dur) var(--ease-out); }
+  :global([data-reduce-motion]) .slot { transition: none; }
+  .none { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-secondary); font: var(--text-callout); pointer-events: none; }
   .more {
     position: absolute;
     right: 14px;

@@ -97,7 +97,13 @@
     "recorder": {
       "off": "Kapalı",
       "recording": "Tuşlara basın…"
-    }
+    },
+    "lineSearch": "İpte ara",
+    "lineSearchHint": "İpi arama alanı odakta açar.",
+    "capture": "Ekran görüntüsü al",
+    "captureHint": "Fare hangi ekrandaysa onu resim olarak ipe asar. Öneri: Ctrl+Alt+A",
+    "copyLatestImage": "Son resmi kopyala",
+    "copyLatestImageHint": "İpteki en yeni resmi panoya kopyalar."
   },
   "clipboard": {
     "enable": "Pano geçmişini tut",

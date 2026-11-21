@@ -68,3 +68,23 @@ export function cardText(item: ClipItem, maxLines = 3): { title: string; lines: 
   if (rest.length > maxLines && lines.length > 0) lines[lines.length - 1] += '…';
   return { title, lines };
 }
+
+/** Lower-case, diacritics removed, Turkish dotted/dotless i folded together. */
+function fold(s: string): string {
+  return s
+    .replace(/İ/g, 'i')
+    .replace(/I/g, 'i')
+    .replace(/ı/g, 'i')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/ß/g, 'ss');
+}
+
+/** Search: every word of `query` must appear in the text, title, note, tags, OCR text or link title. Empty = everything. */
+export function matches(item: ClipItem, query: string): boolean {
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  if (words.length === 0) return true;
+  const hay = fold([item.text, item.title, item.note, ...item.tags, item.ocr, item.linkTitle].filter(Boolean).join('\n'));
+  return words.every((w) => hay.includes(w));
+}

@@ -6,10 +6,15 @@
   Never imports from src/app/.
 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick as afterRender } from 'svelte';
+  import { convertFileSrc } from '@tauri-apps/api/core';
   import { api, errorOf, on } from '../lib/ipc';
   import type { ClipItem, ClipShelf, Settings } from '../lib/types';
-  import { fitCount, overflow, splitRopes, visibleRopes, type RopeKey } from './logic';
+  import { fitCount, matches, overflow, splitRopes, visibleRopes, type RopeKey } from './logic';
+  import { bandTops, cardOpacity, ropeColor, sizeInfo, windowHeight } from './layout';
+  import { isCommandKey, nextFocus, type Focus, type NavKey } from './keys';
+  import { tick as hangTick } from './sound';
+  import Preview from './Preview.svelte';
   import { setLang, getLang, t } from './i18n';
   import { atRest, impulse, step, type Pend } from './physics';
   import Rope from './Rope.svelte';
@@ -20,8 +25,7 @@
   const RELOAD_DEBOUNCE = 150;
   const PEEK_MS = 2500;
   const MENU_W = 196;
-  /** One rope's band; the same number as BAND in Rope.svelte. The Rust side (line.rs ROPE_HEIGHT = BAND + 4 margin, CHROME_HEIGHT = 2 x 4 padding) sizes the window from it. */
-  const BAND = 178;
+  const ZOOM_W = 2;
 
   let settings = $state<Settings | null>(null);
   let items = $state<ClipItem[]>([]);
@@ -35,15 +39,36 @@
   let toast = $state<{ text: string; undo: boolean } | null>(null);
   let menu = $state<{ x: number; y: number; item: ClipItem } | null>(null);
   let menuEl = $state<HTMLElement | null>(null);
+  let query = $state('');
+  let searchOpen = $state(false);
+  let searchEl = $state<HTMLInputElement | null>(null);
+  let searchFocused = $state(false);
+  /** Keyboard focus (rope row, card index). Null until a key moves it; the mouse clears it. */
+  let focus = $state<Focus | null>(null);
+  let previewOn = $state(false);
+  let zoom = $state<{ item: ClipItem; rect: DOMRect } | null>(null);
   const angles = $state<Record<number, number>>({});
   const falls = $state<Record<number, number>>({});
 
   const reduce = $derived(settings?.reduceMotion ?? false);
   const ropeCfg = $derived(settings?.lineRopes ?? { images: true, text: true, links: true });
-  const ropes = $derived(visibleRopes(splitRopes(items, ropeCfg)));
-  const fit = $derived(fitCount(width - 72));
+  // The ropes that exist do not depend on the search (the window height does not jump while typing).
+  const baseRopes = $derived(visibleRopes(splitRopes(items, ropeCfg)));
+  const ropes = $derived(baseRopes.map((r) => ({ ...r, items: query.trim() ? r.items.filter((i) => matches(i, query)) : r.items })));
+  const size = $derived(sizeInfo(settings?.lineSize ?? 'medium'));
+  const sizeName = $derived(settings?.lineSize ?? 'medium');
+  const tops = $derived(bandTops(Math.max(1, ropes.length), sizeName));
+  const stripH = $derived(windowHeight(Math.max(1, ropes.length), sizeName));
+  const op = $derived(Math.min(100, Math.max(30, settings?.lineOpacity ?? 100)) / 100);
+  const cardOp = $derived(cardOpacity(op * 100));
+  const thickness = $derived(Math.min(6, Math.max(1, settings?.lineThickness ?? 2)));
+  const color = $derived(ropeColor(settings?.lineColor ?? 'accent', 'var(--accent)'));
+  const fit = $derived(fitCount(width - 72, size.card));
   const order = $derived(ropes.map((r) => r.items.slice(0, fit).map((i) => i.id)));
   const empty = $derived(ropes.length === 0);
+  const focusedId = $derived(focus ? (order[focus.r]?.[focus.i] ?? null) : null);
+  const byId = $derived(new Map(items.map((i) => [i.id, i])));
+  const previewItem = $derived(previewOn && focusedId !== null ? (byId.get(focusedId) ?? null) : null);
 
   const pend = new Map<number, Pend>();
   let raf = 0;
@@ -121,7 +146,10 @@
     for (const k of Object.keys(falls)) {
       const id = Number(k);
       const tt = falls[id] + dt / 0.55;
-      if (tt >= 1) delete falls[id];
+      if (tt >= 1) {
+        delete falls[id];
+        if (settings?.lineSound) hangTick();
+      }
       else {
         falls[id] = tt;
         moving = true;
@@ -138,6 +166,7 @@
 
   function onHover(item: ClipItem, dir: number) {
     hoverId = item.id;
+    focus = null;
     nudge(item.id, 0.6 * dir);
   }
 
@@ -198,12 +227,29 @@
       order.flat().slice(0, 14).forEach((id, i) => setTimeout(() => shown && nudge(id, (i % 2 ? 1 : -1) * 0.35), i * 25));
     }
     scheduleBreeze();
-    if ((mode === 'peek' || mode === 'reveal') && !pointerInside) peekTimer = setTimeout(() => !pointerInside && void hide(), PEEK_MS);
+    // A reveal under a pointer that is already inside must not auto-hide: ask the browser, and pointermove confirms.
+    if (document.documentElement.matches(':hover')) pointerInside = true;
+    if (mode === 'search') {
+      searchOpen = true;
+      void afterRender().then(() => searchEl?.focus());
+    }
+    if ((mode === 'peek' || mode === 'reveal') && !pointerInside) {
+      peekTimer = setTimeout(() => !pointerInside && !document.documentElement.matches(':hover') && void hide(), PEEK_MS);
+    }
   }
 
   function hidden() {
     shown = false;
+    // WebView2 may not send pointerleave when the window hides under the pointer.
+    pointerInside = false;
+    hoverId = null;
     menu = null;
+    query = '';
+    searchOpen = false;
+    searchFocused = false;
+    focus = null;
+    previewOn = false;
+    zoom = null;
     selected = [];
     anchor = null;
     toast = null;
@@ -229,7 +275,8 @@
     hoverId = null;
     clearTimeout(peekTimer);
     clearTimeout(hideTimer);
-    if (menu) return; // the menu is open: closing it re-arms this (see closeMenu)
+    zoom = null;
+    if (menu || searchFocused || query || previewOn) return; // in use: Esc or a click outside closes it
     hideTimer = setTimeout(() => {
       if (!dragging && !menu) void hide();
     }, HIDE_DELAY);
@@ -263,7 +310,7 @@
   function targetsFor(item: ClipItem | null): number[] {
     if (item && !selected.includes(item.id)) return [item.id];
     if (selected.length > 0) return selected;
-    const id = item?.id ?? hoverId;
+    const id = item?.id ?? focusedId ?? hoverId;
     return id === null ? [] : [id];
   }
 
@@ -325,6 +372,7 @@
   async function dragOut(item: ClipItem) {
     dragging = true;
     menu = null;
+    zoom = null;
     try {
       await api.lineDragOut(item.id);
     } catch (e) {
@@ -373,6 +421,7 @@
 
   // ------------------------------------------------------------ context menu
   function openMenu(item: ClipItem, e: MouseEvent) {
+    zoom = null;
     const h = item.kind === 'image' ? 250 : 190;
     menu = { x: Math.max(4, Math.min(e.clientX, width - MENU_W - 4)), y: Math.max(4, Math.min(e.clientY, window.innerHeight - h - 4)), item };
   }
@@ -393,22 +442,114 @@
     if (menu && !menuEl?.contains(e.target as Node)) closeMenu();
   }
 
+  function itemOf(id: number | null): ClipItem | null {
+    return id === null ? null : (byId.get(id) ?? null);
+  }
+
+  /** Make sure the keyboard has a focus: the hovered card, else the first card. */
+  function ensureFocus(): boolean {
+    if (focus && focusedId !== null) return true;
+    const counts = order.map((r) => r.length);
+    let f: Focus | null = null;
+    if (hoverId !== null) {
+      const r = order.findIndex((ids) => ids.includes(hoverId!));
+      if (r >= 0) f = { r, i: order[r].indexOf(hoverId) };
+    }
+    focus = f ?? nextFocus(counts, null, 'ArrowRight');
+    return focus !== null;
+  }
+
+  function startSearch(text: string) {
+    searchOpen = true;
+    query = text;
+    previewOn = false;
+    void afterRender().then(() => {
+      searchEl?.focus();
+      searchEl?.setSelectionRange(query.length, query.length);
+    });
+  }
+
+  /** Enter in the search field: copy the newest match and close. */
+  async function copyNewestMatch() {
+    const all = ropes.flatMap((r) => r.items);
+    if (all.length === 0) return;
+    const best = all.reduce((a, b) => (b.createdAt > a.createdAt || (b.createdAt === a.createdAt && b.id > a.id) ? b : a));
+    await copy([best.id]);
+    await hide();
+  }
+
   function onkeydown(e: KeyboardEvent) {
-    const altGr = e.getModifierState('AltGraph');
-    const ctrl = !altGr && (e.ctrlKey || e.metaKey);
+    const inField = e.target === searchEl;
     if (e.key === 'Escape') {
       e.preventDefault();
-      if (menu) closeMenu();
+      if (previewOn) previewOn = false;
+      else if (menu) closeMenu();
+      else if (selected.length > 0) selected = [];
+      else if (query) query = '';
       else void hide();
-    } else if (e.key === 'Delete' && !ctrl) {
-      e.preventDefault();
+      return;
+    }
+    if (inField) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        void copyNewestMatch();
+      }
+      return; // everything else is text
+    }
+    const altGr = e.getModifierState('AltGraph');
+    const ctrl = !altGr && (e.ctrlKey || e.metaKey);
+    const key = e.key;
+    if (!isCommandKey(e, false)) {
+      // Any other printable character starts a search (the shelf does the same).
+      if (key.length === 1 && !ctrl && (!e.altKey || altGr) && !previewOn && !menu) {
+        e.preventDefault();
+        startSearch(key);
+      }
+      return;
+    }
+    e.preventDefault();
+    if (ctrl) {
+      const k = key.toLowerCase();
+      if (key === 'Enter') {
+        const ids = targetsFor(null);
+        if (ids.length > 0) void api.linePaste(ids).catch(fail);
+      } else if (k === 'z') void undo();
+      else if (k === 'c' && e.shiftKey) {
+        const it = itemOf(targetsFor(null)[0] ?? null);
+        if (it?.kind === 'image') void api.clipCopyOcr(it.id).then(() => showToast(t('ocrCopied'))).catch(fail);
+      } else if (k === 'c') void copy(targetsFor(null));
+      return;
+    }
+    if (key === 'Enter') {
+      void (async () => {
+        const ids = targetsFor(null);
+        await copy(ids);
+        if (ids.length > 0) await hide();
+      })();
+    } else if (key === 'Delete') {
       if (!e.repeat) void trash(targetsFor(null));
-    } else if (ctrl && e.key.toLowerCase() === 'z') {
-      e.preventDefault();
-      void undo();
-    } else if (ctrl && e.key.toLowerCase() === 'c') {
-      e.preventDefault();
-      void copy(targetsFor(null));
+    } else if (key === ' ') {
+      if (e.repeat) return;
+      if (previewOn) previewOn = false;
+      else if (ensureFocus()) {
+        zoom = null;
+        previewOn = true;
+      }
+    } else if (key.startsWith('Arrow') || key === 'Home' || key === 'End') {
+      // the first arrow press only shows the focus (on the hovered or first card); the next ones move it
+      if (focus === null || focusedId === null) ensureFocus();
+      else focus = nextFocus(order.map((r) => r.length), focus, key as NavKey);
+      zoom = null;
+    } else if (/^[1-9]$/.test(key)) {
+      if (!ensureFocus() || !focus) return;
+      const n = Number(key) - 1;
+      if (n < order[focus.r].length) focus = { r: focus.r, i: n };
+    } else if (key === 'p' || key === 'P') {
+      const it = itemOf(targetsFor(null)[0] ?? null);
+      if (it && !e.repeat) void togglePin(it);
+    } else if (key === 'e' || key === 'E') {
+      const it = itemOf(targetsFor(null)[0] ?? null);
+      if (it && (it.kind === 'text' || it.kind === 'image')) void openItem(it);
     }
   }
 
@@ -422,6 +563,11 @@
     const root = document.documentElement;
     root.addEventListener('pointerenter', enter);
     root.addEventListener('pointerleave', leave);
+    // A pointer that was already inside when the window appeared sends no enter: the first move says so.
+    const moved = () => {
+      if (!pointerInside) enter();
+    };
+    root.addEventListener('pointermove', moved, { passive: true });
     (async () => {
       // Listeners first: the window starts hidden and the first show must never be missed.
       // While hidden nothing loads, animates or times: events only mark the list stale.
@@ -456,6 +602,7 @@
       document.removeEventListener('visibilitychange', scheduleBreeze);
       root.removeEventListener('pointerenter', enter);
       root.removeEventListener('pointerleave', leave);
+      root.removeEventListener('pointermove', moved);
       if (raf) cancelAnimationFrame(raf);
       for (const timer of [hideTimer, peekTimer, breezeTimer, toastTimer, copiedTimer, clickTimer, reloadTimer]) clearTimeout(timer);
       unlisten.forEach((u) => u());
@@ -466,7 +613,7 @@
 <svelte:window bind:innerWidth={width} {onkeydown} {onpointerdown} />
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="strip" class:shown>
+<div class="strip" class:shown style:height="{stripH}px">
   {#each ropes as rope, i (rope.key)}
     <Rope
       label={t(`rope.${rope.key}`)}
@@ -477,6 +624,18 @@
       {falls}
       selected={new Set(selected)}
       {copiedId}
+      {focusedId}
+      top={tops[i]}
+      band={size.band}
+      card={size.card}
+      scale={size.scale}
+      {color}
+      {thickness}
+      opacity={op}
+      {cardOp}
+      zoomOn={settings?.lineZoomOnHover ?? false}
+      onzoom={(item, rect) => (zoom = item && rect ? { item, rect } : null)}
+      emptyText={query.trim() ? t('search.none') : ''}
       onclick={pick}
       ondblclick={openItem}
       ondragout={dragOut}
@@ -485,14 +644,31 @@
       onhover={onHover}
       onmore={() => void api.showShelf().then(hide).catch(fail)}
     />
-    {#if i === 0 && paused}<span class="paused">{t('paused')}</span>{/if}
   {/each}
+  {#if paused && !empty}<span class="paused" class:shift={searchOpen}>{t('paused')}</span>{/if}
   {#if empty}
-    <div class="empty" style:height="{BAND}px">
+    <div class="empty" style:top="{tops[0]}px" style:height="{size.band}px" style:--op={op}>
       <span>{t('empty')}</span>
       {#if paused}<b>{t('paused')}</b>{/if}
     </div>
   {/if}
+
+  {#if searchOpen}
+    <input
+      class="search"
+      type="search"
+      bind:this={searchEl}
+      bind:value={query}
+      placeholder={t('search.placeholder')}
+      aria-label={t('search.placeholder')}
+      spellcheck="false"
+      autocomplete="off"
+      onfocus={() => (searchFocused = true)}
+      onblur={() => (searchFocused = false)}
+    />
+  {/if}
+
+  {#if previewItem}<Preview item={previewItem} onclose={() => (previewOn = false)} />{/if}
 
   {#if toast}
     <div class="toast" role="status">
@@ -501,6 +677,25 @@
     </div>
   {/if}
 </div>
+
+{#if zoom && !previewOn}
+  {@const z = zoom}
+  {@const file = z.item.edited ?? z.item.image ?? z.item.thumb}
+  {@const zw = Math.min(z.rect.width * ZOOM_W, width - 8)}
+  {@const ratio = z.item.width && z.item.height ? z.item.height / z.item.width : 0.75}
+  {@const zh = Math.min(zw * ratio, Math.max(60, stripH - 8))}
+  {#if file}
+    <img
+      class="zoom"
+      src={convertFileSrc(file)}
+      alt=""
+      style:width="{zw}px"
+      style:height="{zh}px"
+      style:left="{Math.max(4, Math.min(z.rect.left + z.rect.width / 2 - zw / 2, width - zw - 4))}px"
+      style:top="{Math.max(4, Math.min(z.rect.bottom + 6, stripH - zh - 4))}px"
+    />
+  {/if}
+{/if}
 
 {#if menu}
   {@const it = menu.item}
@@ -528,7 +723,6 @@
   .strip {
     position: fixed;
     inset: 0 0 auto 0;
-    padding: 4px 0;
     transform: translateY(-104%);
     transition: transform var(--dur-slow) var(--ease-out);
     font: var(--text-body);
@@ -548,14 +742,43 @@
     font: var(--text-caption);
     z-index: 3;
   }
+  .paused.shift { right: 230px; }
+  .search {
+    position: absolute;
+    top: 6px;
+    right: 14px;
+    z-index: 4;
+    width: 204px;
+    height: 26px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--elevated-bg);
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--glass-edge), var(--shadow-sm);
+    font: var(--text-callout);
+    outline: none;
+  }
+  .search:focus { box-shadow: inset 0 0 0 2px var(--accent), var(--shadow-sm); }
+  .zoom {
+    position: fixed;
+    z-index: 9;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+    background: var(--elevated-bg);
+    box-shadow: var(--shadow-lg);
+    pointer-events: none;
+  }
   .empty {
+    position: absolute;
+    left: 0;
+    right: 0;
     display: flex;
     gap: var(--space-2);
     align-items: center;
     justify-content: center;
-    margin-bottom: 4px;
     border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--window-bg) 38%, transparent);
+    background: color-mix(in srgb, var(--window-bg) calc(var(--op) * 38%), transparent);
     color: var(--text-secondary);
     font: var(--text-callout);
   }

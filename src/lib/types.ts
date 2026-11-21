@@ -54,8 +54,8 @@ export interface Settings {
   linePeekOnCopy: boolean;
   lineBreeze: boolean;
   lineRopes: { images: boolean; text: boolean; links: boolean };
-  /** 'accent' or an Accent name. */
-  lineColor: 'accent' | Accent;
+  /** 'accent' or a #rrggbb hex. */
+  lineColor: string;
   /** 1..6 px */
   lineThickness: number;
   /** 30..100 percent */

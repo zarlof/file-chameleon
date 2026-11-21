@@ -32,12 +32,15 @@
   }
 
   // ---- global hotkeys
-  type HotkeyKey = 'hotkeyShelf' | 'hotkeyLibrary' | 'hotkeyDownloadLink' | 'hotkeyLine';
+  type HotkeyKey = 'hotkeyShelf' | 'hotkeyLibrary' | 'hotkeyDownloadLink' | 'hotkeyLine' | 'hotkeyLineSearch' | 'hotkeyCapture' | 'hotkeyCopyLatestImage';
   const HOTKEYS: { key: HotkeyKey; name: HotkeyStatus['name'] }[] = [
     { key: 'hotkeyShelf', name: 'shelf' },
     { key: 'hotkeyLibrary', name: 'library' },
     { key: 'hotkeyDownloadLink', name: 'downloadLink' },
     { key: 'hotkeyLine', name: 'line' },
+    { key: 'hotkeyLineSearch', name: 'lineSearch' },
+    { key: 'hotkeyCapture', name: 'capture' },
+    { key: 'hotkeyCopyLatestImage', name: 'copyLatestImage' },
   ];
   let statuses = $state<HotkeyStatus[]>([]);
   let statusTimer: ReturnType<typeof setTimeout> | undefined;

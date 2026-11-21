@@ -7,7 +7,10 @@
   import { convertFileSrc } from '@tauri-apps/api/core';
   import type { ClipItem } from '../lib/types';
   import { cardText } from './logic';
+  import { renderMd } from './markdown';
   import { t } from './i18n';
+
+  const ZOOM_DELAY = 400;
 
   let {
     item,
@@ -15,6 +18,12 @@
     drop,
     selected,
     copied,
+    focused = false,
+    scale = 1,
+    width = 112,
+    cardOp = 1,
+    zoomOn = false,
+    onzoom,
     onclick,
     ondblclick,
     ondragout,
@@ -28,6 +37,16 @@
     drop: number;
     selected: boolean;
     copied: boolean;
+    /** The keyboard focus is on this card. */
+    focused?: boolean;
+    /** Size factor (0.8 / 1 / 1.25) and the card width in px, from layout.ts. */
+    scale?: number;
+    width?: number;
+    /** Card opacity, 0.9 to 1. */
+    cardOp?: number;
+    /** After a 400 ms rest on an image card, report its box (null when the pointer leaves). */
+    zoomOn?: boolean;
+    onzoom?: (item: ClipItem | null, rect: DOMRect | null) => void;
     onclick: (e: MouseEvent) => void;
     ondblclick: () => void;
     ondragout: () => void;
@@ -38,6 +57,9 @@
 
   const thumb = $derived(item.editedThumb ?? item.thumb);
   const words = $derived(cardText(item));
+  const noteHtml = $derived(item.kind === 'text' ? renderMd((item.text ?? '').split('\n').slice(0, 7).join('\n')) : '');
+  let cardEl = $state<HTMLElement | null>(null);
+  let zoomTimer: ReturnType<typeof setTimeout> | undefined;
   let thumbFailed = $state(false);
 
   const DRAG_PX = 6;
@@ -78,21 +100,35 @@
   }
   function enter(e: PointerEvent) {
     onhover(e.movementX === 0 ? 1 : Math.sign(e.movementX));
+    clearTimeout(zoomTimer);
+    if (zoomOn && item.kind === 'image' && onzoom) zoomTimer = setTimeout(() => cardEl && onzoom(item, cardEl.getBoundingClientRect()), ZOOM_DELAY);
   }
-  $effect(() => cleanup);
+  function leave() {
+    clearTimeout(zoomTimer);
+    onzoom?.(null, null);
+  }
+  $effect(() => () => {
+    cleanup();
+    clearTimeout(zoomTimer);
+  });
 </script>
 
 <div
   class="peg"
   class:selected
   class:copied
+  class:focused
+  style:--s={scale}
+  style:width="{width}px"
+  style:--card-op={cardOp}
   style:--theta="{theta}rad"
   style:--lift="{(1 - drop) * -72}px"
   style:opacity={drop < 0.15 ? drop / 0.15 : 1}
   role="presentation"
   onpointerenter={enter}
+  onpointerleave={leave}
 >
-  <svg class="pin" viewBox="0 0 16 38" width="14" height="34" aria-hidden="true" class:pinned={item.pinned}>
+  <svg class="pin" viewBox="0 0 16 38" width={14 * scale} height={34 * scale} aria-hidden="true" class:pinned={item.pinned}>
     <rect x="3.2" y="1" width="4.4" height="35" rx="2" class="leg" />
     <rect x="8.4" y="1" width="4.4" height="35" rx="2" class="leg" />
     <circle cx="8" cy="9" r="3.2" class="coil" />
@@ -101,6 +137,7 @@
 
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div
+    bind:this={cardEl}
     class="card kind-{item.kind === 'image' ? 'image' : item.kind === 'text' ? 'text' : 'link'}"
     role="button"
     tabindex="-1"
@@ -123,12 +160,13 @@
       </div>
     {:else if item.kind === 'text'}
       <div class="note">
-        {#if words.title}<b>{words.title}</b>{/if}
-        {#each words.lines as l, i (i)}<span>{l}</span>{/each}
+        {#if item.title}<b>{item.title}</b>{/if}
+        <div class="md">{@html noteHtml}</div>
       </div>
     {:else}
       <div class="tag">
         <i class="hole"></i>
+        {#if item.thumb}<img class="lt" src={convertFileSrc(item.thumb)} alt="" draggable="false" />{/if}
         {#if words.title}<b>{words.title}</b>{/if}
         {#each words.lines as l, i (i)}<span class="host">{l}</span>{/each}
       </div>
@@ -148,16 +186,15 @@
 <style>
   .peg {
     position: relative;
-    width: 112px;
     transform-origin: 50% 0;
     transform: translateY(var(--lift)) rotate(var(--theta));
     will-change: transform;
   }
   .pin {
     position: absolute;
-    top: -17px;
+    top: calc(var(--s) * -17px);
     left: 50%;
-    margin-left: -7px;
+    margin-left: calc(var(--s) * -7px);
     z-index: 2;
     filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.35));
     pointer-events: none;
@@ -170,35 +207,39 @@
 
   .card {
     position: relative;
-    margin-top: 8px;
+    margin-top: calc(var(--s) * 8px);
     border-radius: var(--radius-xs);
     box-shadow: var(--shadow-md);
     color: var(--text);
     font: var(--text-caption);
+    font-size: calc(var(--s) * 11px);
+    opacity: var(--card-op);
     overflow: hidden;
     transition: box-shadow var(--dur-fast), transform var(--dur) var(--ease-out);
   }
   .peg:hover .card { box-shadow: var(--shadow-lg); }
   .selected .card { box-shadow: 0 0 0 2px var(--accent), var(--shadow-md); }
+  .focused .card { outline: 2px solid var(--text); outline-offset: 2px; }
   .copied .card { transform: translateY(-6px); }
   :global([data-reduce-motion]) .card { transition: none; }
 
-  .print { padding: 5px 5px 14px; background: var(--card-bg); }
-  .print img, .ph { display: block; width: 100%; height: 76px; object-fit: cover; border-radius: 1px; background: var(--control-bg); pointer-events: none; }
+  .print { padding: calc(var(--s) * 5px) calc(var(--s) * 5px) calc(var(--s) * 14px); background: var(--card-bg); }
+  .print img, .ph { display: block; width: 100%; height: calc(var(--s) * 76px); object-fit: cover; border-radius: 1px; background: var(--control-bg); pointer-events: none; }
   .ph { display: grid; place-items: center; color: var(--text-tertiary); font: var(--text-caption); }
 
   .note, .tag {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    height: 92px;
-    padding: var(--space-2);
+    height: calc(var(--s) * 92px);
+    padding: calc(var(--s) * 8px);
     background: var(--elevated-bg);
     overflow: hidden;
   }
   .note { background: linear-gradient(135deg, var(--elevated-bg) 90%, var(--control-bg-hover) 100%); }
   .note b, .tag b {
     font: var(--text-callout);
+    font-size: calc(var(--s) * 12px);
     font-weight: 600;
     display: -webkit-box;
     -webkit-box-orient: vertical;
@@ -207,13 +248,13 @@
     overflow: hidden;
     word-break: break-word;
   }
-  .note span, .tag span {
+  .tag span {
     color: var(--text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .tag { padding-top: 14px; border-radius: var(--radius-sm); border-left: 3px solid var(--accent); }
+  .tag { padding-top: calc(var(--s) * 14px); border-radius: var(--radius-sm); border-left: 3px solid var(--accent); }
   .hole {
     position: absolute;
     top: 5px;
@@ -257,4 +298,12 @@
   }
   .card:hover .x { opacity: 1; }
   .x:hover { background: var(--red); color: var(--on-accent); }
+  .tag .lt { display: block; width: 100%; height: calc(var(--s) * 40px); object-fit: cover; border-radius: 2px; flex: none; pointer-events: none; }
+  .md { flex: 1; min-height: 0; overflow: hidden; color: var(--text-secondary); line-height: 1.3; word-break: break-word; }
+  .md :global(p), .md :global(ul), .md :global(h1), .md :global(h2), .md :global(h3) { margin: 0; font-size: inherit; font-weight: inherit; }
+  .md :global(h1), .md :global(h2), .md :global(h3) { color: var(--text); font-weight: 600; }
+  .md :global(strong) { color: var(--text); }
+  .md :global(ul) { padding-left: 1.1em; }
+  .md :global(p) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .md :global(code) { font-family: var(--font-mono, monospace); background: var(--control-bg); border-radius: 3px; padding: 0 2px; }
 </style>

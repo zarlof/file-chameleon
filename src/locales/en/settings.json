@@ -97,7 +97,13 @@
     "recorder": {
       "off": "Off",
       "recording": "Press keys…"
-    }
+    },
+    "lineSearch": "Search the line",
+    "lineSearchHint": "Opens the line with the search field focused.",
+    "capture": "Capture the screen",
+    "captureHint": "Hangs the screen under the cursor on the line as an image. Suggestion: Ctrl+Alt+A",
+    "copyLatestImage": "Copy the latest image",
+    "copyLatestImageHint": "Copies the newest image on the line to the clipboard."
   },
   "clipboard": {
     "enable": "Keep clipboard history",

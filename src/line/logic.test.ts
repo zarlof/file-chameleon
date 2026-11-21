@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ClipItem, ClipKind } from '../lib/types';
-import { cardText, fitCount, overflow, splitRopes, visibleRopes } from './logic';
+import { cardText, fitCount, matches, overflow, splitRopes, visibleRopes } from './logic';
 
 let n = 0;
 function item(kind: ClipKind, over: Partial<ClipItem> = {}): ClipItem {
@@ -74,5 +74,17 @@ describe('cardText', () => {
     const c = cardText(item('link', { text: 'https://www.example.com/a/b?x=1', linkTitle: 'Example' }));
     expect(c.title).toBe('Example');
     expect(c.lines).toEqual(['example.com/a/b?x=1']);
+  });
+});
+
+describe('matches', () => {
+  it('search_matches', () => {
+    expect(matches(item('text', { text: 'Şirket raporu' }), 'sirket')).toBe(true);
+    expect(matches(item('image', { ocr: 'INVOICE 42' }), 'invoice')).toBe(true);
+    expect(matches(item('text', { tags: ['iş'] }), 'is')).toBe(true);
+    expect(matches(item('text', { text: 'abc' }), '')).toBe(true);
+    expect(matches(item('text', { text: 'abc' }), 'xyz')).toBe(false);
+    expect(matches(item('link', { linkTitle: 'İstanbul Rehberi' }), 'istanbul')).toBe(true);
+    expect(matches(item('text', { text: 'ILIK' }), 'ılık')).toBe(true);
   });
 });
