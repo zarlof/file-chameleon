@@ -2,6 +2,7 @@
 //! autostart, OS language.
 
 pub mod clipboard;
+pub mod contextmenu;
 #[cfg(windows)]
 mod hook;
 #[cfg(windows)]
@@ -20,6 +21,12 @@ pub fn start(app: &AppHandle) {
     if s.clipboard_enabled {
         clipboard::start(app);
     }
+    // Rewrite the Explorer verb: the exe may have moved since it was written.
+    if s.context_menu
+        && let Err(e) = contextmenu::set_enabled(true, &ui_language(&s.language))
+    {
+        eprintln!("context menu: {e}");
+    }
     // Clipboard v2 (Task 9): hotkeys, OCR, watched image folders, retention.
     hotkeys::configure(app, &s);
     ocr::set_enabled(s.clipboard_ocr);
@@ -31,30 +38,65 @@ fn configure_wheel(app: &AppHandle, s: &Settings) {
     #[cfg(windows)]
     {
         hook::set_config(s.wheel_enabled, s.wheel_any_app);
+        hook::set_flip(s.wheel_flip_scroll, s.wheel_flip_tab);
         if s.wheel_enabled {
-            let app = app.clone();
-            hook::ensure_started(move |ev| match ev {
-                hook::HookEvent::DragStart {
-                    x,
-                    y,
-                    down_x,
-                    down_y,
-                } => {
-                    if hook::source_allowed(down_x, down_y) {
-                        let a = app.clone();
-                        let _ =
-                            app.run_on_main_thread(move || crate::windows::show_wheel_at(&a, x, y));
-                    }
-                }
-                hook::HookEvent::Released => {
-                    let a = app.clone();
-                    let _ = app.run_on_main_thread(move || crate::windows::on_drag_released(&a));
-                }
-            });
+            ensure_hooks(app);
         }
     }
     #[cfg(not(windows))]
     let _ = (app, s);
+}
+
+// ---- wheel v2 (Task 6)
+
+/// Start the global input hooks (idempotent). Ctrl+drag needs them, and so does the click-mode
+/// wheel even when the Ctrl+drag trigger is off (Esc, Tab, clicks outside it).
+pub fn ensure_hooks(app: &AppHandle) {
+    #[cfg(windows)]
+    {
+        let app = app.clone();
+        hook::ensure_started(move |ev| match ev {
+            hook::HookEvent::DragStart {
+                x,
+                y,
+                down_x,
+                down_y,
+                shift,
+            } => {
+                let excluded = app.state::<AppState>().settings().wheel_excluded_apps;
+                if hook::source_allowed(down_x, down_y, &excluded) {
+                    let a = app.clone();
+                    let _ = app
+                        .run_on_main_thread(move || crate::windows::show_wheel_at(&a, x, y, shift));
+                }
+            }
+            hook::HookEvent::Released => {
+                let a = app.clone();
+                let _ = app.run_on_main_thread(move || crate::windows::on_drag_released(&a));
+            }
+            hook::HookEvent::Flip => crate::windows::wheel_flip(&app),
+            hook::HookEvent::Close => crate::windows::wheel_close(&app),
+        });
+    }
+    #[cfg(not(windows))]
+    let _ = app;
+}
+
+/// Tell the hooks whether the wheel is open (they only act on input then) and where the
+/// overlay window is: (left, top, right, bottom) in physical pixels.
+pub fn set_wheel_open(open: bool, click: bool, rect: (i32, i32, i32, i32)) {
+    #[cfg(windows)]
+    hook::set_wheel_open(open, click, rect);
+    #[cfg(not(windows))]
+    let _ = (open, click, rect);
+}
+
+/// The UI language for a `language` setting: "tr" or "en" ("system" asks Windows).
+pub fn ui_language(setting: &str) -> String {
+    match setting {
+        "tr" | "en" => setting.to_string(),
+        _ => system_language(),
+    }
 }
 
 /// Apply settings that have side effects outside the webview. Returns the settings to store:
@@ -73,8 +115,23 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
             new.launch_at_login = old.launch_at_login;
         }
     }
-    if old.wheel_enabled != new.wheel_enabled || old.wheel_any_app != new.wheel_any_app {
+    if old.wheel_enabled != new.wheel_enabled
+        || old.wheel_any_app != new.wheel_any_app
+        || old.wheel_flip_scroll != new.wheel_flip_scroll
+        || old.wheel_flip_tab != new.wheel_flip_tab
+    {
         configure_wheel(app, &new);
+    }
+    // Explorer verb: written when turned on, removed when off, relabelled on a language change.
+    // After a failure the setting says what the registry has: a failed write removed the key
+    // (off), a failed removal left it there (on).
+    let verb_changed =
+        old.context_menu != new.context_menu || (new.context_menu && old.language != new.language);
+    if verb_changed
+        && let Err(e) = contextmenu::set_enabled(new.context_menu, &ui_language(&new.language))
+    {
+        eprintln!("context menu: {e}");
+        new.context_menu = !new.context_menu;
     }
     if old.clipboard_enabled != new.clipboard_enabled {
         if new.clipboard_enabled {

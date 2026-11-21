@@ -10,3 +10,8 @@
     SetOutPath $INSTDIR
   ${EndIf}
 !macroend
+
+!macro NSIS_HOOK_POSTUNINSTALL
+  ; Explorer right-click verb "Convert with File Chameleon" (opt-in, written by the app).
+  DeleteRegKey HKCU "Software\Classes\*\shell\FileChameleon"
+!macroend

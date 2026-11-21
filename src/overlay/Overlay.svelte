@@ -113,13 +113,16 @@
     armFan(-1);
   }
 
+  /** Once per gesture (as the hook): the first flip request flips, later ones are ignored until
+   *  FLIP_GAP_MS pass without any; every request (hook flip or DOM wheel) restarts that wait. */
   function flip() {
     if (mode !== 'wheel' || waiting || !wheel || done) return;
     const now = performance.now();
-    if (now - lastFlip < FLIP_GAP_MS) return;
+    const quiet = now - lastFlip >= FLIP_GAP_MS;
+    lastFlip = now;
+    if (!quiet) return;
     const next = otherFace(face, wheel.front, wheel.back);
     if (next === face) return;
-    lastFlip = now;
     face = next;
     unhover();
     if (last) pointAt(last.x, last.y);
