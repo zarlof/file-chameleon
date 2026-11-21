@@ -240,7 +240,7 @@ mod tests {
         // UNC paths and paths on a dead drive are kept, existing ones too.
         #[cfg(windows)]
         assert!(!definitely_missing(
-            Path::new(r"\no-such-server\share.png"),
+            Path::new(r"\\no-such-server\share\a.png"),
             &mut roots
         ));
         let d = tempfile::tempdir().unwrap();
