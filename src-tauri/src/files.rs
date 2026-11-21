@@ -143,16 +143,25 @@ pub fn record(app: &AppHandle, paths: Vec<PathBuf>, source: FileSource) {
             let state = app.state::<AppState>();
             let result = {
                 let mut store = lock(&state);
+                // One listing (it also prunes): the known paths and the presence after the record.
+                let before = store.list(&ALL);
                 let paths = if source == FileSource::Added {
-                    let known: Vec<PathBuf> =
-                        store.list(&ALL).into_iter().map(|e| e.path).collect();
+                    let known: Vec<PathBuf> = before.iter().map(|e| e.path.clone()).collect();
                     added_candidates(&paths, |p| state.paths.is_clipboard_file(p), &known)
                 } else {
                     paths.into_iter().filter(|p| p.is_file()).collect()
                 };
-                store
-                    .record(&paths, source, fc_core::now_ms())
-                    .map(|()| (!paths.is_empty()).then(|| presence(&store.list(&ALL))))
+                store.record(&paths, source, fc_core::now_ms()).map(|()| {
+                    (!paths.is_empty()).then(|| {
+                        let mut p = presence(&before);
+                        p[match source {
+                            FileSource::Added => 0,
+                            FileSource::Converted => 1,
+                            FileSource::Downloaded => 2,
+                        }] = true;
+                        p
+                    })
+                })
             };
             match result {
                 Ok(Some(p)) => {
@@ -182,24 +191,33 @@ pub fn any_listed(app: &AppHandle, sources: &LineFilesSources) -> bool {
 }
 
 /// Thumbnails that could not be made this session (not an image we can read, over the pixel cap,
-/// a failed write), by thumbnail name: they are not read again on every list.
-static FAILED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// a failed write, a decoder panic), by thumbnail name and the source file's modification time:
+/// they are not read again on every list, but a replaced file is tried again.
+static FAILED: Mutex<Vec<(String, Option<std::time::SystemTime>)>> = Mutex::new(Vec::new());
 
-fn thumb_failed(name: &str) -> bool {
+fn mtime(p: &Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(p).and_then(|m| m.modified()).ok()
+}
+
+fn thumb_failed(name: &str, src: &Path) -> bool {
+    let t = mtime(src);
     FAILED
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .iter()
-        .any(|n| n == name)
+        .any(|(n, m)| n == name && *m == t)
 }
 
 fn make_thumb(src: &Path, dst: &Path) -> bool {
-    let ok = crate::ipc::images::write_file_thumbnail(src, dst, THUMB_SIDE);
+    // A decoder may panic on a malformed image: that image just has no thumbnail.
+    let ok =
+        std::panic::catch_unwind(|| crate::ipc::images::write_file_thumbnail(src, dst, THUMB_SIDE))
+            .unwrap_or(false);
     if !ok && let Some(name) = dst.file_name() {
-        FAILED
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(name.to_string_lossy().into_owned());
+        let name = name.to_string_lossy().into_owned();
+        let mut failed = FAILED.lock().unwrap_or_else(|e| e.into_inner());
+        failed.retain(|(n, _)| *n != name);
+        failed.push((name, mtime(src)));
     }
     ok
 }
@@ -224,7 +242,7 @@ pub fn list(app: &AppHandle) -> Vec<LineFile> {
                 let dst = dir.join(&name);
                 if thumb_fresh(&e.path, &dst) {
                     thumb = Some(dst);
-                } else if thumb_failed(&name) {
+                } else if thumb_failed(&name, &e.path) {
                     // Known not to work: no card thumbnail, no re-read.
                 } else if made < INLINE_THUMBS {
                     made += 1;
@@ -269,11 +287,19 @@ fn finish_thumbs_later(app: &AppHandle, jobs: Vec<(PathBuf, PathBuf)>) {
     let spawned = std::thread::Builder::new()
         .name("fc-files-thumbs".into())
         .spawn(move || {
+            // Clears the flag however the worker ends.
+            struct Done;
+            impl Drop for Done {
+                fn drop(&mut self) {
+                    THUMB_WORKER.store(false, Ordering::SeqCst);
+                }
+            }
+            let guard = Done;
             let mut any = false;
             for (src, dst) in jobs {
                 any |= make_thumb(&src, &dst);
             }
-            THUMB_WORKER.store(false, Ordering::SeqCst);
+            drop(guard);
             if any {
                 let _ = app.emit(events::FILES_CHANGED, ());
             }
