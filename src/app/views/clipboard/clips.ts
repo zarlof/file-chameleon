@@ -69,6 +69,35 @@ export function acceptsAdded(f: LibraryFilter, search: string, item: ClipItem): 
   }
 }
 
+/**
+ * Latest-wins guard for list loads. A result is applied only when no newer load started and the list
+ * was not edited directly (live insert, optimistic pin, trash) while it was on its way.
+ */
+export class LoadGate {
+  private seq = 0;
+  private running = 0;
+
+  start(): number {
+    this.running++;
+    return ++this.seq;
+  }
+
+  finish(): void {
+    this.running = Math.max(0, this.running - 1);
+  }
+
+  isCurrent(token: number): boolean {
+    return token === this.seq;
+  }
+
+  /** Call after editing the list directly. True when a load was running: its result is now stale, refetch. */
+  edited(): boolean {
+    if (this.running === 0) return false;
+    this.seq++;
+    return true;
+  }
+}
+
 /** Insert (or move to the top) a freshly recorded item. */
 export function withAdded(items: ClipItem[], added: ClipItem): ClipItem[] {
   return [added, ...items.filter((i) => i.id !== added.id)];

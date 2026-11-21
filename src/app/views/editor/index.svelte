@@ -22,7 +22,7 @@
 <script lang="ts">
   import { convertFileSrc } from '@tauri-apps/api/core';
   import {
-    ArrowUpRight, Check, ChevronLeft, Circle, Crop, FolderOpen, Highlighter, ImageOff, Minus, Pencil, Redo2, Square, Type, Undo2, X,
+    ArrowUpRight, Check, ChevronLeft, Circle, Crop, FolderOpen, Highlighter, ImageOff, Info, Minus, Pencil, Redo2, Square, Type, Undo2, X,
   } from '@lucide/svelte';
   import { onDestroy } from 'svelte';
   import { t } from '../../../lib/i18n';
@@ -72,6 +72,8 @@
   let saving = $state(false);
   let saved = $state<string | null>(null);
   let leaveOpen = $state(false);
+  /** The image was downscaled for editing: the saved file will have that size. */
+  let reduced = $state(false);
   let drag: Drag | null = null;
   let textSeq = 0;
   let savedTimer: ReturnType<typeof setTimeout> | undefined;
@@ -102,7 +104,14 @@
     });
   }
 
-  /** Clipboard images load through the asset protocol (CORS, so the canvas stays exportable); fallback: a data URL. */
+  /** A backend preview (PNG data URL, longest side <= PREVIEW_CAP); flags `reduced` when it was likely downscaled. */
+  async function loadPreview(path: string): Promise<HTMLImageElement> {
+    const img = await loadImage(await api.readImagePreview(path, C.PREVIEW_CAP));
+    reduced = C.wasReduced(img.naturalWidth, img.naturalHeight);
+    return img;
+  }
+
+  /** Clipboard images load through the asset protocol (CORS, so the canvas stays exportable, full size); fallback: a preview. */
   async function loadStored(path: string): Promise<HTMLImageElement> {
     let url: string | null = null;
     try {
@@ -117,7 +126,7 @@
         /* fall back to the backend */
       }
     }
-    return loadImage(await api.readImagePreview(path, 4096));
+    return loadPreview(path);
   }
 
   async function open(source: string) {
@@ -127,6 +136,7 @@
     crop = null;
     draft = null;
     textEdit = null;
+    reduced = false;
     try {
       let img: HTMLImageElement;
       if (source.startsWith('clip:')) {
@@ -138,7 +148,7 @@
         target = { kind: 'clip', id };
         name = item.title ?? t('editor.clipName');
       } else {
-        img = await loadImage(await api.readImagePreview(source, 4096));
+        img = await loadPreview(source);
         target = { kind: 'file', path: source };
         name = fileName(source);
       }
@@ -334,7 +344,7 @@
   async function save() {
     if (!image || !target || saving) return;
     commitText();
-    if (crop) applyCrop();
+    // A crop frame that was drawn but not applied (Enter / Crop) is not part of the image.
     saving = true;
     try {
       const url = C.exportPng(image, doc);
@@ -447,6 +457,10 @@
     {/if}
   </div>
 
+  {#if reduced && image}
+    <p class="notice" role="note"><Info size={14} />{t('editor.reduced', { size: C.PREVIEW_CAP })}</p>
+  {/if}
+
   <div class="stage" bind:this={stage} bind:clientWidth={stageW} bind:clientHeight={stageH}>
     {#if loading}
       <Spinner size={22} />
@@ -524,6 +538,12 @@
   .width.on { background: var(--accent-soft); color: var(--accent); }
   .width i { display: block; border-radius: 50%; background: currentColor; }
 
+  .notice {
+    display: flex; align-items: center; gap: 6px; flex: none; margin: calc(-1 * var(--space-1)) 0 var(--space-3); padding: 6px 10px;
+    border-radius: var(--radius-sm); font: var(--text-callout); color: var(--text);
+    background: color-mix(in srgb, var(--orange) 14%, transparent);
+  }
+  .notice > :global(svg) { flex: none; color: var(--orange); }
   .stage {
     position: relative; flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; border-radius: var(--radius-md);
     background: var(--control-bg);

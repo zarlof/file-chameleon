@@ -38,6 +38,7 @@
   "reveal": "Show in folder",
   "saveFailed": "Couldn't save: {message}",
   "loadFailed": "Couldn't open the image.",
+  "reduced": "The image was reduced to {size} pixels for editing; the saved file will be this size.",
   "notImage": "This item is not an image.",
   "errorTitle": "Couldn't open the image",
   "emptyTitle": "No image to edit",

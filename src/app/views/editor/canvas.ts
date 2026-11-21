@@ -50,6 +50,14 @@ export const TEXT_FONT = "600 {size}px 'Inter Variable', 'Segoe UI', sans-serif"
 
 export type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'move';
 
+/** Longest side asked of `readImagePreview` for editing files (the backend downscales larger images to it). */
+export const PREVIEW_CAP = 8192;
+
+/** A preview whose longest side is exactly the cap was most likely downscaled: the saved file will be that size. */
+export function wasReduced(w: number, h: number, cap = PREVIEW_CAP): boolean {
+  return Math.max(w, h) === cap;
+}
+
 /** Rect spanned by two corners (positive size). */
 export function normRect(a: Point, b: Point): Rect {
   return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };

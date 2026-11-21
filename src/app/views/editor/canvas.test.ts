@@ -9,9 +9,11 @@ import {
   hitHandle,
   history,
   normRect,
+  PREVIEW_CAP,
   redo,
   smoothPath,
   undo,
+  wasReduced,
 } from './canvas';
 
 describe('normRect', () => {
@@ -156,5 +158,16 @@ describe('editor locale', () => {
     const en = keys(files['../../../locales/en/editor.json']).sort();
     expect(en.length).toBeGreaterThan(20);
     expect(keys(files['../../../locales/tr/editor.json']).sort()).toEqual(en);
+  });
+});
+
+describe('wasReduced', () => {
+  it('flags an image whose longest side is exactly the preview cap', () => {
+    expect(PREVIEW_CAP).toBe(8192);
+    expect(wasReduced(8192, 5461)).toBe(true);
+    expect(wasReduced(3000, 8192)).toBe(true);
+    expect(wasReduced(8191, 4000)).toBe(false);
+    expect(wasReduced(1600, 900)).toBe(false);
+    expect(wasReduced(4096, 4096, 4096)).toBe(true);
   });
 });

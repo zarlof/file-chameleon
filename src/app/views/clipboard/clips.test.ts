@@ -12,6 +12,7 @@ import {
   folderTree,
   gridColumns,
   linkHost,
+  LoadGate,
   moveShelfRow,
   pruneSelection,
   pushUndo,
@@ -276,5 +277,31 @@ describe('clipboard locale', () => {
     const en = keys(files['../../../locales/en/clipboard.json']).sort();
     expect(en.length).toBeGreaterThan(50);
     expect(keys(files['../../../locales/tr/clipboard.json']).sort()).toEqual(en);
+  });
+});
+
+describe('LoadGate', () => {
+  it('applies only the newest load', () => {
+    const gate = new LoadGate();
+    const a = gate.start();
+    const b = gate.start();
+    expect(gate.isCurrent(a)).toBe(false);
+    expect(gate.isCurrent(b)).toBe(true);
+  });
+
+  it('makes a running load stale after a direct edit, and says a refetch is needed', () => {
+    const gate = new LoadGate();
+    const a = gate.start();
+    expect(gate.edited()).toBe(true);
+    expect(gate.isCurrent(a)).toBe(false);
+    gate.finish();
+  });
+
+  it('needs no refetch for a direct edit while nothing is loading', () => {
+    const gate = new LoadGate();
+    const a = gate.start();
+    gate.finish();
+    expect(gate.edited()).toBe(false);
+    expect(gate.isCurrent(a)).toBe(true);
   });
 });

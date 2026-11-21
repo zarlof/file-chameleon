@@ -21,7 +21,7 @@
   import PreviewSheet from './PreviewSheet.svelte';
   import Toolbar from './Toolbar.svelte';
   import {
-    acceptsAdded, arrange, EMPTY_SELECTION, filterKey, pruneSelection, pushUndo, queryFor, selectAll, selectionAfterClick,
+    acceptsAdded, arrange, EMPTY_SELECTION, filterKey, LoadGate, pruneSelection, pushUndo, queryFor, selectAll, selectionAfterClick,
     selectionAfterMove, withAdded, type BatchAction, type LibraryFilter, type QuickAction, type Selection,
   } from './clips';
   import { guard } from './ui';
@@ -88,25 +88,33 @@
 
   // ------------------------------------------------------------ loading
 
-  let seq = 0;
+  const gate = new LoadGate();
   let loadFailed = false;
   async function loadItems() {
-    const s = ++seq;
+    const token = gate.start();
     try {
       const list = await api.clipList(queryFor(filter, search));
-      if (s !== seq) return;
+      if (!gate.isCurrent(token)) return;
       items = list;
       const ids = arrange(list, filter).map((i) => i.id);
       selection = pruneSelection(ids, selection);
       if (focus !== null && !ids.includes(focus)) focus = selection.ids[0] ?? null;
       loadFailed = false;
     } catch (e) {
-      if (s !== seq) return;
+      if (!gate.isCurrent(token)) return;
       if (!loadFailed) toast.show(errorOf(e).message, 'error');
       loadFailed = true;
     } finally {
-      if (s === seq) loaded = true;
+      gate.finish();
+      if (gate.isCurrent(token)) loaded = true;
     }
+  }
+
+  /** Edit the shown list directly (live insert, optimistic pin, trash...). A load already on its way
+   *  carries older data: it is dropped and a fresh one is started. */
+  function setItems(next: ClipItem[]) {
+    items = next;
+    if (gate.edited()) void loadItems();
   }
 
   async function loadSide() {
@@ -144,7 +152,11 @@
 
   function setFilter(f: LibraryFilter) {
     if (filterKey(f) === filterKey(filter)) return;
+    // Never show the old view's items under the new filter (live items in the trash view could be
+    // "deleted forever"): empty the list and block actions until the new list arrives.
     filter = f;
+    items = [];
+    loaded = false;
     selection = EMPTY_SELECTION;
     focus = null;
     epoch++;
@@ -160,14 +172,14 @@
     let disposed = false;
     const keep = (p: Promise<() => void>) => p.then((u) => (disposed ? u() : unlisten.push(u))).catch(() => {});
     keep(on.clipAdded((c) => {
-      if (acceptsAdded(filter, search, c)) items = withAdded(items, c);
+      if (loaded && acceptsAdded(filter, search, c)) setItems(withAdded(items, c));
       else refresh();
       refreshSide();
     }));
     keep(on.clipUpdated((c) => {
       // Still belongs to this view (live vs trash)? Replace it; otherwise drop it.
-      if ((c.trashedAt !== null) === inTrash) items = items.map((i) => (i.id === c.id ? c : i));
-      else items = items.filter((i) => i.id !== c.id);
+      if ((c.trashedAt !== null) === inTrash) setItems(items.map((i) => (i.id === c.id ? c : i)));
+      else setItems(items.filter((i) => i.id !== c.id));
       refreshSide();
     }));
     keep(on.clipChanged(() => refresh()));
@@ -192,7 +204,7 @@
 
   async function pin(ids: number[], pinned: boolean) {
     if (!ids.length) return;
-    items = items.map((i) => (ids.includes(i.id) ? { ...i, pinned } : i));
+    setItems(items.map((i) => (ids.includes(i.id) ? { ...i, pinned } : i)));
     await guard(() => api.clipPin(ids, pinned));
     refresh();
   }
@@ -202,7 +214,7 @@
     const at = order.indexOf(ids[0]);
     if (!(await guard(() => api.clipTrash(ids)))) return;
     undoStack = pushUndo(undoStack, ids);
-    items = items.filter((i) => !ids.includes(i.id));
+    setItems(items.filter((i) => !ids.includes(i.id)));
     // Keep the cursor where it was: the next item takes the place of the first trashed one.
     const next = order.filter((id) => !ids.includes(id));
     const nextFocus = next[Math.min(Math.max(0, at), next.length - 1)] ?? null;
@@ -224,7 +236,7 @@
 
   async function restore(ids: number[]) {
     if (ids.length && (await guard(() => api.clipRestore(ids)))) {
-      items = items.filter((i) => !ids.includes(i.id));
+      setItems(items.filter((i) => !ids.includes(i.id)));
       selection = EMPTY_SELECTION;
       toast.show(t('clipboard.toast.restored', count(ids)), 'success', 2000);
       refreshSide();
@@ -238,10 +250,11 @@
   }
 
   async function deleteForever() {
-    const ids = pendingDelete;
+    // Only items shown as trashed can be deleted for good from here.
+    const ids = pendingDelete.filter((id) => items.some((i) => i.id === id && i.trashedAt !== null));
     deleteOpen = false;
-    if (await guard(() => api.clipDeleteForever(ids))) {
-      items = items.filter((i) => !ids.includes(i.id));
+    if (ids.length && (await guard(() => api.clipDeleteForever(ids)))) {
+      setItems(items.filter((i) => !ids.includes(i.id)));
       selection = EMPTY_SELECTION;
       refreshSide();
     }
@@ -250,7 +263,7 @@
   async function emptyTrash() {
     emptyOpen = false;
     if (await guard(() => api.clipEmptyTrash())) {
-      if (inTrash) items = [];
+      if (inTrash) setItems([]);
       selection = EMPTY_SELECTION;
       refreshSide(0);
     }
@@ -273,6 +286,7 @@
   }
 
   async function batch(a: BatchAction) {
+    if (!loaded) return; // a filter switch is loading: the selection belongs to no list yet
     const ids = selection.ids;
     switch (a.type) {
       case 'copy':
@@ -321,7 +335,7 @@
   }
 
   function updated(c: ClipItem) {
-    items = items.map((i) => (i.id === c.id ? c : i));
+    setItems(items.map((i) => (i.id === c.id ? c : i)));
     refreshSide();
   }
 
@@ -371,10 +385,14 @@
     return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
   }
 
-  /** Navigation keys only act on the content area (or nothing focused), never on a focused button or menu. */
+  /**
+   * Navigation keys only act on the content area (or nothing focused), never on a focused control:
+   * the hover buttons of a row live inside the content, and Space / Enter must press them.
+   */
   function inContent(target: EventTarget | null): boolean {
-    const el = target as Node | null;
-    return !el || el === document.body || !!content?.contains(el);
+    const el = target as HTMLElement | null;
+    if (!el || el === document.body) return true;
+    return !!content?.contains(el) && !el.closest('button, a, [role="button"]');
   }
 
   function onKey(e: KeyboardEvent) {
@@ -393,7 +411,8 @@
       toolbar?.focusSearch();
       return;
     }
-    if (editable(e.target)) return;
+    // While a filter switch loads nothing is shown yet: no selection or actions.
+    if (editable(e.target) || !loaded) return;
     if (ctrl) {
       if (key === 'a') {
         e.preventDefault();

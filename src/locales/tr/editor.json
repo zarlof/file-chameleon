@@ -38,6 +38,7 @@
   "reveal": "Klasörde göster",
   "saveFailed": "Kaydedilemedi: {message}",
   "loadFailed": "Görsel açılamadı.",
+  "reduced": "Görsel düzenleme için {size} piksele küçültüldü; kaydedilen dosya bu boyutta olacak.",
   "notImage": "Bu öğe bir görsel değil.",
   "errorTitle": "Görsel açılamadı",
   "emptyTitle": "Düzenlenecek görsel yok",
