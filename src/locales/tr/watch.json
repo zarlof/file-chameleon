@@ -15,14 +15,16 @@
   "status": {
     "on": "Etkin",
     "off": "Kapalı",
-    "processed": {
-      "one": "1 dosya işlendi",
-      "other": "{count} dosya işlendi"
+    "queued": {
+      "one": "1 dosya sıraya alındı",
+      "other": "{count} dosya sıraya alındı"
     },
     "last": "son: {name}"
   },
   "errors": {
     "presetMissing": "Bu hazır ayar artık yok. Başka bir tane seç.",
-    "presetNotUnattended": "Bu hazır ayar klasör seçimi ya da düzenleyici gerektirdiği için kendi başına çalışamaz. Başka bir tane seç."
+    "presetNotUnattended": "Bu hazır ayar klasör seçimi ya da düzenleyici gerektirdiği için kendi başına çalışamaz. Başka bir tane seç.",
+    "missingTool": "Gereken bir araç henüz kurulu değil. Motorlar sayfasından kur.",
+    "failed": "Son dosya işlenemedi."
   }
 }

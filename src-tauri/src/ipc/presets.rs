@@ -27,16 +27,18 @@ pub fn get_wheel_config(state: State<'_, AppState>) -> WheelConfig {
 #[tauri::command(async)]
 pub fn set_wheel_config(state: State<'_, AppState>, config: WheelConfig) -> CmdResult<WheelConfig> {
     let config = config.validate()?;
-    Ok(state.update_wheel_config(|c| {
+    let saved = state.update_wheel_config(|c| {
         *c = config;
         Ok(())
-    })?)
+    })?;
+    crate::watchfolders::reconfigure(&state.app);
+    Ok(saved)
 }
 
 /// Built-in profile back to its default arrangement. Custom or unknown id: "invalid".
 #[tauri::command(async)]
 pub fn reset_wheel_profile(state: State<'_, AppState>, id: String) -> CmdResult<WheelConfig> {
-    Ok(state.update_wheel_config(|c| {
+    let saved = state.update_wheel_config(|c| {
         if c.reset_profile(&id) {
             Ok(())
         } else {
@@ -44,16 +46,20 @@ pub fn reset_wheel_profile(state: State<'_, AppState>, id: String) -> CmdResult<
                 "not a built-in profile: {id}"
             )))
         }
-    })?)
+    })?;
+    crate::watchfolders::reconfigure(&state.app);
+    Ok(saved)
 }
 
 /// Everything back to the built-ins (user presets, groups and profiles are removed).
 #[tauri::command(async)]
 pub fn reset_wheel_config(state: State<'_, AppState>) -> CmdResult<WheelConfig> {
-    Ok(state.update_wheel_config(|c| {
+    let saved = state.update_wheel_config(|c| {
         *c = WheelConfig::builtin();
         Ok(())
-    })?)
+    })?;
+    crate::watchfolders::reconfigure(&state.app);
+    Ok(saved)
 }
 
 /// Preset ids usable for files with at least one of these extensions (`[]` = unknown files).

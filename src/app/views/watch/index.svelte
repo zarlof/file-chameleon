@@ -102,7 +102,7 @@
         {@const line = statusLine(rule, statuses[rule.id], t)}
         <ListRow title={folderName(rule.path)} subtitle={rule.path}>
           {#snippet leading()}<Folder size={16} />{/snippet}
-          <span class="line" class:err={line.error}>{line.text}</span>
+          <span class="line" class:err={line.error} title={line.detail}>{line.text}</span>
           <div class="opts">
             <span class="opt">
               <span class="lbl">{t('watch.preset')}</span>

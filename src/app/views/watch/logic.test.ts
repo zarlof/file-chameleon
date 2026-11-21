@@ -44,7 +44,7 @@ describe('newRule', () => {
 describe('statusLine', () => {
   it('summarizes an active rule', () => {
     expect(statusLine(rule(), status({ processed: 12, lastFile: 'x.png' }), en)).toEqual({
-      text: 'Active · 12 files processed · last: x.png',
+      text: 'Active · 12 files queued · last: x.png',
       error: false,
     });
     expect(statusLine(rule(), undefined, tr).text).toBe('Etkin');
@@ -55,6 +55,8 @@ describe('statusLine', () => {
     const gone = statusLine(rule(), status({ active: false, error: 'presetMissing' }), en);
     expect(gone.error).toBe(true);
     expect(gone.text).toBe(enWatch.errors.presetMissing);
+    expect(statusLine(rule(), status({ error: 'missingTool:ffmpeg' }), en)).toEqual({ text: enWatch.errors.missingTool, error: true, detail: 'ffmpeg' });
+    expect(statusLine(rule(), status({ error: 'failed:disk: full' }), tr)).toEqual({ text: trWatch.errors.failed, error: true, detail: 'disk: full' });
     expect(statusLine(rule(), status({ error: 'Access is denied.' }), en)).toEqual({ text: 'Access is denied.', error: true });
   });
 });

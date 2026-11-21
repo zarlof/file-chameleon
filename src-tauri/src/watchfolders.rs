@@ -27,13 +27,14 @@ pub struct WatchStatus {
     pub id: String,
     pub active: bool,
     pub error: Option<String>,
+    /// Files handed to the job queue (not necessarily finished).
     pub processed: u32,
     pub last_file: Option<String>,
 }
 
 #[derive(Default)]
 struct Counters {
-    processed: u32,
+    queued: u32,
     last_file: Option<String>,
     /// The last file that could not be submitted (cleared by the next success).
     error: Option<String>,
@@ -117,56 +118,97 @@ pub fn configure(app: &AppHandle, s: &Settings) {
     }
 }
 
+/// What to do with a settled file.
+#[derive(Debug, PartialEq)]
+enum Decision {
+    /// Not ours (rule gone or off) or not for this preset (a text file next to PNGs).
+    Skip,
+    /// The rule cannot run (code of [`rule_problem`]); the status row shows it live.
+    Blocked(&'static str),
+    Run {
+        preset: String,
+        out_dir: PathBuf,
+    },
+}
+
+/// Pure decision for `path` of rule `id`; no I/O beyond what `presets::applicable` probes.
+fn decide(s: &Settings, config: &WheelConfig, id: &str, path: &Path) -> Decision {
+    let Some(rule) = s.watch_folders.iter().find(|w| w.id == id && w.enabled) else {
+        return Decision::Skip;
+    };
+    if let Some(code) = rule_problem(config, &rule.preset) {
+        return Decision::Blocked(code);
+    }
+    let fits = config
+        .preset(&rule.preset)
+        .is_some_and(|p| presets::applicable(p, &[path.to_path_buf()]));
+    if !fits {
+        return Decision::Skip;
+    }
+    Decision::Run {
+        preset: rule.preset.clone(),
+        out_dir: rule.path.join(OUTPUT_FOLDER),
+    }
+}
+
+/// `"<code>:<message>"` for a failed submit: the UI translates the code (`missingTool`,
+/// otherwise `failed`) and keeps the message as detail.
+fn job_error(code: &str, message: &str) -> String {
+    let code = if code == "missingTool" {
+        "missingTool"
+    } else {
+        "failed"
+    };
+    format!("{code}:{message}")
+}
+
+impl Counters {
+    fn record(&mut self, path: &Path, result: Result<(), String>) {
+        match result {
+            Ok(()) => {
+                self.queued += 1;
+                self.last_file = path.file_name().map(|n| n.to_string_lossy().into_owned());
+                self.error = None;
+            }
+            Err(e) => self.error = Some(e),
+        }
+    }
+}
+
 /// Runs on the watcher thread for a file that settled.
 fn on_file(app: &AppHandle, id: &str, path: &Path) {
     let state = app.state::<AppState>();
     let s = state.settings();
-    let Some(rule) = s.watch_folders.iter().find(|w| w.id == id && w.enabled) else {
-        return;
+    // A copy: probing the file must not hold the config lock.
+    let config = state.wheel_config().clone();
+    let (preset, out_dir) = match decide(&s, &config, id, path) {
+        Decision::Run { preset, out_dir } => (preset, out_dir),
+        Decision::Skip | Decision::Blocked(_) => return,
     };
-    let (config_problem, fits) = {
-        let config = state.wheel_config();
-        let problem = rule_problem(&config, &rule.preset);
-        let fits = config
-            .preset(&rule.preset)
-            .is_some_and(|p| presets::applicable(p, &[path.to_path_buf()]));
-        (problem, fits)
-    };
-    // The rule went bad after the watcher fired (preset deleted): the status row says so.
-    // A file the preset does not take (a text file next to PNGs) is skipped without noise.
-    if config_problem.is_some() || !fits {
-        return;
-    }
-    let out: PathBuf = rule.path.join(OUTPUT_FOLDER);
-    let result = std::fs::create_dir_all(&out)
-        .map_err(|e| e.to_string())
+    let result = std::fs::create_dir_all(&out_dir)
+        .map_err(|e| job_error("io", &e.to_string()))
         .and_then(|()| {
-            run_preset(
-                app,
-                vec![path.to_path_buf()],
-                &rule.preset,
-                false,
-                Some(out),
-            )
-            .map_err(|e| e.message)
+            run_preset(app, vec![path.to_path_buf()], &preset, false, Some(out_dir))
+                .map(|_| ())
+                .map_err(|e| job_error(&e.code, &e.message))
         });
-    {
-        let mut counters = state
-            .watch
-            .counters
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let c = counters.entry(id.to_string()).or_default();
-        match result {
-            Ok(_) => {
-                c.processed += 1;
-                c.last_file = path.file_name().map(|n| n.to_string_lossy().into_owned());
-                c.error = None;
-            }
-            Err(msg) => c.error = Some(msg),
-        }
+    state
+        .watch
+        .counters
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .entry(id.to_string())
+        .or_default()
+        .record(path, result);
+    if let Some(rule) = s.watch_folders.iter().find(|w| w.id == id) {
+        let _ = app.emit(WATCH_STATUS, status_of(app, rule));
     }
-    let _ = app.emit(WATCH_STATUS, status_of(app, rule));
+}
+
+/// Re-read the settings and the wheel config (a preset may have come back or gone).
+pub fn reconfigure(app: &AppHandle) {
+    let s = app.state::<AppState>().settings();
+    configure(app, &s);
 }
 
 fn status_of(app: &AppHandle, rule: &WatchFolder) -> WatchStatus {
@@ -178,7 +220,7 @@ fn status_of(app: &AppHandle, rule: &WatchFolder) -> WatchStatus {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .get(&rule.id)
-        .map(|c| (c.processed, c.last_file.clone(), c.error.clone()))
+        .map(|c| (c.queued, c.last_file.clone(), c.error.clone()))
         .unwrap_or_default();
     let folder_error = state
         .watch
@@ -318,6 +360,52 @@ mod tests {
         assert!(!build_status(&off, None, None, None, 0, None).active);
     }
 
+    #[test]
+    fn decide_runs_skips_or_blocks() {
+        let config = WheelConfig::builtin();
+        let s = settings(vec![
+            rule("a", "C:\\in", "to-webp", true),
+            rule("off", "C:\\off", "to-webp", false),
+            rule("gone", "C:\\gone", "nope", true),
+        ]);
+        let dir = std::env::temp_dir().join(format!("fc-decide-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("a.png");
+        let txt = dir.join("a.zzz");
+        std::fs::write(&png, b"x").unwrap();
+        std::fs::write(&txt, b"x").unwrap();
+        assert_eq!(
+            decide(&s, &config, "a", &png),
+            Decision::Run {
+                preset: "to-webp".into(),
+                out_dir: PathBuf::from("C:\\in").join("converted")
+            }
+        );
+        assert_eq!(decide(&s, &config, "a", &txt), Decision::Skip);
+        assert_eq!(decide(&s, &config, "off", &png), Decision::Skip);
+        assert_eq!(decide(&s, &config, "nobody", &png), Decision::Skip);
+        assert_eq!(
+            decide(&s, &config, "gone", &png),
+            Decision::Blocked("presetMissing")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn counters_record_results() {
+        let mut c = Counters::default();
+        c.record(Path::new("C:\\in\\a.png"), Ok(()));
+        c.record(
+            Path::new("C:\\in\\b.png"),
+            Err(job_error("io", "disk full")),
+        );
+        assert_eq!((c.queued, c.last_file.as_deref()), (1, Some("a.png")));
+        assert_eq!(c.error.as_deref(), Some("failed:disk full"));
+        c.record(Path::new("C:\\in\\c.png"), Ok(()));
+        assert_eq!((c.queued, c.error.as_deref()), (2, None));
+        assert_eq!(job_error("missingTool", "ffmpeg"), "missingTool:ffmpeg");
+    }
+
     /// End to end with a real folder: existing files and our own `converted` outputs never
     /// fire; a file that is still growing fires only once it settles.
     #[test]
@@ -360,6 +448,36 @@ mod tests {
         );
         // Nothing else (old.png, converted\x.webp) fires.
         assert!(rx.recv_timeout(Duration::from_secs(4)).is_err());
+        drop(watcher);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// With subfolders on, `converted` is still never entered; other subfolders are.
+    #[test]
+    fn subfolders_still_exclude_converted() {
+        let dir = std::env::temp_dir().join(format!("fc-watch-sub-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("converted").join("deep")).unwrap();
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        let mut r = rule("a", &dir.to_string_lossy(), "to-webp", true);
+        r.subfolders = true;
+        let specs = super::specs_from_settings(&settings(vec![r]), &WheelConfig::builtin());
+        assert!(specs[0].recursive);
+        let (tx, rx) = mpsc::channel();
+        let watcher = Watcher::start(
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+            move |_, path| {
+                let _ = tx.send(path);
+            },
+        );
+        watcher.set_specs(specs);
+        std::fs::write(dir.join("converted").join("out.webp"), b"o").unwrap();
+        std::fs::write(dir.join("converted").join("deep").join("o2.png"), b"o").unwrap();
+        let wanted = dir.join("sub").join("new.png");
+        std::fs::write(&wanted, b"n").unwrap();
+        assert_eq!(rx.recv_timeout(Duration::from_secs(10)).unwrap(), wanted);
+        assert!(rx.recv_timeout(Duration::from_secs(3)).is_err());
         drop(watcher);
         let _ = std::fs::remove_dir_all(&dir);
     }

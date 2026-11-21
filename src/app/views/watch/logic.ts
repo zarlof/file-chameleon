@@ -26,23 +26,32 @@ export function newRule(path: string, presets: Preset[], existing: Iterable<stri
   return { id, path, preset: preset?.id ?? '', subfolders: false, enabled: true };
 }
 
-/** Error codes of the backend (`rule_problem`) that have their own text. */
-const CODES = ['presetMissing', 'presetNotUnattended'];
+/** Error codes of the backend (`rule_problem`, `job_error`) that have their own text. A job error
+ *  arrives as "<code>:<message>"; the message is kept as detail. Anything else (a folder read
+ *  error from the OS) is shown as it is. */
+const CODES = ['presetMissing', 'presetNotUnattended', 'missingTool', 'failed'];
 
 export interface StatusLine {
   text: string;
   /** Shown as an error. */
   error: boolean;
+  /** Raw message behind a coded error (tooltip). */
+  detail?: string;
 }
 
-/** "Active · 12 files processed · last: x.png", "Paused", or the error. */
+/** "Active · 12 files queued · last: x.png", "Off", or the error. */
 export function statusLine(rule: WatchFolder, status: WatchStatus | undefined, t: Translate): StatusLine {
   if (status?.error) {
-    return { text: CODES.includes(status.error) ? t(`watch.errors.${status.error}`) : status.error, error: true };
+    const [code, ...rest] = status.error.split(':');
+    if (CODES.includes(code)) {
+      const detail = rest.join(':').trim();
+      return { text: t(`watch.errors.${code}`), error: true, ...(detail ? { detail } : {}) };
+    }
+    return { text: status.error, error: true };
   }
   if (!rule.enabled) return { text: t('watch.status.off'), error: false };
   const parts = [t('watch.status.on')];
-  if (status && status.processed > 0) parts.push(t('watch.status.processed', { count: status.processed }));
+  if (status && status.processed > 0) parts.push(t('watch.status.queued', { count: status.processed }));
   if (status?.lastFile) parts.push(t('watch.status.last', { name: status.lastFile }));
   return { text: parts.join(' · '), error: false };
 }
