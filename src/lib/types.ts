@@ -1,6 +1,21 @@
 // Mirrors of the Rust IPC types (crates/fc-core + src-tauri/src/{ipc,events}.rs).
 // Keep in sync by hand: field names are camelCase on the wire.
 
+/** The clothesline's four ropes. */
+export type LineRopeKey = 'images' | 'text' | 'links' | 'files';
+
+/** A file on the files rope. */
+export type FileSource = 'added' | 'converted' | 'downloaded';
+export interface LineFile {
+  path: string;
+  name: string;
+  source: FileSource;
+  at: number;
+  size: number;
+  kind: Kind | null;
+  thumb: string | null;
+}
+
 export type Kind = 'image' | 'vector' | 'video' | 'audio' | 'pdf' | 'data' | 'subtitle' | 'archive';
 
 export interface Settings {
@@ -53,8 +68,8 @@ export interface Settings {
   lineEdgeReveal: boolean;
   linePeekOnCopy: boolean;
   lineBreeze: boolean;
-  lineRopes: { images: boolean; text: boolean; links: boolean };
-  /** 'accent' or a #rrggbb hex. */
+  lineRopes: { images: boolean; text: boolean; links: boolean; files: boolean };
+  /** 'natural' (hemp, default), 'accent', an accent name or a #rrggbb hex. */
   lineColor: string;
   /** 1..6 px */
   lineThickness: number;
@@ -63,6 +78,44 @@ export interface Settings {
   lineSize: 'small' | 'medium' | 'large';
   lineZoomOnHover: boolean;
   lineSound: boolean;
+  lineRopeStyle: 'twisted' | 'cord' | 'thin';
+  /** 0..40 px */
+  lineSag: number;
+  linePinStyle: 'plastic' | 'wood' | 'metal';
+  /** 'auto' or a #rrggbb hex. */
+  linePinColor: string;
+  lineCardStyle: 'glassDark' | 'glassLight' | 'paper';
+  /** 0..16 px */
+  lineCardRadius: number;
+  lineCardShadow: boolean;
+  lineShowLabels: boolean;
+  lineShowNumbers: boolean;
+  /** Always the four keys, unique (top to bottom). */
+  lineRopeOrder: LineRopeKey[];
+  /** Custom rope names; '' = the default name. */
+  lineRopeNames: Record<LineRopeKey, string>;
+  lineFilesSources: { added: boolean; converted: boolean; downloaded: boolean };
+  /** 0 = all that fit, else 3..30 */
+  lineMaxPerRope: number;
+  lineEdge: 'top' | 'bottom';
+  /** 1000..6000 ms */
+  linePeekMs: number;
+  /** 150..1000 ms */
+  lineRevealDwellMs: number;
+  /** 200..2000 ms */
+  lineHideDelayMs: number;
+  lineClickAction: 'copy' | 'copyClose' | 'paste';
+  /** 0..200 percent */
+  lineSwing: number;
+  /** 50..200 percent */
+  lineDamping: number;
+  /** 0..200 percent */
+  lineBreezeStrength: number;
+  lineFall: boolean;
+  /** 0..100 percent */
+  lineSoundVolume: number;
+  /** Migration marker (3 = wave 3). */
+  lineLookVersion: number;
   watchFolders: WatchFolder[];
   clipboardEnabled: boolean;
   clipboardCaptureText: boolean;

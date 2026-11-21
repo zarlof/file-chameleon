@@ -10,6 +10,7 @@ import type {
   ClipStats,
   ClipTag,
   HotkeyStatus,
+  LineFile,
   DownloadRequest,
   DownloadSnapshot,
   JobRequest,
@@ -122,6 +123,13 @@ export const api = {
   lineDragOut: (id: number) => invoke<void>('line_drag_out', { id }),
   lineOpenItem: (id: number) => invoke<void>('line_open_item', { id }),
   linePaste: (ids: number[]) => invoke<void>('line_paste', { ids }),
+  // ---- files rope (wave 3)
+  lineFiles: () => invoke<LineFile[]>('line_files'),
+  lineFileCopy: (paths: string[]) => invoke<void>('line_file_copy', { paths }),
+  lineFileOpen: (path: string) => invoke<void>('line_file_open', { path }),
+  lineFileReveal: (path: string) => invoke<void>('line_file_reveal', { path }),
+  lineFileRemove: (paths: string[]) => invoke<void>('line_file_remove', { paths }),
+  lineFileDragOut: (path: string) => invoke<void>('line_file_drag_out', { path }),
   openUrl: (url: string) => invoke<void>('open_url', { url }),
   floatOpen: (paths: string[]) => invoke<void>('float_open', { paths }),
 
@@ -154,6 +162,8 @@ export const on = {
   clipChanged: (cb: () => void) => listen('clip://changed', () => cb()),
   /** Shelf window: it was just shown. */
   shelfOpen: (cb: () => void) => listen('shelf://open', () => cb()),
+  /** The files rope changed (a file was added, converted, downloaded or pruned): refetch. */
+  filesChanged: (cb: () => void) => listen('files://changed', () => cb()),
   watchStatus: (cb: (s: WatchStatus) => void) => listen<WatchStatus>('watch://status', (e) => cb(e.payload)),
   clipPaused: (cb: (paused: boolean) => void) => listen<boolean>('clip://paused', (e) => cb(e.payload)),
   settingsChanged: (cb: (s: Settings) => void) => listen<Settings>('settings://changed', (e) => cb(e.payload)),

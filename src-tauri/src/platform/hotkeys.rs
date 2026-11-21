@@ -392,7 +392,7 @@ mod tests {
         assert_eq!(
             wanted_hotkeys(&s),
             [
-                ("Ctrl+Alt+V".to_string(), true),
+                (String::new(), true),
                 (String::new(), true),
                 ("Ctrl+Alt+D".to_string(), true),
                 ("Ctrl+Alt+L".to_string(), true),
@@ -406,7 +406,7 @@ mod tests {
         assert_eq!(
             wanted_hotkeys(&s),
             [
-                ("Ctrl+Alt+V".to_string(), false),
+                (String::new(), false),
                 ("Ctrl+Alt+L".to_string(), false),
                 ("Ctrl+Alt+D".to_string(), true),
                 ("Ctrl+Alt+L".to_string(), true),

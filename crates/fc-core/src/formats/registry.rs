@@ -47,12 +47,28 @@ pub struct Edge {
     pub chain: bool,
 }
 
-const RASTER_IN: &[&str] = &["png", "jpg", "webp", "gif", "bmp", "tiff", "ico"];
-const RASTER_OUT: &[&str] = &["png", "jpg", "webp", "gif", "bmp", "tiff", "ico"];
+const RASTER_IN: &[&str] = &[
+    "png", "jpg", "webp", "gif", "bmp", "tiff", "ico", "tga", "qoi", "pnm",
+];
+const RASTER_OUT: &[&str] = &[
+    "png", "jpg", "webp", "gif", "bmp", "tiff", "ico", "tga", "qoi", "pnm",
+];
 const SVG_OUT: &[&str] = &["png", "jpg", "webp", "ico"];
-const VIDEO: &[&str] = &["mp4", "mkv", "webm", "mov", "avi"];
+/// Video formats ffmpeg can both read and write. `ogv` (Theora) and `amr` below are read-only:
+/// the shipped essentials ffmpeg build has no encoder for them (see `formats::INPUT_ONLY`).
+const VIDEO_OUT: &[&str] = &[
+    "mp4", "mkv", "webm", "mov", "avi", "m4v", "wmv", "flv", "mpg", "3gp", "ts",
+];
+const VIDEO_IN: &[&str] = &[
+    "mp4", "mkv", "webm", "mov", "avi", "m4v", "wmv", "flv", "mpg", "3gp", "ts", "ogv",
+];
 /// `m4r` is an ordinary audio target (ffmpeg cuts it to 40 s) and input.
-const AUDIO: &[&str] = &["mp3", "m4a", "opus", "ogg", "flac", "wav", "m4r"];
+const AUDIO_OUT: &[&str] = &[
+    "mp3", "m4a", "opus", "ogg", "flac", "wav", "m4r", "aac", "wma", "aiff", "ac3", "mka",
+];
+const AUDIO_IN: &[&str] = &[
+    "mp3", "m4a", "opus", "ogg", "flac", "wav", "m4r", "aac", "wma", "aiff", "ac3", "mka", "amr",
+];
 const DATA_STRUCT: &[&str] = &["csv", "json", "yaml", "toml", "tsv"];
 
 fn build() -> Vec<Edge> {
@@ -81,20 +97,20 @@ fn build() -> Vec<Edge> {
     for &b in SVG_OUT {
         add("svg", b, EngineId::Svg, 1);
     }
-    for &a in VIDEO {
-        for &b in VIDEO {
+    for &a in VIDEO_IN {
+        for &b in VIDEO_OUT {
             add(a, b, EngineId::Ffmpeg, 3);
         }
         add(a, "gif", EngineId::Ffmpeg, 3);
-        for &b in AUDIO {
+        for &b in AUDIO_OUT {
             add(a, b, EngineId::Ffmpeg, 3);
         }
     }
     // Animated GIF -> video (ffmpeg keeps all frames).
     add("gif", "mp4", EngineId::Ffmpeg, 3);
     add("gif", "webm", EngineId::Ffmpeg, 3);
-    for &a in AUDIO {
-        for &b in AUDIO {
+    for &a in AUDIO_IN {
+        for &b in AUDIO_OUT {
             add(a, b, EngineId::Ffmpeg, 3);
         }
     }
@@ -113,6 +129,7 @@ fn build() -> Vec<Edge> {
     add("vtt", "txt", EngineId::Subtitle, 1);
     add("ass", "srt", EngineId::Ffmpeg, 3);
     add("ass", "vtt", EngineId::Ffmpeg, 3);
+    add("ass", "txt", EngineId::Ffmpeg, 3);
     v
 }
 
@@ -132,6 +149,8 @@ mod tests {
     use super::*;
     use crate::formats::by_id;
 
+    const EDGE_COUNT: usize = 558;
+
     #[test]
     fn every_edge_uses_known_formats() {
         for e in edges() {
@@ -139,6 +158,40 @@ mod tests {
             assert!(by_id(e.to).is_some(), "unknown to {}", e.to);
             assert_ne!(e.from, e.to);
         }
+    }
+
+    #[test]
+    fn new_formats_edges() {
+        use crate::formats::{Kind, by_id};
+        let has = |from: &str, to: &str| edges().iter().any(|e| e.from == from && e.to == to);
+        for (a, b) in [
+            ("mp4", "wmv"),
+            ("flv", "mp3"),
+            ("aac", "flac"),
+            ("tga", "png"),
+            ("png", "qoi"),
+            ("ass", "txt"),
+        ] {
+            assert!(has(a, b), "{a} -> {b}");
+        }
+        assert_eq!(by_id("wmv").unwrap().kind, Kind::Video);
+        assert_eq!(by_id("aiff").unwrap().kind, Kind::Audio);
+        assert_eq!(by_id("tga").unwrap().kind, Kind::Image);
+        assert_eq!(edges().len(), EDGE_COUNT);
+    }
+
+    #[test]
+    fn input_only_formats_not_targets() {
+        for &x in crate::formats::INPUT_ONLY {
+            assert!(crate::formats::is_input_only(x));
+            assert!(crate::formats::by_id(x).is_some(), "{x} must be a format");
+            assert!(
+                edges_from(x).next().is_some(),
+                "{x} must convert to something"
+            );
+            assert!(!edges().iter().any(|e| e.to == x), "{x} is input only");
+        }
+        assert!(!crate::formats::is_input_only("mp4"));
     }
 
     #[test]

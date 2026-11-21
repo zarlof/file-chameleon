@@ -82,7 +82,8 @@ pub struct Settings {
     /// The clips sway gently (off with reduce motion).
     pub line_breeze: bool,
     pub line_ropes: LineRopes,
-    /// Rope colour: "accent", an accent name, or a `#rrggbb` hex colour (anything else is accent).
+    /// Rope colour: "natural" (hemp, the default), "accent", an accent name, or a `#rrggbb` hex
+    /// colour (anything else is natural).
     pub line_color: String,
     /// Rope thickness in px, 1..=6.
     pub line_thickness: u8,
@@ -94,6 +95,51 @@ pub struct Settings {
     pub line_zoom_on_hover: bool,
     /// A soft sound when clips hang or fall.
     pub line_sound: bool,
+    /// "twisted" | "cord" | "thin"
+    pub line_rope_style: String,
+    /// Rope sag in px, 0..=40.
+    pub line_sag: u8,
+    /// "plastic" | "wood" | "metal"
+    pub line_pin_style: String,
+    /// "auto" or `#rrggbb`.
+    pub line_pin_color: String,
+    /// "glassDark" | "glassLight" | "paper"
+    pub line_card_style: String,
+    /// Card corner radius in px, 0..=16.
+    pub line_card_radius: u8,
+    pub line_card_shadow: bool,
+    pub line_show_labels: bool,
+    pub line_show_numbers: bool,
+    /// Rope order, top to bottom: exactly "images", "text", "links", "files" (sanitized).
+    pub line_rope_order: Vec<String>,
+    /// Custom rope names; "" = the default name.
+    pub line_rope_names: LineRopeNames,
+    /// Which files-rope sources are shown.
+    pub line_files_sources: LineFilesSources,
+    /// Cards per rope: 0 = all that fit, else 3..=30.
+    pub line_max_per_rope: u8,
+    /// "top" | "bottom"
+    pub line_edge: String,
+    /// How long the line stays after a copy, in ms, 1000..=6000.
+    pub line_peek_ms: u32,
+    /// Pointer dwell time at the edge before it reveals, in ms, 150..=1000.
+    pub line_reveal_dwell_ms: u32,
+    /// Delay before it hides after the pointer leaves, in ms, 200..=2000.
+    pub line_hide_delay_ms: u32,
+    /// "copy" | "copyClose" | "paste"
+    pub line_click_action: String,
+    /// Sway strength in percent, 0..=200.
+    pub line_swing: u16,
+    /// Sway damping in percent, 50..=200.
+    pub line_damping: u16,
+    /// Breeze strength in percent, 0..=200.
+    pub line_breeze_strength: u16,
+    /// Removed clips fall off the rope.
+    pub line_fall: bool,
+    /// Sound volume in percent, 0..=100.
+    pub line_sound_volume: u8,
+    /// Settings migration marker: below 3 the wave-3 look migration still has to run.
+    pub line_look_version: u8,
 
     /// Watch folders: new files are run through a preset automatically.
     pub watch_folders: Vec<WatchFolder>,
@@ -140,6 +186,7 @@ pub struct LineRopes {
     pub images: bool,
     pub text: bool,
     pub links: bool,
+    pub files: bool,
 }
 
 impl Default for LineRopes {
@@ -148,8 +195,60 @@ impl Default for LineRopes {
             images: true,
             text: true,
             links: true,
+            files: true,
         }
     }
+}
+
+/// Custom names of the four ropes ("" = default).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LineRopeNames {
+    pub images: String,
+    pub text: String,
+    pub links: String,
+    pub files: String,
+}
+
+/// Which sources the files rope shows.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LineFilesSources {
+    pub added: bool,
+    pub converted: bool,
+    pub downloaded: bool,
+}
+
+impl Default for LineFilesSources {
+    fn default() -> Self {
+        Self {
+            added: true,
+            converted: true,
+            downloaded: true,
+        }
+    }
+}
+
+/// The four rope keys in their default order.
+pub const ROPE_KEYS: [&str; 4] = ["images", "text", "links", "files"];
+
+fn sanitize_rope_order(order: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for k in order {
+        if ROPE_KEYS.contains(&k.as_str()) && !out.contains(k) {
+            out.push(k.clone());
+        }
+    }
+    for k in ROPE_KEYS {
+        if !out.iter().any(|o| o == k) {
+            out.push(k.to_string());
+        }
+    }
+    out
+}
+
+fn is_hex_colour(s: &str) -> bool {
+    s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
 
 /// One watched folder (Settings > Watch folders).
@@ -193,7 +292,7 @@ impl Default for Settings {
             wheel_color: "purple".into(),
             wheel_scale: 100,
             wheel_show_detail: true,
-            hotkey_shelf: "Ctrl+Alt+V".into(),
+            hotkey_shelf: String::new(),
             hotkey_library: String::new(),
             hotkey_download_link: "Ctrl+Alt+D".into(),
             hotkey_line: "Ctrl+Alt+L".into(),
@@ -205,12 +304,36 @@ impl Default for Settings {
             line_peek_on_copy: true,
             line_breeze: true,
             line_ropes: LineRopes::default(),
-            line_color: "accent".into(),
+            line_color: "natural".into(),
             line_thickness: 2,
             line_opacity: 100,
             line_size: "medium".into(),
             line_zoom_on_hover: false,
             line_sound: false,
+            line_rope_style: "twisted".into(),
+            line_sag: 14,
+            line_pin_style: "plastic".into(),
+            line_pin_color: "auto".into(),
+            line_card_style: "glassDark".into(),
+            line_card_radius: 10,
+            line_card_shadow: true,
+            line_show_labels: true,
+            line_show_numbers: true,
+            line_rope_order: ROPE_KEYS.iter().map(|k| k.to_string()).collect(),
+            line_rope_names: LineRopeNames::default(),
+            line_files_sources: LineFilesSources::default(),
+            line_max_per_rope: 0,
+            line_edge: "top".into(),
+            line_peek_ms: 2500,
+            line_reveal_dwell_ms: 350,
+            line_hide_delay_ms: 400,
+            line_click_action: "copy".into(),
+            line_swing: 100,
+            line_damping: 100,
+            line_breeze_strength: 100,
+            line_fall: true,
+            line_sound_volume: 60,
+            line_look_version: Self::LOOK_VERSION,
             watch_folders: Vec::new(),
             clipboard_enabled: true,
             clipboard_capture_text: true,
@@ -237,6 +360,8 @@ impl Default for Settings {
 
 impl Settings {
     pub const MAX_RECENT_TARGETS: usize = 7;
+    /// Current `line_look_version`: files rope, natural rope colour, shelf folded into the line.
+    pub const LOOK_VERSION: u8 = 3;
 
     /// Missing or corrupt file -> defaults (never fails). A field with a bad value (an unknown
     /// enum variant, a wrong type) falls back to its default; the other fields are kept.
@@ -249,10 +374,54 @@ impl Settings {
             .clamped()
     }
 
-    /// Pull out-of-range wave-2 line values back into their ranges (on load and on save).
+    /// Pull out-of-range line values back into their ranges and enums back into their sets
+    /// (on load and on save).
     pub fn clamped(mut self) -> Self {
         self.line_thickness = self.line_thickness.clamp(1, 6);
         self.line_opacity = self.line_opacity.clamp(30, 100);
+        let pick = |v: &mut String, allowed: &[&str], default: &str| {
+            if !allowed.contains(&v.as_str()) {
+                *v = default.to_string();
+            }
+        };
+        pick(
+            &mut self.line_rope_style,
+            &["twisted", "cord", "thin"],
+            "twisted",
+        );
+        pick(
+            &mut self.line_pin_style,
+            &["plastic", "wood", "metal"],
+            "plastic",
+        );
+        pick(
+            &mut self.line_card_style,
+            &["glassDark", "glassLight", "paper"],
+            "glassDark",
+        );
+        pick(&mut self.line_edge, &["top", "bottom"], "top");
+        pick(
+            &mut self.line_click_action,
+            &["copy", "copyClose", "paste"],
+            "copy",
+        );
+        if self.line_pin_color != "auto" && !is_hex_colour(&self.line_pin_color) {
+            self.line_pin_color = "auto".into();
+        }
+        self.line_sag = self.line_sag.clamp(0, 40);
+        self.line_card_radius = self.line_card_radius.clamp(0, 16);
+        self.line_max_per_rope = match self.line_max_per_rope {
+            0 => 0,
+            n => n.clamp(3, 30),
+        };
+        self.line_peek_ms = self.line_peek_ms.clamp(1000, 6000);
+        self.line_reveal_dwell_ms = self.line_reveal_dwell_ms.clamp(150, 1000);
+        self.line_hide_delay_ms = self.line_hide_delay_ms.clamp(200, 2000);
+        self.line_swing = self.line_swing.min(200);
+        self.line_damping = self.line_damping.clamp(50, 200);
+        self.line_breeze_strength = self.line_breeze_strength.min(200);
+        self.line_sound_volume = self.line_sound_volume.min(100);
+        self.line_rope_order = sanitize_rope_order(&self.line_rope_order);
         self
     }
 
@@ -274,6 +443,32 @@ impl Settings {
             for key in NEW_KEYS {
                 file.insert(key.to_string(), old.clone());
             }
+        }
+        // Wave 3: the shelf folded into the line. Looks only at keys the file really has.
+        let version = file
+            .get("lineLookVersion")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        if version < u64::from(Self::LOOK_VERSION) {
+            if file.get("lineColor").and_then(Value::as_str) == Some("accent") {
+                file.insert("lineColor".into(), "natural".into());
+            }
+            let shelf = file
+                .get("hotkeyShelf")
+                .and_then(Value::as_str)
+                .filter(|h| !h.is_empty())
+                .map(str::to_string);
+            let line_is_default = file
+                .get("hotkeyLine")
+                .and_then(Value::as_str)
+                .is_none_or(|h| h == "Ctrl+Alt+L");
+            if let Some(shelf) = shelf
+                && line_is_default
+            {
+                file.insert("hotkeyLine".into(), shelf.into());
+            }
+            file.insert("hotkeyShelf".into(), "".into());
+            file.insert("lineLookVersion".into(), Self::LOOK_VERSION.into());
         }
         if let Ok(s) = serde_json::from_value(Value::Object(file.clone())) {
             return s;
@@ -334,7 +529,7 @@ mod tests {
         let s = Settings::load(&p);
         assert_eq!(s.theme, "dark");
         assert_eq!(s.clipboard_max_items, 500);
-        assert_eq!(s.hotkey_shelf, "Ctrl+Alt+V");
+        assert_eq!(s.hotkey_shelf, "");
         std::fs::write(&p, b"not json").unwrap();
         assert_eq!(Settings::load(&p), Settings::default());
     }
@@ -391,7 +586,8 @@ mod tests {
         let s = Settings::load(&p);
         assert!(s.line_enabled && s.line_edge_reveal && s.line_peek_on_copy && s.line_breeze);
         assert!(s.line_ropes.images && s.line_ropes.text && s.line_ropes.links);
-        assert_eq!(s.hotkey_line, "Ctrl+Alt+L");
+        // Wave 3 moves the shelf hotkey onto the (default) line hotkey.
+        assert_eq!(s.hotkey_line, "Ctrl+Alt+V");
         // A partial rope object keeps the other ropes on.
         std::fs::write(&p, br#"{"lineRopes":{"text":false}}"#).unwrap();
         let s = Settings::load(&p);
@@ -404,7 +600,7 @@ mod tests {
         let p = dir.path().join("settings.json");
         std::fs::write(&p, br#"{"theme":"dark"}"#).unwrap();
         let s = Settings::load(&p);
-        assert_eq!(s.line_color, "accent");
+        assert_eq!(s.line_color, "natural");
         assert_eq!((s.line_thickness, s.line_opacity), (2, 100));
         assert_eq!(s.line_size, "medium");
         assert!(!s.line_zoom_on_hover && !s.line_sound);
@@ -414,6 +610,92 @@ mod tests {
         std::fs::write(&p, br#"{"lineThickness":99,"lineOpacity":5}"#).unwrap();
         let s = Settings::load(&p);
         assert_eq!((s.line_thickness, s.line_opacity), (6, 30));
+    }
+
+    #[test]
+    fn wave3_defaults_and_clamps() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        std::fs::write(&p, br#"{"theme":"dark","lineLookVersion":3}"#).unwrap();
+        let s = Settings::load(&p);
+        assert_eq!(s.line_rope_style, "twisted");
+        assert_eq!((s.line_sag, s.line_card_radius), (14, 10));
+        assert_eq!(s.line_pin_style, "plastic");
+        assert_eq!(s.line_pin_color, "auto");
+        assert_eq!(s.line_card_style, "glassDark");
+        assert!(s.line_card_shadow && s.line_show_labels && s.line_show_numbers && s.line_fall);
+        assert_eq!(s.line_rope_order, ["images", "text", "links", "files"]);
+        assert_eq!(s.line_rope_names, LineRopeNames::default());
+        assert!(s.line_ropes.files);
+        assert!(s.line_files_sources.added && s.line_files_sources.converted);
+        assert!(s.line_files_sources.downloaded);
+        assert_eq!(s.line_max_per_rope, 0);
+        assert_eq!(s.line_edge, "top");
+        assert_eq!(
+            (s.line_peek_ms, s.line_reveal_dwell_ms, s.line_hide_delay_ms),
+            (2500, 350, 400)
+        );
+        assert_eq!(s.line_click_action, "copy");
+        assert_eq!(
+            (s.line_swing, s.line_damping, s.line_breeze_strength),
+            (100, 100, 100)
+        );
+        assert_eq!(s.line_sound_volume, 60);
+        std::fs::write(
+            &p,
+            br##"{"lineSag":99,"lineMaxPerRope":1,"linePeekMs":10,"lineRevealDwellMs":9999,
+                "lineHideDelayMs":1,"lineSwing":999,"lineDamping":1,"lineCardRadius":99,
+                "lineSoundVolume":250,"lineEdge":"left","linePinColor":"red",
+                "lineRopeOrder":["files","files","text"],"lineLookVersion":3}"##,
+        )
+        .unwrap();
+        let s = Settings::load(&p);
+        assert_eq!(
+            (s.line_sag, s.line_max_per_rope, s.line_peek_ms),
+            (40, 3, 1000)
+        );
+        assert_eq!((s.line_reveal_dwell_ms, s.line_hide_delay_ms), (1000, 200));
+        assert_eq!(
+            (s.line_swing, s.line_damping, s.line_card_radius),
+            (200, 50, 16)
+        );
+        assert_eq!(s.line_sound_volume, 100);
+        assert_eq!(
+            (s.line_edge.as_str(), s.line_pin_color.as_str()),
+            ("top", "auto")
+        );
+        assert_eq!(s.line_rope_order, ["files", "text", "images", "links"]);
+        std::fs::write(&p, br##"{"lineMaxPerRope":50,"linePinColor":"#aabbcc"}"##).unwrap();
+        let s = Settings::load(&p);
+        assert_eq!(
+            (s.line_max_per_rope, s.line_pin_color.as_str()),
+            (30, "#aabbcc")
+        );
+    }
+
+    #[test]
+    fn wave3_migration() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        std::fs::write(
+            &p,
+            br#"{"hotkeyShelf":"Ctrl+1","hotkeyLine":"Ctrl+Alt+L","lineColor":"accent"}"#,
+        )
+        .unwrap();
+        let s = Settings::load(&p);
+        assert_eq!(s.hotkey_line, "Ctrl+1");
+        assert_eq!(s.hotkey_shelf, "");
+        assert_eq!(s.line_color, "natural");
+        assert_eq!(s.line_look_version, 3);
+        // A custom line hotkey is kept.
+        std::fs::write(&p, br#"{"hotkeyShelf":"Ctrl+1","hotkeyLine":"Ctrl+Alt+K"}"#).unwrap();
+        assert_eq!(Settings::load(&p).hotkey_line, "Ctrl+Alt+K");
+        // After the migration the user's own choice survives later loads.
+        let mut s = Settings::load(&p);
+        s.line_color = "accent".into();
+        s.save(&p).unwrap();
+        let s = Settings::load(&p);
+        assert_eq!((s.line_color.as_str(), s.line_look_version), ("accent", 3));
     }
 
     #[test]

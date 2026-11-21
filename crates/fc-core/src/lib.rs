@@ -9,6 +9,7 @@
 //! - [`clip`]       clipboard classification and history store
 //! - [`settings`]   persisted user settings
 //! - [`presets`]    presets, groups and wheel profiles
+//! - [`files`]      the clothesline files rope store
 //! - [`watch`]      polling folder watcher
 //! - [`proc`]       child-process helpers (no console window, kill-on-close, cancel)
 //! - [`b64`]        base64 helpers (data URLs crossing IPC)
@@ -20,6 +21,7 @@ pub mod download;
 pub mod engine_mgr;
 pub mod engines;
 pub mod error;
+pub mod files;
 pub mod formats;
 pub mod jobs;
 pub mod presets;

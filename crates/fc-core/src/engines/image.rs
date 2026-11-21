@@ -192,6 +192,39 @@ fn write_bmp(img: &DynamicImage, output: &Path) -> Result<()> {
     Ok(())
 }
 
+fn write_tga(img: &DynamicImage, output: &Path) -> Result<()> {
+    let mut w = create(output)?;
+    let enc = image::codecs::tga::TgaEncoder::new(&mut w);
+    normalize(img)
+        .write_with_encoder(enc)
+        .map_err(map_image_error)?;
+    w.flush()?;
+    Ok(())
+}
+
+fn write_qoi(img: &DynamicImage, output: &Path) -> Result<()> {
+    let mut w = create(output)?;
+    let enc = image::codecs::qoi::QoiEncoder::new(&mut w);
+    normalize(img)
+        .write_with_encoder(enc)
+        .map_err(map_image_error)?;
+    w.flush()?;
+    Ok(())
+}
+
+/// Binary PPM (P6): PNM has no alpha, so transparency is flattened onto white.
+fn write_pnm(img: &DynamicImage, output: &Path) -> Result<()> {
+    let mut w = create(output)?;
+    let enc = image::codecs::pnm::PnmEncoder::new(&mut w).with_subtype(
+        image::codecs::pnm::PnmSubtype::Pixmap(image::codecs::pnm::SampleEncoding::Binary),
+    );
+    DynamicImage::ImageRgb8(flatten_rgb(img))
+        .write_with_encoder(enc)
+        .map_err(map_image_error)?;
+    w.flush()?;
+    Ok(())
+}
+
 fn write_tiff(img: &DynamicImage, output: &Path) -> Result<()> {
     let mut w = create(output)?;
     let enc = TiffEncoder::new(&mut w);
@@ -247,6 +280,9 @@ fn write_as(img: &DynamicImage, to: &str, output: &Path, options: &ConvertOption
         "bmp" => write_bmp(img, output),
         "tiff" | "tif" => write_tiff(img, output),
         "ico" => write_ico(img, output),
+        "tga" => write_tga(img, output),
+        "qoi" => write_qoi(img, output),
+        "pnm" | "ppm" => write_pnm(img, output),
         other => Err(Error::Unsupported(format!("image output format: {other}"))),
     };
     if r.is_err() {
@@ -308,7 +344,12 @@ pub fn compress(
     }
     let format = crate::formats::detect_path(input)
         .map(|f| f.id)
-        .filter(|id| matches!(*id, "png" | "jpg" | "webp" | "gif" | "bmp" | "tiff" | "ico"))
+        .filter(|id| {
+            matches!(
+                *id,
+                "png" | "jpg" | "webp" | "gif" | "bmp" | "tiff" | "ico" | "tga" | "qoi" | "pnm"
+            )
+        })
         .ok_or_else(|| Error::Unsupported("not a raster image".into()))?;
     if format == "gif" {
         std::fs::copy(input, output)?;
@@ -496,6 +537,29 @@ pub fn crop_aspect(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tga_qoi_pnm_roundtrip() {
+        let d = tempfile::tempdir().unwrap();
+        let src = d.path().join("a.png");
+        let mut img = image::RgbaImage::new(5, 3);
+        for (i, p) in img.pixels_mut().enumerate() {
+            *p = image::Rgba([(i * 17) as u8, 90, 200, 255]);
+        }
+        img.save(&src).unwrap();
+        let cancel = CancelToken::default();
+        let o = ConvertOptions::default();
+        for ext in ["tga", "qoi", "pnm"] {
+            let out = d.path().join(format!("a.{ext}"));
+            convert(&src, ext, &out, &o, &cancel).unwrap();
+            assert!(out.metadata().unwrap().len() > 0, "{ext}");
+            let back = d.path().join(format!("{ext}.png"));
+            convert(&out, "png", &back, &o, &cancel).unwrap();
+            let got = image::open(&back).unwrap().to_rgb8();
+            assert_eq!(got.dimensions(), (5, 3), "{ext}");
+            assert_eq!(got.get_pixel(1, 0).0, [17, 90, 200], "{ext}");
+        }
+    }
 
     #[test]
     fn aspect_rect_is_centred_and_maximal() {

@@ -51,7 +51,7 @@
   const falls = $state<Record<number, number>>({});
 
   const reduce = $derived(settings?.reduceMotion ?? false);
-  const ropeCfg = $derived(settings?.lineRopes ?? { images: true, text: true, links: true });
+  const ropeCfg = $derived(settings?.lineRopes ?? { images: true, text: true, links: true, files: true });
   // The ropes that exist do not depend on the search (the window height does not jump while typing).
   const baseRopes = $derived(visibleRopes(splitRopes(items, ropeCfg)));
   const ropes = $derived(baseRopes.map((r) => ({ ...r, items: query.trim() ? r.items.filter((i) => matches(i, query)) : r.items })));

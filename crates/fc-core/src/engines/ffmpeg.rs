@@ -39,18 +39,31 @@ fn container_of(path: &Path) -> Option<&'static str> {
         "webm" => "webm",
         "avi" => "avi",
         "mp3" => "mp3",
-        "m4a" | "aac" => "m4a",
+        "m4a" => "m4a",
         "opus" => "opus",
         "ogg" | "oga" => "ogg",
         "flac" => "flac",
         "wav" => "wav",
         "m4r" => "m4r",
+        "wmv" => "wmv",
+        "flv" => "flv",
+        "mpg" | "mpeg" | "mpe" => "mpg",
+        "3gp" | "3gpp" => "3gp",
+        "ts" | "m2ts" | "mts" => "ts",
+        "aac" => "aac",
+        "wma" => "wma",
+        "aiff" | "aif" | "aifc" => "aiff",
+        "ac3" => "ac3",
+        "mka" => "mka",
         _ => return None,
     })
 }
 
 fn is_video_container(id: &str) -> bool {
-    matches!(id, "mp4" | "mov" | "mkv" | "webm" | "avi")
+    matches!(
+        id,
+        "mp4" | "mov" | "mkv" | "webm" | "avi" | "wmv" | "flv" | "mpg" | "3gp" | "ts"
+    )
 }
 
 fn muxer(id: &str) -> &'static str {
@@ -66,6 +79,15 @@ fn muxer(id: &str) -> &'static str {
         "opus" => "opus",
         "ogg" => "ogg",
         "flac" => "flac",
+        "wmv" | "wma" => "asf",
+        "flv" => "flv",
+        "mpg" => "mpeg",
+        "3gp" => "3gp",
+        "ts" => "mpegts",
+        "aac" => "adts",
+        "aiff" => "aiff",
+        "ac3" => "ac3",
+        "mka" => "matroska",
         _ => "wav",
     }
 }
@@ -103,9 +125,14 @@ fn video_codec_args(id: &str, quality: Option<u8>, crf: Option<u32>) -> Vec<Stri
             ]));
             v
         }
-        "avi" => {
+        "avi" | "wmv" | "mpg" => {
+            let codec = match id {
+                "wmv" => "wmv2",
+                "mpg" => "mpeg2video",
+                _ => "mpeg4",
+            };
             let q = 2 + u32::from(100 - quality.unwrap_or(75).clamp(1, 100)) / 10;
-            let mut v = strs(&["-c:v", "mpeg4", "-q:v"]);
+            let mut v = strs(&["-c:v", codec, "-q:v"]);
             v.push(q.to_string());
             v.extend(strs(&["-pix_fmt", "yuv420p"]));
             v
@@ -134,11 +161,21 @@ const EVEN_SCALE: &str = "scale=trunc(iw/2)*2:trunc(ih/2)*2";
 fn audio_codec_args(id: &str, bitrate_k: Option<u32>) -> Vec<String> {
     let br = |default: u32| format!("{}k", bitrate_k.unwrap_or(default));
     match id {
-        "mp4" | "mov" | "mkv" => vec!["-c:a".into(), "aac".into(), "-b:a".into(), br(160)],
-        "m4a" | "m4r" => vec!["-c:a".into(), "aac".into(), "-b:a".into(), br(192)],
-        "webm" | "opus" | "ogg" => {
+        "mp4" | "mov" | "mkv" | "flv" | "3gp" | "ts" => {
+            vec!["-c:a".into(), "aac".into(), "-b:a".into(), br(160)]
+        }
+        "m4a" | "m4r" | "aac" => vec!["-c:a".into(), "aac".into(), "-b:a".into(), br(192)],
+        "webm" | "opus" | "ogg" | "mka" => {
             vec!["-c:a".into(), "libopus".into(), "-b:a".into(), br(128)]
         }
+        "wmv" | "wma" => vec!["-c:a".into(), "wmav2".into(), "-b:a".into(), br(192)],
+        "mpg" | "ac3" => vec![
+            "-c:a".into(),
+            if id == "ac3" { "ac3" } else { "mp2" }.into(),
+            "-b:a".into(),
+            br(192),
+        ],
+        "aiff" => strs(&["-c:a", "pcm_s16be"]),
         "avi" => vec!["-c:a".into(), "libmp3lame".into(), "-b:a".into(), br(160)],
         "mp3" => match bitrate_k {
             Some(k) => vec![
@@ -610,6 +647,24 @@ impl Ffmpeg {
         progress: &dyn Fn(f32),
     ) -> Result<()> {
         Self::require_input(input)?;
+        // m4v is MP4 with another extension.
+        let to = if to == "m4v" { "mp4" } else { to };
+        if to == "txt" {
+            // ASS/SSA -> plain text: SubRip through ffmpeg, then the in-process SRT -> TXT.
+            let srt = output.with_extension("fc-ass.srt");
+            let legacy = std::fs::read(input)
+                .is_ok_and(|b| super::subtitle::sniff(&b) == super::subtitle::TextEncoding::Cp1254);
+            let r = self
+                .run(
+                    subtitle_args(input, "srt", &srt, legacy),
+                    None,
+                    cancel,
+                    progress,
+                )
+                .and_then(|()| super::subtitle::convert(&srt, "srt", "txt", output));
+            let _ = std::fs::remove_file(&srt);
+            return r;
+        }
         if matches!(to, "srt" | "vtt") {
             let legacy = std::fs::read(input)
                 .is_ok_and(|b| super::subtitle::sniff(&b) == super::subtitle::TextEncoding::Cp1254);
@@ -649,6 +704,16 @@ impl Ffmpeg {
                 | "flac"
                 | "wav"
                 | "m4r"
+                | "wmv"
+                | "flv"
+                | "mpg"
+                | "3gp"
+                | "ts"
+                | "aac"
+                | "wma"
+                | "aiff"
+                | "ac3"
+                | "mka"
         ) {
             return Err(Error::Unsupported(format!("ffmpeg target {to}")));
         }
@@ -884,6 +949,49 @@ mod tests {
         assert!(a.contains("-c:a aac -b:a 160k"));
         assert!(a.contains("force_divisible_by=2"));
         assert!(a.ends_with("-f mp4 out.tmp"));
+    }
+
+    #[test]
+    fn wave3_container_and_codec_args() {
+        let conv = |to: &str| {
+            line(&convert_args(
+                Path::new("in.mkv"),
+                to,
+                Path::new("o"),
+                &ConvertOptions::default(),
+            ))
+        };
+        let a = conv("wmv");
+        assert!(
+            a.contains("-c:v wmv2") && a.contains("wmav2") && a.ends_with("-f asf o"),
+            "{a}"
+        );
+        let a = conv("flv");
+        assert!(
+            a.contains("libx264") && a.contains("-c:a aac") && a.ends_with("-f flv o"),
+            "{a}"
+        );
+        let a = conv("mpg");
+        assert!(
+            a.contains("mpeg2video") && a.contains("-c:a mp2") && a.ends_with("-f mpeg o"),
+            "{a}"
+        );
+        assert!(conv("3gp").ends_with("-f 3gp o"));
+        assert!(conv("ts").ends_with("-f mpegts o"));
+        let a = conv("aac");
+        assert!(
+            a.contains("-vn") && a.contains("-c:a aac") && a.ends_with("-f adts o"),
+            "{a}"
+        );
+        assert!(conv("wma").ends_with("-f asf o") && conv("wma").contains("wmav2"));
+        assert!(conv("aiff").contains("pcm_s16be") && conv("aiff").ends_with("-f aiff o"));
+        assert!(conv("ac3").contains("-c:a ac3") && conv("ac3").ends_with("-f ac3 o"));
+        let a = conv("mka");
+        assert!(a.contains("libopus") && a.ends_with("-f matroska o"), "{a}");
+        assert_eq!(container_of(Path::new("a.M4V")), Some("mp4"));
+        assert_eq!(container_of(Path::new("a.aac")), Some("aac"));
+        assert_eq!(container_of(Path::new("a.mpeg")), Some("mpg"));
+        assert_eq!(container_of(Path::new("a.amr")), None);
     }
 
     #[test]

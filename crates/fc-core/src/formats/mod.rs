@@ -45,21 +45,37 @@ pub static FORMATS: &[FormatInfo] = &[
     f!("bmp", Image, "BMP", ["bmp", "dib"]),
     f!("tiff", Image, "TIFF", ["tiff", "tif"]),
     f!("ico", Image, "ICO", ["ico"]),
+    f!("tga", Image, "TGA", ["tga"]),
+    f!("qoi", Image, "QOI", ["qoi"]),
+    f!("pnm", Image, "PNM", ["pnm", "pbm", "pgm", "ppm"]),
     // Vector
     f!("svg", Vector, "SVG", ["svg"]),
     // Video
-    f!("mp4", Video, "MP4", ["mp4", "m4v"]),
+    f!("mp4", Video, "MP4", ["mp4"]),
     f!("mkv", Video, "MKV", ["mkv"]),
     f!("webm", Video, "WebM", ["webm"]),
     f!("mov", Video, "MOV", ["mov", "qt"]),
     f!("avi", Video, "AVI", ["avi"]),
+    f!("m4v", Video, "M4V", ["m4v"]),
+    f!("wmv", Video, "WMV", ["wmv"]),
+    f!("flv", Video, "FLV", ["flv"]),
+    f!("mpg", Video, "MPG", ["mpg", "mpeg", "mpe"]),
+    f!("3gp", Video, "3GP", ["3gp", "3gpp"]),
+    f!("ts", Video, "TS", ["ts", "m2ts", "mts"]),
+    f!("ogv", Video, "OGV", ["ogv"]),
     // Audio
     f!("mp3", Audio, "MP3", ["mp3"]),
-    f!("m4a", Audio, "M4A", ["m4a", "aac"]),
+    f!("m4a", Audio, "M4A", ["m4a"]),
     f!("opus", Audio, "Opus", ["opus"]),
     f!("ogg", Audio, "OGG", ["ogg", "oga"]),
     f!("flac", Audio, "FLAC", ["flac"]),
     f!("wav", Audio, "WAV", ["wav"]),
+    f!("aac", Audio, "AAC", ["aac"]),
+    f!("wma", Audio, "WMA", ["wma"]),
+    f!("aiff", Audio, "AIFF", ["aiff", "aif", "aifc"]),
+    f!("ac3", Audio, "AC3", ["ac3"]),
+    f!("amr", Audio, "AMR", ["amr"]),
+    f!("mka", Audio, "MKA", ["mka"]),
     // iPhone ringtone: AAC in an MP4 (ipod) container, at most 40 s.
     f!("m4r", Audio, "M4R", ["m4r"]),
     // Documents
@@ -80,6 +96,16 @@ pub static FORMATS: &[FormatInfo] = &[
     // Archives (input only: extract)
     f!("zip", Archive, "ZIP", ["zip"]),
 ];
+
+/// Formats File Chameleon can read but never writes: the shipped ffmpeg build (gyan.dev
+/// essentials) has no Theora encoder worth relying on (`ogv`) and no AMR encoder
+/// (`libopencore-amrnb`, `amr`). They never appear as a conversion target.
+pub const INPUT_ONLY: &[&str] = &["ogv", "amr"];
+
+/// True when `id` has no encoder in the shipped engines (see [`INPUT_ONLY`]).
+pub fn is_input_only(id: &str) -> bool {
+    INPUT_ONLY.contains(&id)
+}
 
 pub fn by_id(id: &str) -> Option<&'static FormatInfo> {
     FORMATS.iter().find(|f| f.id == id)
