@@ -74,6 +74,103 @@ pub fn work_area_at(x: i32, y: i32) -> Option<(i32, i32, i32, i32)> {
     }
 }
 
+/// Full rectangle (left, top, right, bottom) of the monitor nearest to the physical point.
+pub fn monitor_rect_at(x: i32, y: i32) -> Option<(i32, i32, i32, i32)> {
+    unsafe {
+        let mon = MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTONEAREST);
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if GetMonitorInfoW(mon, &mut info).as_bool() {
+            let r = info.rcMonitor;
+            Some((r.left, r.top, r.right, r.bottom))
+        } else {
+            None
+        }
+    }
+}
+
+/// Copy the monitor under the physical point with GDI `BitBlt`: `(RGBA bytes, width, height)`.
+pub fn capture_monitor_at(x: i32, y: i32) -> Option<(Vec<u8>, u32, u32)> {
+    use windows::Win32::Graphics::Gdi::{
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CAPTUREBLT, CreateCompatibleBitmap,
+        CreateCompatibleDC, DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC,
+        SRCCOPY, SelectObject,
+    };
+    let (left, top, right, bottom) = monitor_rect_at(x, y)?;
+    let (w, h) = (right - left, bottom - top);
+    if w <= 0 || h <= 0 {
+        return None;
+    }
+    unsafe {
+        let screen = GetDC(None);
+        if screen.is_invalid() {
+            return None;
+        }
+        let mem = CreateCompatibleDC(Some(screen));
+        let bmp = CreateCompatibleBitmap(screen, w, h);
+        let mut out = None;
+        if !mem.is_invalid() && !bmp.is_invalid() {
+            let old = SelectObject(mem, bmp.into());
+            if BitBlt(
+                mem,
+                0,
+                0,
+                w,
+                h,
+                Some(screen),
+                left,
+                top,
+                SRCCOPY | CAPTUREBLT,
+            )
+            .is_ok()
+            {
+                let mut info = BITMAPINFO {
+                    bmiHeader: BITMAPINFOHEADER {
+                        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                        biWidth: w,
+                        // Negative: top-down rows.
+                        biHeight: -h,
+                        biPlanes: 1,
+                        biBitCount: 32,
+                        biCompression: BI_RGB.0,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                };
+                let mut buf = vec![0u8; w as usize * h as usize * 4];
+                let rows = GetDIBits(
+                    mem,
+                    bmp,
+                    0,
+                    h as u32,
+                    Some(buf.as_mut_ptr().cast()),
+                    &mut info,
+                    DIB_RGB_COLORS,
+                );
+                if rows == h {
+                    // BGRX -> RGBA, opaque.
+                    for px in buf.as_chunks_mut::<4>().0 {
+                        px.swap(0, 2);
+                        px[3] = 255;
+                    }
+                    out = Some((buf, w as u32, h as u32));
+                }
+            }
+            SelectObject(mem, old);
+        }
+        if !bmp.is_invalid() {
+            let _ = DeleteObject(bmp.into());
+        }
+        if !mem.is_invalid() {
+            let _ = DeleteDC(mem);
+        }
+        ReleaseDC(None, screen);
+        out
+    }
+}
+
 /// (lowercase exe file name, pid) of the top-level window under a physical point.
 pub fn process_at(x: i32, y: i32) -> Option<(String, u32)> {
     unsafe {

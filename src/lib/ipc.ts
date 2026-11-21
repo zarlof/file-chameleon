@@ -115,10 +115,10 @@ export const api = {
   saveAnnotated: (path: string, dataUrl: string) => invoke<string>('save_annotated', { path, dataUrl }),
 
   // ---- clothesline (Rust side in the shell)
-  lineShow: (mode: 'hotkey') => invoke<void>('line_show', { mode }),
+  lineShow: (mode: 'hotkey' | 'search') => invoke<void>('line_show', { mode }),
   lineHide: () => invoke<void>('line_hide'),
   lineActivate: () => invoke<void>('line_activate'),
-  lineState: () => invoke<{ mode: 'hotkey' | 'peek' | 'reveal' | null; visible: boolean }>('line_state'),
+  lineState: () => invoke<{ mode: 'hotkey' | 'peek' | 'reveal' | 'search' | null; visible: boolean }>('line_state'),
   lineDragOut: (id: number) => invoke<void>('line_drag_out', { id }),
   lineOpenItem: (id: number) => invoke<void>('line_open_item', { id }),
   linePaste: (ids: number[]) => invoke<void>('line_paste', { ids }),
@@ -165,8 +165,8 @@ export const on = {
   overlayWheelThumb: (cb: (t: WheelThumb) => void) => listen<WheelThumb>('overlay://wheel-thumb', (e) => cb(e.payload)),
   overlayToast: (cb: (t: ToastPayload) => void) => listen<ToastPayload>('overlay://toast', (e) => cb(e.payload)),
   overlayHide: (cb: () => void) => listen('overlay://hide', () => cb()),
-  lineShow: (cb: (p: { mode: 'hotkey' | 'peek' | 'reveal' }) => void) =>
-    listen<{ mode: 'hotkey' | 'peek' | 'reveal' }>('line://show', (e) => cb(e.payload)),
+  lineShow: (cb: (p: { mode: 'hotkey' | 'peek' | 'reveal' | 'search' }) => void) =>
+    listen<{ mode: 'hotkey' | 'peek' | 'reveal' | 'search' }>('line://show', (e) => cb(e.payload)),
   lineHide: (cb: () => void) => listen('line://hide', () => cb()),
 };
 

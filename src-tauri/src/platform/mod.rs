@@ -176,6 +176,9 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
         || old.hotkey_library != new.hotkey_library
         || old.hotkey_download_link != new.hotkey_download_link
         || old.hotkey_line != new.hotkey_line
+        || old.hotkey_line_search != new.hotkey_line_search
+        || old.hotkey_capture != new.hotkey_capture
+        || old.hotkey_copy_latest_image != new.hotkey_copy_latest_image
         || old.line_enabled != new.line_enabled
         || old.clipboard_enabled != new.clipboard_enabled
     {
@@ -184,6 +187,10 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
     // Clothesline: turning it off closes and frees its window.
     if old.line_enabled && !new.line_enabled {
         crate::line::destroy(app);
+    }
+    // The window is resized when the size setting changes while it is up.
+    if old.line_size != new.line_size {
+        crate::line::apply_size(app);
     }
     if old.clipboard_ocr != new.clipboard_ocr {
         ocr::set_enabled(new.clipboard_ocr);

@@ -4,6 +4,7 @@
 
 mod events;
 mod float;
+mod hang;
 mod ipc;
 mod line;
 mod platform;
@@ -23,12 +24,18 @@ pub fn run() {
         .collect();
     // Explorer's "Convert with File Chameleon" verb: open the wheel, not the window.
     let wheel_args = platform::contextmenu::wheel_paths(&args);
-    let background = args.iter().any(|a| a == "--background") || !wheel_args.is_empty();
+    // Explorer's "İpe as" verb: hang the files on the clothesline, no window.
+    let hang_args = hang::paths_from_args(&args);
+    let background =
+        args.iter().any(|a| a == "--background") || !wheel_args.is_empty() || !hang_args.is_empty();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             let wheel = platform::contextmenu::wheel_paths(&args);
-            if !wheel.is_empty() {
+            let hang = hang::paths_from_args(&args);
+            if !hang.is_empty() {
+                hang::import_paths(app, hang);
+            } else if !wheel.is_empty() {
                 windows::queue_wheel_paths(app, wheel);
             } else if !args.iter().any(|a| a == "--background") {
                 // A second autostart launch (--background) must not pop the window up.
@@ -53,6 +60,7 @@ pub fn run() {
             platform::start(&handle);
             // Opens once the overlay page is ready (with paths of further invocations).
             windows::queue_wheel_paths(&handle, wheel_args);
+            hang::import_paths(&handle, hang_args);
             // Remove download leftovers of earlier runs (crash, failed cleanup), delayed to keep
             // startup light. Clipboard retention runs in `platform::clipboard::start_maintenance`.
             let h = handle.clone();

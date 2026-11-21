@@ -167,7 +167,7 @@ fn ignored_app(exe: Option<&str>, s: &Settings) -> bool {
 // ---------------------------------------------------------------- after an item was added
 
 /// Background work for a freshly added item: OCR for images, a page title for links.
-fn enrich(app: &AppHandle, item: &fc_core::clip::ClipItem, s: &Settings) {
+pub(crate) fn enrich(app: &AppHandle, item: &fc_core::clip::ClipItem, s: &Settings) {
     use fc_core::clip::ClipKind;
     match item.kind {
         ClipKind::Image if item.ocr.is_none() => {
@@ -215,28 +215,45 @@ fn fetch_title_later(app: &AppHandle, item: &fc_core::clip::ClipItem, s: &Settin
                             .remove(&id);
                         continue;
                     }
-                    // Deleted or titled meanwhile: nothing to do.
-                    let untitled = state
+                    // Deleted meanwhile: nothing to do.
+                    let Some(current) = state
                         .clips()
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
                         .get(id)
-                        .is_some_and(|i| i.link_title.is_none());
-                    if !untitled {
+                        .cloned()
+                    else {
                         continue;
+                    };
+                    if current.link_title.is_none()
+                        && let Some(title) = fc_core::clip::enrich::fetch_link_title(&url)
+                    {
+                        let updated = {
+                            let mut store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
+                            store
+                                .set_link_title(id, title)
+                                .ok()
+                                .and_then(|()| store.get(id).cloned())
+                        };
+                        if let Some(item) = updated {
+                            let _ = app.emit(events::CLIP_UPDATED, &item);
+                        }
                     }
-                    let Some(title) = fc_core::clip::enrich::fetch_link_title(&url) else {
-                        continue;
-                    };
-                    let updated = {
-                        let mut store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
-                        store
-                            .set_link_title(id, title)
-                            .ok()
-                            .and_then(|()| store.get(id).cloned())
-                    };
-                    if let Some(item) = updated {
-                        let _ = app.emit(events::CLIP_UPDATED, &item);
+                    // A YouTube link also gets the video's thumbnail (same switch as titles).
+                    if current.thumb.is_none()
+                        && let Some(vid) = fc_core::clip::enrich::youtube_id(&url)
+                        && let Some(jpeg) = fc_core::clip::enrich::fetch_youtube_thumb(&vid)
+                    {
+                        let updated = {
+                            let mut store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
+                            store
+                                .set_link_thumb(id, &jpeg)
+                                .ok()
+                                .and_then(|()| store.get(id).cloned())
+                        };
+                        if let Some(item) = updated {
+                            let _ = app.emit(events::CLIP_UPDATED, &item);
+                        }
                     }
                 }
             });
@@ -355,7 +372,7 @@ fn image_file_size(path: &Path) -> Option<(u32, u32)> {
 
 /// PNG bytes and size of an image file (other formats are converted), with the checks of
 /// [`image_file_size`] done before anything is read.
-fn image_file_as_png(path: &Path) -> Option<(Vec<u8>, u32, u32)> {
+pub(crate) fn image_file_as_png(path: &Path) -> Option<(Vec<u8>, u32, u32)> {
     let (w, h) = image_file_size(path)?;
     let bytes = std::fs::read(path).ok()?;
     if history::png_size(&bytes) == Some((w, h)) {

@@ -517,6 +517,17 @@ impl ClipStore {
         self.save()
     }
 
+    /// Save `jpeg` (a fetched video thumbnail) as the thumb of link item `id`.
+    pub fn set_link_thumb(&mut self, id: u64, jpeg: &[u8]) -> Result<()> {
+        image::load_from_memory(jpeg).map_err(|e| Error::Failed(e.to_string()))?;
+        std::fs::create_dir_all(self.img_dir())?;
+        let path = self.img_dir().join(format!("{id}.thumb.jpg"));
+        let item = self.item_mut(id)?;
+        std::fs::write(&path, jpeg)?;
+        item.thumb = Some(path);
+        self.save()
+    }
+
     /// Live images that were not run through OCR yet, newest first.
     pub fn needs_ocr(&self) -> Vec<(u64, PathBuf)> {
         self.items

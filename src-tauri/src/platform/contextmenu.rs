@@ -10,12 +10,22 @@ use std::path::Path;
 /// Command-line switch: the paths after it open the wheel.
 pub const WHEEL_ARG: &str = "--wheel";
 
+/// Command-line switch of the second verb: the paths after it hang on the clothesline.
+pub const HANG_ARG: &str = "--hang";
+
 #[cfg(windows)]
 const KEY: &str = r"Software\Classes\*\shell\FileChameleon";
+#[cfg(windows)]
+const HANG_KEY: &str = r"Software\Classes\*\shell\FileChameleonHang";
 
 /// `"<exe>" --wheel "%1"`
 pub fn command_line(exe: &Path) -> String {
     format!("\"{}\" {WHEEL_ARG} \"%1\"", exe.to_string_lossy())
+}
+
+/// `"<exe>" --hang "%1"`
+pub fn hang_command_line(exe: &Path) -> String {
+    format!("\"{}\" {HANG_ARG} \"%1\"", exe.to_string_lossy())
 }
 
 /// The paths after `--wheel` in a command line (empty when the switch is missing).
@@ -37,7 +47,16 @@ fn label(lang: &str) -> &'static str {
     }
 }
 
-/// Write (or remove) the verb. Writing again refreshes the label and the exe path, which fixes
+/// Text of the second verb ("İpe as" / "Hang on the line").
+fn hang_label(lang: &str) -> &'static str {
+    if lang == "tr" {
+        "İpe as"
+    } else {
+        "Hang on the line"
+    }
+}
+
+/// Write (or remove) the verbs (both follow the same setting). Writing again refreshes the label and the exe path, which fixes
 /// a moved or reinstalled exe. A failed write removes the key again: Explorer never shows a
 /// half-written verb (so after an error the verb is off).
 pub fn set_enabled(enabled: bool, lang: &str) -> std::io::Result<()> {
@@ -48,19 +67,28 @@ pub fn set_enabled(enabled: bool, lang: &str) -> std::io::Result<()> {
                 let icon = format!("\"{}\",0", exe.to_string_lossy());
                 reg::set_string(KEY, "MUIVerb", label(lang))?;
                 reg::set_string(KEY, "Icon", &icon)?;
-                reg::set_string(&format!(r"{KEY}\command"), "", &command_line(&exe))
+                reg::set_string(&format!(r"{KEY}\command"), "", &command_line(&exe))?;
+                reg::set_string(HANG_KEY, "MUIVerb", hang_label(lang))?;
+                reg::set_string(HANG_KEY, "Icon", &icon)?;
+                reg::set_string(
+                    &format!(r"{HANG_KEY}\command"),
+                    "",
+                    &hang_command_line(&exe),
+                )
             });
             if written.is_err() {
                 let _ = reg::delete_tree(KEY);
+                let _ = reg::delete_tree(HANG_KEY);
             }
             written
         } else {
-            reg::delete_tree(KEY)
+            let first = reg::delete_tree(KEY);
+            reg::delete_tree(HANG_KEY).and(first)
         }
     }
     #[cfg(not(windows))]
     {
-        let _ = (enabled, label(lang));
+        let _ = (enabled, label(lang), hang_label(lang));
         Ok(())
     }
 }
@@ -152,6 +180,16 @@ mod tests {
             ["a.png"]
         );
         assert!(wheel_paths(&[]).is_empty());
+    }
+
+    #[test]
+    fn hang_verb_command_and_label() {
+        assert_eq!(
+            hang_command_line(Path::new(r"C:\Program Files\FCile-chameleon.exe")),
+            r#""C:\Program Files\FCile-chameleon.exe" --hang "%1""#
+        );
+        assert_eq!(hang_label("tr"), "İpe as");
+        assert_eq!(hang_label("en"), "Hang on the line");
     }
 
     #[test]

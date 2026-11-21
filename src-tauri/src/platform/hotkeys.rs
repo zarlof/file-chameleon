@@ -2,7 +2,8 @@
 //!
 //! One thread owns the hotkeys and runs a message loop: `WM_HOTKEY` only sends the action to a
 //! second thread (so the loop never blocks), `WM_APP` re-registers after a settings change.
-//! Hotkeys: 1 = clipboard shelf, 2 = clipboard library, 3 = download the copied link, 4 = clothesline.
+//! Hotkeys: 1 = clipboard shelf, 2 = clipboard library, 3 = download the copied link, 4 = clothesline, 5 = clothesline search, 6 = screen capture,
+//! 7 = copy the latest image.
 //! A combination another app already owns (or one Windows reserves) is reported as `ok: false`
 //! by [`status`]; the app keeps running.
 
@@ -18,7 +19,7 @@ pub const MOD_WIN: u32 = 0x8;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HotkeyStatus {
-    /// "shelf" | "library" | "downloadLink" | "line"
+    /// "shelf" | "library" | "downloadLink" | "line" | "lineSearch" | "capture" | "copyLatestImage"
     pub name: String,
     pub keys: String,
     /// false = could not register (another app owns it, or invalid). An empty (off) hotkey is ok.
@@ -26,7 +27,15 @@ pub struct HotkeyStatus {
 }
 
 /// Hotkey names in id order (id = index + 1).
-const NAMES: [&str; 4] = ["shelf", "library", "downloadLink", "line"];
+const NAMES: [&str; 7] = [
+    "shelf",
+    "library",
+    "downloadLink",
+    "line",
+    "lineSearch",
+    "capture",
+    "copyLatestImage",
+];
 
 fn modifier(name: &str) -> Option<u32> {
     Some(match name {
@@ -105,12 +114,15 @@ pub fn parse_hotkey(s: &str) -> Option<(u32, u32)> {
 
 /// Keys to register in id order, each with whether it is active: the shelf and library hotkeys
 /// are not registered while the clipboard is off (the download-link hotkey still works).
-fn wanted_hotkeys(s: &fc_core::settings::Settings) -> [(String, bool); 4] {
+fn wanted_hotkeys(s: &fc_core::settings::Settings) -> [(String, bool); 7] {
     [
         (s.hotkey_shelf.clone(), s.clipboard_enabled),
         (s.hotkey_library.clone(), s.clipboard_enabled),
         (s.hotkey_download_link.clone(), true),
         (s.hotkey_line.clone(), s.line_enabled),
+        (s.hotkey_line_search.clone(), s.line_enabled),
+        (s.hotkey_capture.clone(), s.clipboard_enabled),
+        (s.hotkey_copy_latest_image.clone(), s.clipboard_enabled),
     ]
 }
 
@@ -153,7 +165,7 @@ mod imp {
 
     struct Shared {
         /// Wanted key strings in id order, with whether each is active.
-        wanted: [(String, bool); 4],
+        wanted: [(String, bool); 7],
         wanted_gen: u64,
         done_gen: u64,
         status: Vec<HotkeyStatus>,
@@ -161,6 +173,9 @@ mod imp {
 
     static SHARED: Mutex<Shared> = Mutex::new(Shared {
         wanted: [
+            (String::new(), false),
+            (String::new(), false),
+            (String::new(), false),
             (String::new(), false),
             (String::new(), false),
             (String::new(), false),
@@ -177,7 +192,7 @@ mod imp {
         SHARED.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    pub fn configure(app: &AppHandle, wanted: [(String, bool); 4]) {
+    pub fn configure(app: &AppHandle, wanted: [(String, bool); 7]) {
         {
             let mut s = shared();
             s.wanted = wanted;
@@ -207,6 +222,9 @@ mod imp {
         Library,
         DownloadLink,
         Line,
+        LineSearch,
+        Capture,
+        CopyLatestImage,
     }
 
     fn start(app: &AppHandle) {
@@ -248,6 +266,9 @@ mod imp {
                         2 => Action::Library,
                         3 => Action::DownloadLink,
                         4 => Action::Line,
+                        5 => Action::LineSearch,
+                        6 => Action::Capture,
+                        7 => Action::CopyLatestImage,
                         _ => continue,
                     };
                     let _ = tx.send(action);
@@ -307,6 +328,9 @@ mod imp {
             ),
             Action::DownloadLink => download_copied_link(app),
             Action::Line => crate::line::toggle_hotkey(app),
+            Action::LineSearch => crate::line::toggle_search(app),
+            Action::Capture => crate::hang::capture(app),
+            Action::CopyLatestImage => crate::hang::copy_latest_image(app),
         }
     }
 
@@ -372,6 +396,9 @@ mod tests {
                 (String::new(), true),
                 ("Ctrl+Alt+D".to_string(), true),
                 ("Ctrl+Alt+L".to_string(), true),
+                ("Ctrl+Alt+F".to_string(), true),
+                (String::new(), true),
+                (String::new(), true),
             ]
         );
         s.clipboard_enabled = false;
@@ -383,6 +410,9 @@ mod tests {
                 ("Ctrl+Alt+L".to_string(), false),
                 ("Ctrl+Alt+D".to_string(), true),
                 ("Ctrl+Alt+L".to_string(), true),
+                ("Ctrl+Alt+F".to_string(), true),
+                (String::new(), false),
+                (String::new(), false),
             ]
         );
         // The clothesline hotkey follows its own switch, not the clipboard's.
@@ -397,6 +427,15 @@ mod tests {
             Some((MOD_CONTROL | MOD_ALT, 0x4c))
         );
         assert_eq!(NAMES[3], "line");
+    }
+
+    #[test]
+    fn wave2_hotkeys_parse() {
+        assert_eq!(
+            super::parse_hotkey("Ctrl+Alt+F"),
+            Some((MOD_CONTROL | MOD_ALT, 0x46))
+        );
+        assert_eq!(&NAMES[4..], ["lineSearch", "capture", "copyLatestImage"]);
     }
 
     #[cfg(windows)]

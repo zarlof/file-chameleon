@@ -282,9 +282,85 @@ pub fn fetch_link_title(url: &str) -> Option<String> {
     None
 }
 
+/// Largest YouTube thumbnail that is kept.
+const MAX_THUMB: u64 = 200 * 1024;
+
+fn valid_youtube_id(s: &str) -> Option<String> {
+    let id: String = s.chars().take(11).collect();
+    (id.len() == 11
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+    .then_some(id)
+}
+
+/// The 11-character video id of a YouTube link (`watch?v=`, `youtu.be/`, `shorts/`).
+pub fn youtube_id(url: &str) -> Option<String> {
+    let rest = url.trim().split_once("://")?.1;
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (authority, tail) = rest.split_at(end);
+    let host = authority.split(':').next()?.to_ascii_lowercase();
+    let host = host
+        .strip_prefix("www.")
+        .or(host.strip_prefix("m."))
+        .unwrap_or(&host);
+    let (path, query) = {
+        let tail = tail.split('#').next().unwrap_or("");
+        tail.split_once('?').unwrap_or((tail, ""))
+    };
+    match host {
+        "youtu.be" => valid_youtube_id(path.strip_prefix('/')?),
+        "youtube.com" => {
+            if let Some(id) = path.strip_prefix("/shorts/") {
+                return valid_youtube_id(id);
+            }
+            if path != "/watch" {
+                return None;
+            }
+            query
+                .split('&')
+                .find_map(|p| p.strip_prefix("v="))
+                .and_then(valid_youtube_id)
+        }
+        _ => None,
+    }
+}
+
+/// The medium thumbnail (JPEG, at most 200 KB) of YouTube video `id`. Blocking, a few seconds.
+pub fn fetch_youtube_thumb(id: &str) -> Option<Vec<u8>> {
+    let id = valid_youtube_id(id).filter(|i| i.len() == 11)?;
+    let mut resp = agent()
+        .get(&format!("https://i.ytimg.com/vi/{id}/mqdefault.jpg"))
+        .call()
+        .ok()?;
+    if !(200..300).contains(&resp.status().as_u16()) {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    resp.body_mut()
+        .as_reader()
+        .take(MAX_THUMB + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    (!bytes.is_empty() && bytes.len() as u64 <= MAX_THUMB).then_some(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn youtube_ids() {
+        let id = Some("dQw4w9WgXcQ".to_string());
+        assert_eq!(
+            youtube_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1"),
+            id
+        );
+        assert_eq!(youtube_id("https://youtu.be/dQw4w9WgXcQ"), id);
+        assert_eq!(youtube_id("https://youtube.com/shorts/dQw4w9WgXcQ"), id);
+        assert_eq!(youtube_id("https://example.com/?v=dQw4w9WgXcQ"), None);
+        assert_eq!(youtube_id("https://youtube.com/watch?v=short"), None);
+    }
 
     #[test]
     fn private_and_secret_urls_are_skipped() {

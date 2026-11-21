@@ -29,22 +29,40 @@ use tauri::{
 
 pub const LINE: &str = "line";
 
-/// Logical metrics: free space left and right, height of one rope, height of the padding.
-/// These must equal what the page draws (`src/line/Rope.svelte` BAND = 178 px plus its 4 px
-/// bottom margin = 182 px per rope; `.strip` in `src/line/Line.svelte` has 4 px padding above and
-/// below = 8 px), so nothing transparent hangs under the last rope.
+/// Logical metrics: free space left and right, and the gap per band (6 above and 6 below, so
+/// the window is `n × (band + 12)` high). These must equal the layout table the page uses
+/// (`src/line/layout.ts`), so nothing transparent hangs under the last rope.
 const SIDE_SPACE: f64 = 24.0;
-const ROPE_HEIGHT: f64 = 182.0;
-const CHROME_HEIGHT: f64 = 8.0;
+const BAND_GAP: f64 = 12.0;
 /// The pointer must stay in the top-edge zone this long before the line reveals itself.
 const DWELL: Duration = Duration::from_millis(350);
 /// How many folders "open a terminal here" opens at most.
 const MAX_TERMINALS: usize = 5;
 
+/// Logical height of one rope's band for a `lineSize` ("small" | "medium" | "large"; anything
+/// else is medium).
+pub fn band_height(size: &str) -> f64 {
+    match size {
+        "small" => 144.0,
+        "large" => 222.0,
+        _ => 178.0,
+    }
+}
+
+/// Logical height of the window for `ropes` visible ropes (at least one): `n × (band + 12)`.
+pub fn window_height(ropes: usize, size: &str) -> f64 {
+    ropes.max(1) as f64 * (band_height(size) + BAND_GAP)
+}
+
 /// Physical `(x, y, width, height)` of the line in the work area `(left, top, right, bottom)`
 /// (physical pixels) of a monitor with DPI `scale`: 24 px logical free on each side, height
-/// `ropes × 182 + 8` logical (at least one rope), at the top, never taller than the work area.
-pub fn line_rect(work: (i32, i32, i32, i32), scale: f64, ropes: usize) -> (i32, i32, i32, i32) {
+/// [`window_height`] (at least one rope), at the top, never taller than the work area.
+pub fn line_rect(
+    work: (i32, i32, i32, i32),
+    scale: f64,
+    ropes: usize,
+    size: &str,
+) -> (i32, i32, i32, i32) {
     let (left, top, right, bottom) = work;
     let scale = if scale.is_finite() && scale > 0.0 {
         scale
@@ -54,7 +72,7 @@ pub fn line_rect(work: (i32, i32, i32, i32), scale: f64, ropes: usize) -> (i32, 
     let (work_w, work_h) = ((right - left).max(1), (bottom - top).max(1));
     let side = (SIDE_SPACE * scale).round() as i32;
     let width = (work_w - 2 * side).clamp(1, work_w);
-    let height = ((ropes.max(1) as f64 * ROPE_HEIGHT + CHROME_HEIGHT) * scale).round() as i32;
+    let height = (window_height(ropes, size) * scale).round() as i32;
     (left + side, top, width, height.clamp(1, work_h))
 }
 
@@ -77,7 +95,7 @@ pub struct ShowFlags {
 
 pub fn show_flags(mode: &str) -> ShowFlags {
     ShowFlags {
-        activate: mode == "hotkey",
+        activate: matches!(mode, "hotkey" | "search"),
     }
 }
 
@@ -171,16 +189,17 @@ const LINE_PAGE: &str = "line.html";
 /// What the page asks for with `line_state`.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct LineState {
-    /// "hotkey" | "peek" | "reveal"; `None` when the line is not up.
+    /// "hotkey" | "peek" | "reveal" | "search"; `None` when the line is not up.
     pub mode: Option<String>,
     pub visible: bool,
 }
 
-/// The mode the line shows in when `new` is requested while `current` is already pending: the
-/// hotkey (activating) is never downgraded by a peek or reveal; otherwise the latest wins.
+/// The mode the line shows in when `new` is requested while `current` is already pending: an
+/// activating mode (hotkey, search) is never downgraded by a peek or reveal; otherwise the
+/// latest wins.
 pub fn merge_mode<'a>(current: Option<&'a str>, new: &'a str) -> &'a str {
-    match current {
-        Some("hotkey") => "hotkey",
+    match (current, new) {
+        (Some(c @ ("hotkey" | "search")), "peek" | "reveal") => c,
         _ => new,
     }
 }
@@ -215,7 +234,7 @@ fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let state = app.state::<AppState>();
     let ropes = rope_count(app);
     let work = (0, 0, 1920, 1040);
-    let (_, _, w, h) = line_rect(work, 1.0, ropes);
+    let (_, _, w, h) = line_rect(work, 1.0, ropes, &state.settings().line_size);
     WebviewWindowBuilder::new(app, LINE, WebviewUrl::App(LINE_PAGE.into()))
         .title("File Chameleon Line")
         .inner_size(f64::from(w), f64::from(h))
@@ -318,10 +337,42 @@ fn place(app: &AppHandle, w: &WebviewWindow, point: (i32, i32)) {
         .map(|m| m.scale_factor())
         .unwrap_or(1.0);
     let ropes = rope_count(app);
-    let (x, y, width, height) = line_rect(work, scale, ropes);
+    let size = app.state::<AppState>().settings().line_size;
+    let (x, y, width, height) = line_rect(work, scale, ropes, &size);
     // Position first: moving to a monitor with another DPI may resize the window.
     let _ = w.set_position(PhysicalPosition::new(x, y));
     let _ = w.set_size(PhysicalSize::new(width as u32, height as u32));
+}
+
+/// Re-fit the height of the (placed) window to the ropes and size now, keeping its x, y and
+/// width. Used for a peek that arrives while the line is already up and when the size changes.
+#[cfg(windows)]
+fn resize(app: &AppHandle, w: &WebviewWindow) {
+    let (Ok(pos), Ok(cur)) = (w.outer_position(), w.outer_size()) else {
+        return;
+    };
+    let scale = w.scale_factor().unwrap_or(1.0);
+    let work = crate::platform::win::work_area_at(pos.x, pos.y);
+    let size = app.state::<AppState>().settings().line_size;
+    let mut height = (window_height(rope_count(app), &size) * scale).round() as i32;
+    if let Some((_, top, _, bottom)) = work {
+        height = height.min((bottom - top).max(1));
+    }
+    if height != cur.height as i32 {
+        let _ = w.set_size(PhysicalSize::new(cur.width, height.max(1) as u32));
+    }
+}
+
+/// The size setting changed: re-fit the window when it is up.
+pub fn apply_size(app: &AppHandle) {
+    #[cfg(windows)]
+    if let Some(w) = app.get_webview_window(LINE)
+        && hwnd_of(&w).is_some_and(crate::platform::win::is_visible)
+    {
+        resize(app, &w);
+    }
+    #[cfg(not(windows))]
+    let _ = app;
 }
 
 /// Remember the foreground window so `line_paste` can paste into it. `force` (the hotkey) also
@@ -340,7 +391,7 @@ fn remember_foreground(app: &AppHandle, force: bool) {
     }
 }
 
-/// Show the line in `mode` ("hotkey" | "peek" | "reveal"), creating it on first use.
+/// Show the line in `mode` ("hotkey" | "peek" | "reveal" | "search"), creating it on first use.
 pub fn show(app: &AppHandle, mode: &str) {
     show_at(app, mode, None);
 }
@@ -377,8 +428,9 @@ pub fn show_at(app: &AppHandle, mode: &str, at: Option<(i32, i32)>) {
             merged
         };
         if !flags.activate && win::is_visible(h) {
-            // Already up (maybe in use): do not touch its focus style, just tell the page so it
-            // keeps itself open.
+            // Already up (maybe in use): do not touch its focus style or place, but the rope
+            // count may have changed, so resize; tell the page so it keeps itself open.
+            resize(app, &w);
             let _ = app.emit_to(LINE, events::LINE_SHOW, LineShow { mode: merged });
             return;
         }
@@ -424,6 +476,26 @@ pub fn destroy(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(LINE) {
         let _ = w.destroy();
     }
+}
+
+/// The search hotkey: hide the line when it is in front, otherwise show it in `search` mode
+/// (activated, the page focuses its search field).
+pub fn toggle_search(app: &AppHandle) {
+    #[cfg(windows)]
+    {
+        let in_front = app
+            .get_webview_window(LINE)
+            .and_then(|w| hwnd_of(&w))
+            .is_some_and(|h| {
+                crate::platform::win::is_visible(h)
+                    && h == crate::platform::win::foreground_window()
+            });
+        if in_front {
+            hide(app);
+            return;
+        }
+    }
+    show(app, "search");
 }
 
 /// The line hotkey: hide the line when it is in front, show and activate it otherwise (also when
@@ -675,15 +747,27 @@ mod tests {
 
     #[test]
     fn line_rect_spans_work_area() {
-        assert_eq!(line_rect((0, 0, 1920, 1040), 1.0, 3), (24, 0, 1872, 554));
-        assert_eq!(line_rect((0, 0, 2880, 1560), 1.5, 2), (36, 0, 2808, 558));
+        let m = "medium";
+        assert_eq!(line_rect((0, 0, 1920, 1040), 1.0, 3, m), (24, 0, 1872, 570));
+        assert_eq!(line_rect((0, 0, 2880, 1560), 1.5, 2, m), (36, 0, 2808, 570));
         // Second monitor below a top taskbar; no ropes still gives one rope's height.
         assert_eq!(
-            line_rect((1920, 40, 3840, 1080), 1.0, 0),
+            line_rect((1920, 40, 3840, 1080), 1.0, 0, m),
             (1944, 40, 1872, 190)
         );
         // Never taller than the work area.
-        assert_eq!(line_rect((0, 0, 800, 300), 1.0, 3).3, 300);
+        assert_eq!(line_rect((0, 0, 800, 300), 1.0, 3, m).3, 300);
+    }
+
+    #[test]
+    fn band_table_matches() {
+        assert_eq!(band_height("small"), 144.0);
+        assert_eq!(band_height("medium"), 178.0);
+        assert_eq!(band_height("large"), 222.0);
+        assert_eq!(band_height("weird"), 178.0);
+        assert_eq!(window_height(3, "medium"), 570.0);
+        assert_eq!(window_height(1, "small"), 156.0);
+        assert_eq!(window_height(0, "large"), 234.0);
     }
 
     #[test]
@@ -706,16 +790,9 @@ mod tests {
         assert!(!show_flags("peek").activate);
         assert!(!show_flags("reveal").activate);
         assert!(show_flags("hotkey").activate);
+        assert!(show_flags("search").activate);
         // An unknown mode must never steal focus.
         assert!(!show_flags("whatever").activate);
-    }
-
-    #[test]
-    fn page_heights_match_the_page() {
-        // Rope.svelte: BAND 178 + 4 px margin; Line.svelte `.strip`: 4 px padding top and bottom.
-        assert_eq!(ROPE_HEIGHT, 178.0 + 4.0);
-        assert_eq!(CHROME_HEIGHT, 4.0 + 4.0);
-        assert_eq!(line_rect((0, 0, 1920, 1040), 1.0, 1).3, 190);
     }
 
     #[test]
@@ -734,6 +811,8 @@ mod tests {
         assert_eq!(merge_mode(Some("peek"), "hotkey"), "hotkey");
         assert_eq!(merge_mode(Some("hotkey"), "peek"), "hotkey");
         assert_eq!(merge_mode(Some("peek"), "reveal"), "reveal");
+        assert_eq!(merge_mode(Some("search"), "peek"), "search");
+        assert_eq!(merge_mode(Some("hotkey"), "search"), "search");
     }
 
     #[test]

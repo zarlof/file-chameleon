@@ -42,12 +42,27 @@ export interface Settings {
   hotkeyLibrary: string;
   hotkeyDownloadLink: string;
   hotkeyLine: string;
+  /** Opens the line with the search field focused. */
+  hotkeyLineSearch: string;
+  /** Captures the monitor under the cursor into the clipboard history. */
+  hotkeyCapture: string;
+  /** Copies the newest image clip back to the clipboard. */
+  hotkeyCopyLatestImage: string;
   /** The clothesline (clip rope). */
   lineEnabled: boolean;
   lineEdgeReveal: boolean;
   linePeekOnCopy: boolean;
   lineBreeze: boolean;
   lineRopes: { images: boolean; text: boolean; links: boolean };
+  /** 'accent' or an Accent name. */
+  lineColor: 'accent' | Accent;
+  /** 1..6 px */
+  lineThickness: number;
+  /** 30..100 percent */
+  lineOpacity: number;
+  lineSize: 'small' | 'medium' | 'large';
+  lineZoomOnHover: boolean;
+  lineSound: boolean;
   watchFolders: WatchFolder[];
   clipboardEnabled: boolean;
   clipboardCaptureText: boolean;
@@ -450,7 +465,7 @@ export interface ClipStats {
 }
 
 export interface HotkeyStatus {
-  name: 'shelf' | 'library' | 'downloadLink' | 'line';
+  name: 'shelf' | 'library' | 'downloadLink' | 'line' | 'lineSearch' | 'capture' | 'copyLatestImage';
   keys: string;
   /** false = could not register (another app owns it, or invalid). */
   ok: boolean;

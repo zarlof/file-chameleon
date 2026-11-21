@@ -188,7 +188,7 @@
   }
 
   // ------------------------------------------------------------ show / hide
-  function show(mode: 'hotkey' | 'peek' | 'reveal') {
+  function show(mode: 'hotkey' | 'peek' | 'reveal' | 'search') {
     clearTimeout(hideTimer);
     clearTimeout(peekTimer);
     shown = true;

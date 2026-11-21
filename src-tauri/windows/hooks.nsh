@@ -14,4 +14,5 @@
 !macro NSIS_HOOK_POSTUNINSTALL
   ; Explorer right-click verb "Convert with File Chameleon" (opt-in, written by the app).
   DeleteRegKey HKCU "Software\Classes\*\shell\FileChameleon"
+  DeleteRegKey HKCU "Software\Classes\*\shell\FileChameleonHang"
 !macroend

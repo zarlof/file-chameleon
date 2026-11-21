@@ -66,6 +66,12 @@ pub struct Settings {
     pub hotkey_download_link: String,
     /// Opens the clothesline.
     pub hotkey_line: String,
+    /// Opens the clothesline with the search field focused.
+    pub hotkey_line_search: String,
+    /// Captures the monitor under the cursor into the clipboard history.
+    pub hotkey_capture: String,
+    /// Copies the newest image clip back to the clipboard.
+    pub hotkey_copy_latest_image: String,
 
     /// The clothesline: a rope of recent clips that peeks in from a screen edge.
     pub line_enabled: bool,
@@ -76,6 +82,18 @@ pub struct Settings {
     /// The clips sway gently (off with reduce motion).
     pub line_breeze: bool,
     pub line_ropes: LineRopes,
+    /// Rope colour: "accent" or an accent name.
+    pub line_color: String,
+    /// Rope thickness in px, 1..=6.
+    pub line_thickness: u8,
+    /// Rope opacity in percent, 30..=100.
+    pub line_opacity: u8,
+    /// "small" | "medium" | "large" (anything else is medium).
+    pub line_size: String,
+    /// Cards grow when hovered.
+    pub line_zoom_on_hover: bool,
+    /// A soft sound when clips hang or fall.
+    pub line_sound: bool,
 
     /// Watch folders: new files are run through a preset automatically.
     pub watch_folders: Vec<WatchFolder>,
@@ -179,11 +197,20 @@ impl Default for Settings {
             hotkey_library: String::new(),
             hotkey_download_link: "Ctrl+Alt+D".into(),
             hotkey_line: "Ctrl+Alt+L".into(),
+            hotkey_line_search: "Ctrl+Alt+F".into(),
+            hotkey_capture: String::new(),
+            hotkey_copy_latest_image: String::new(),
             line_enabled: true,
             line_edge_reveal: true,
             line_peek_on_copy: true,
             line_breeze: true,
             line_ropes: LineRopes::default(),
+            line_color: "accent".into(),
+            line_thickness: 2,
+            line_opacity: 100,
+            line_size: "medium".into(),
+            line_zoom_on_hover: false,
+            line_sound: false,
             watch_folders: Vec::new(),
             clipboard_enabled: true,
             clipboard_capture_text: true,
@@ -219,6 +246,14 @@ impl Settings {
             .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
             .map(Self::from_value)
             .unwrap_or_default()
+            .clamped()
+    }
+
+    /// Pull out-of-range wave-2 line values back into their ranges.
+    fn clamped(mut self) -> Self {
+        self.line_thickness = self.line_thickness.clamp(1, 6);
+        self.line_opacity = self.line_opacity.clamp(30, 100);
+        self
     }
 
     /// Merge the fields of `v` onto the defaults, skipping any field that does not deserialize.
@@ -361,6 +396,24 @@ mod tests {
         std::fs::write(&p, br#"{"lineRopes":{"text":false}}"#).unwrap();
         let s = Settings::load(&p);
         assert!(!s.line_ropes.text && s.line_ropes.images && s.line_ropes.links);
+    }
+
+    #[test]
+    fn old_settings_get_wave2_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        std::fs::write(&p, br#"{"theme":"dark"}"#).unwrap();
+        let s = Settings::load(&p);
+        assert_eq!(s.line_color, "accent");
+        assert_eq!((s.line_thickness, s.line_opacity), (2, 100));
+        assert_eq!(s.line_size, "medium");
+        assert!(!s.line_zoom_on_hover && !s.line_sound);
+        assert_eq!(s.hotkey_line_search, "Ctrl+Alt+F");
+        assert_eq!(s.hotkey_capture, "");
+        assert_eq!(s.hotkey_copy_latest_image, "");
+        std::fs::write(&p, br#"{"lineThickness":99,"lineOpacity":5}"#).unwrap();
+        let s = Settings::load(&p);
+        assert_eq!((s.line_thickness, s.line_opacity), (6, 30));
     }
 
     #[test]
