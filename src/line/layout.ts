@@ -36,7 +36,7 @@ export function windowHeight(n: number, size: string): number {
 
 /** How many whole ropes fit a window `height` logical px high (at least one). Same rule as `max_ropes` in src-tauri/src/line.rs. */
 export function maxRopes(height: number, size: string): number {
-  const n = Math.floor(height / (sizeOf(size).band + GAP));
+  const n = Math.floor(height / (sizeOf(size).band + GAP) + 0.01);
   return Number.isFinite(n) && n >= 1 ? n : 1;
 }
 

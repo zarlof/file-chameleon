@@ -54,7 +54,7 @@ pub fn window_height(ropes: usize, size: &str) -> f64 {
 /// The most whole ropes that fit a work area `work_h` logical pixels high at `size`
 /// (at least one). The page uses the same rule (`maxRopes` in `src/line/layout.ts`).
 pub fn max_ropes(work_h: f64, size: &str) -> usize {
-    let n = (work_h / (band_height(size) + BAND_GAP)).floor();
+    let n = (work_h / (band_height(size) + BAND_GAP) + 0.01).floor();
     if n.is_finite() && n >= 1.0 {
         n as usize
     } else {

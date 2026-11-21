@@ -74,7 +74,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                     crate::windows::show_main(
                         &app,
                         Some(crate::events::NavPayload {
-                            view: "settings".into(),
+                            view: "line".into(),
                             paths: vec![],
                             url: None,
                             clip: None,

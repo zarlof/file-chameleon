@@ -42,14 +42,18 @@ pub fn error_means_gone(kind: std::io::ErrorKind) -> bool {
 
 /// Is `p` definitively missing? UNC paths are never stat-ed (an unreachable server would hang
 /// while the store lock is held), and a path on a drive whose root does not answer is kept.
-fn definitely_missing(p: &Path) -> bool {
+fn definitely_missing(p: &Path, roots: &mut std::collections::HashMap<String, bool>) -> bool {
     use std::path::Component;
     let mut comps = p.components();
     if let Some(Component::Prefix(prefix)) = comps.next() {
         match prefix.kind() {
             std::path::Prefix::Disk(_) | std::path::Prefix::VerbatimDisk(_) => {
+                // Each drive root is probed once per call, not once per entry.
                 let root: PathBuf = p.components().take(2).collect();
-                if std::fs::metadata(&root).is_err() {
+                let up = *roots
+                    .entry(key(&root))
+                    .or_insert_with(|| std::fs::metadata(&root).is_ok());
+                if !up {
                     return false;
                 }
             }
@@ -115,7 +119,9 @@ impl FileStore {
     /// (and the store is saved when that happened).
     pub fn list(&mut self, sources: &[FileSource]) -> Vec<FileEntry> {
         let before = self.entries.len();
-        self.entries.retain(|e| !definitely_missing(&e.path));
+        let mut roots = std::collections::HashMap::new();
+        self.entries
+            .retain(|e| !definitely_missing(&e.path, &mut roots));
         if self.entries.len() != before {
             let _ = self.save();
         }
@@ -230,14 +236,21 @@ mod tests {
         ] {
             assert!(!error_means_gone(k), "{k:?}");
         }
+        let mut roots = std::collections::HashMap::new();
         // UNC paths and paths on a dead drive are kept, existing ones too.
         #[cfg(windows)]
-        assert!(!definitely_missing(Path::new(
-            r"\\no-such-server\share\a.png"
-        )));
+        assert!(!definitely_missing(
+            Path::new(r"\no-such-server\share.png"),
+            &mut roots
+        ));
         let d = tempfile::tempdir().unwrap();
-        assert!(!definitely_missing(&touch(d.path(), "k.png")));
-        assert!(definitely_missing(&d.path().join("nope.png")));
+        assert!(!definitely_missing(&touch(d.path(), "k.png"), &mut roots));
+        assert!(definitely_missing(&d.path().join("nope.png"), &mut roots));
+        assert_eq!(
+            roots.len(),
+            if cfg!(windows) { 1 } else { 0 },
+            "one probe per root"
+        );
     }
 
     #[test]

@@ -270,6 +270,7 @@
           pinStyle={s.linePinStyle}
           pinColor={s.linePinColor}
           cardOp={cardOpacity(vals.lineOpacity)}
+          ropeOp={Math.min(100, Math.max(30, vals.lineOpacity)) / 100}
           onclick={noop}
           ondblclick={noop}
           ondragout={noop}

@@ -64,7 +64,8 @@ pub struct ToolDone {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NavPayload {
-    /// "convert" | "download" | "clipboard" | "recent" | "settings"
+    /// A `View` of the frontend: "convert" | "download" | "clipboard" | "recent" | "line" (the İp
+    /// settings page) | other settings pages | "editor".
     pub view: String,
     /// Files to preload (convert) or a URL (download).
     pub paths: Vec<String>,
