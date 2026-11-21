@@ -168,3 +168,111 @@ pub fn system_language() -> String {
         "en".into()
     }
 }
+
+// ---------------------------------------------------------------- clipboard v2 and shelf (Task 9)
+
+/// Lowercase exe file name of a process (`None` if it cannot be queried).
+fn exe_name_of(pid: u32) -> Option<String> {
+    unsafe {
+        let proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        let ok =
+            QueryFullProcessImageNameW(proc, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len)
+                .is_ok();
+        let _ = CloseHandle(proc);
+        if !ok {
+            return None;
+        }
+        let full = String::from_utf16_lossy(&buf[..len as usize]);
+        Some(
+            full.rsplit(['\\', '/'])
+                .next()
+                .unwrap_or(&full)
+                .to_ascii_lowercase(),
+        )
+    }
+}
+
+/// Lowercase exe name of the app that put the current content on the clipboard. Does not open
+/// the clipboard. `None` when there is no owner window (some apps write without one).
+pub fn clipboard_owner_exe() -> Option<String> {
+    use windows::Win32::System::DataExchange::GetClipboardOwner;
+    unsafe {
+        let owner = GetClipboardOwner().ok()?;
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(owner, Some(&mut pid));
+        if pid == 0 {
+            return None;
+        }
+        exe_name_of(pid)
+    }
+}
+
+/// The foreground top-level window (0 = none).
+pub fn foreground_window() -> isize {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow().0 as isize }
+}
+
+pub fn is_window(h: isize) -> bool {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindow(Some(hwnd(h))).as_bool() }
+}
+
+/// Bring a window to the front (allowed while our own window is in front). True on success.
+pub fn set_foreground(h: isize) -> bool {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd(h)).as_bool() }
+}
+
+/// True when the window belongs to this process (one of our own windows).
+pub fn is_own_window(h: isize) -> bool {
+    let mut pid = 0u32;
+    unsafe {
+        GetWindowThreadProcessId(hwnd(h), Some(&mut pid));
+    }
+    pid != 0 && pid == current_pid()
+}
+
+/// The virtual keys of `vks` that are physically down right now.
+pub fn keys_down(vks: &[u16]) -> Vec<u16> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+    vks.iter()
+        .copied()
+        .filter(|&vk| unsafe { GetAsyncKeyState(i32::from(vk)) } as u16 & 0x8000 != 0)
+        .collect()
+}
+
+/// Inject `(virtual key, key up)` strokes into whatever window is in front, in one batch.
+pub fn send_keys(strokes: &[(u16, bool)]) {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY,
+        KEYEVENTF_KEYUP, SendInput, VIRTUAL_KEY,
+    };
+    let inputs: Vec<INPUT> = strokes
+        .iter()
+        .map(|&(vk, up)| {
+            let mut flags = KEYBD_EVENT_FLAGS(0);
+            if up {
+                flags |= KEYEVENTF_KEYUP;
+            }
+            // Right Ctrl, right Alt and both Win keys are extended keys.
+            if matches!(vk, 0xA3 | 0xA5 | 0x5B | 0x5C) {
+                flags |= KEYEVENTF_EXTENDEDKEY;
+            }
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: VIRTUAL_KEY(vk),
+                        dwFlags: flags,
+                        ..Default::default()
+                    },
+                },
+            }
+        })
+        .collect();
+    if !inputs.is_empty() {
+        unsafe {
+            SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+        }
+    }
+}

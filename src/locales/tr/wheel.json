@@ -1,0 +1,83 @@
+{
+  "resetAll": "Tümünü sıfırla",
+  "resetAllTitle": "Çark tamamen sıfırlansın mı?",
+  "resetAllMessage": "Tüm profiller varsayılan düzenine döner. Kendi hazır ayarların, grupların ve profillerin silinir.",
+  "loadFailed": "Çark ayarları yüklenemedi.",
+  "retry": "Tekrar dene",
+  "profiles": {
+    "title": "1. Profil seç",
+    "search": "Profil ara",
+    "none": "Eşleşen profil yok.",
+    "counts": "Önde {front}, arkada {back}",
+    "newName": "Yeni profil"
+  },
+  "arrange": {
+    "title": "2. Hazır ayarları diz",
+    "front": "Ön",
+    "back": "Arka",
+    "flipHint": "Açık çarkı çevir: Tab / fare tekerleği",
+    "emptySide": "Boş yüz",
+    "empty": "Bu yüz boş. Eklemek için sağdan hazır ayar seç.",
+    "capacity": "{n} / {max}",
+    "moveEarlier": "Bir öne al (Alt+←)",
+    "moveLater": "Bir sonraya al (Alt+→)",
+    "remove": "Kaldır (Delete)",
+    "editGroup": "Grubu düzenle",
+    "slots": "Dilimler",
+    "keys": "Seçili dilimi Alt+← ve Alt+→ taşır, Delete kaldırır."
+  },
+  "profile": {
+    "name": "Ad",
+    "mixed": "Karışık seçimlerde kullan",
+    "mixedHint": "Sürüklenen dosyalar farklı profillere aitse bu çark açılır.",
+    "extensions": "Dosya uzantıları",
+    "noExtensions": "Henüz uzantı yok.",
+    "addExtension": "Ekle",
+    "extensionPlaceholder": "ör. docx",
+    "badExtension": "Nokta olmadan 1–10 harf ya da rakam yaz.",
+    "removeExtension": "{ext} uzantısını kaldır",
+    "shadowed": "{ext} dosyaları listede önce gelen “{profile}” profilini açar.",
+    "otherHint": "Hiçbir profilin almadığı dosyalar bu çarkı açar.",
+    "resetTitle": "“{name}” sıfırlansın mı?",
+    "resetMessage": "Bu profil varsayılan dilimlerine, uzantılarına ve adına döner.",
+    "reset": "Profili sıfırla",
+    "delete": "Profili sil",
+    "deleteTitle": "“{name}” silinsin mi?",
+    "deleteMessage": "Bu profilin çark düzeni silinir. Hazır ayarlar ve gruplar kalır."
+  },
+  "picker": {
+    "title": "Kullanılabilir hazır ayarlar",
+    "search": "Hazır ayar ara",
+    "copyToFolder": "Klasöre kopyala",
+    "none": "Eşleşen hazır ayar yok.",
+    "groupOf": "Grup · {n}",
+    "unfit": "{profile} dosyalarıyla çalışmaz",
+    "onFace": "Bu yüzde zaten var",
+    "full": "Bu yüz dolu (en fazla {max})."
+  },
+  "group": {
+    "newTitle": "Yeni grup",
+    "editTitle": "Grubu düzenle",
+    "name": "Ad",
+    "defaultName": "Yeni grup",
+    "members": "Hazır ayarlar ({n} / {max})",
+    "noMembers": "Aşağıdan en fazla 6 hazır ayar seç. Çarkta grubun diliminin çevresinde açılırlar.",
+    "search": "Hazır ayar ara",
+    "full": "Bir grupta en fazla {max} hazır ayar olur.",
+    "create": "Oluştur ve ekle",
+    "save": "Kaydet",
+    "delete": "Grubu sil",
+    "moveEarlier": "Öne al",
+    "moveLater": "Sonraya al",
+    "remove": "Çıkar"
+  },
+  "newPreset": {
+    "title": "Yeni hazır ayar",
+    "create": "Oluştur ve ekle"
+  },
+  "errors": {
+    "invalid": "Bu değişiklik kaydedilemedi, geri alındı.",
+    "saveFailed": "Çark kaydedilemedi, değişiklik geri alındı.",
+    "resetFailed": "Çark sıfırlanamadı."
+  }
+}

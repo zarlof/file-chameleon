@@ -659,55 +659,62 @@ impl ClipStore {
 
     // ------------------------------------------------------------ export
 
-    /// Write items into `dir`: images as `<title or "Görsel <stamp>">.png` (the edited version if
-    /// any), texts and links as `.txt`. Names never overwrite (`jobs::naming`). Unknown ids are
-    /// skipped; returns the number of files written.
+    /// Write items into `dir` (see [`export_items`]). Unknown ids are skipped; returns the number
+    /// of files written.
     pub fn export(&self, ids: &[u64], dir: &Path) -> Result<usize> {
-        std::fs::create_dir_all(dir)?;
-        let mut written = 0;
-        for id in ids {
-            let Some(item) = self.get(*id) else { continue };
-            let stamp = stamp(item.created_at);
-            let is_image = item.kind == ClipKind::Image;
-            let stem = item
-                .title
-                .as_deref()
-                .and_then(file_stem)
-                .or_else(|| item.link_title.as_deref().and_then(file_stem))
-                .or_else(|| {
-                    let first = item
-                        .text
-                        .as_deref()?
-                        .lines()
-                        .find(|l| !l.trim().is_empty())?;
-                    file_stem(&first.chars().take(40).collect::<String>())
-                })
-                .unwrap_or_else(|| {
-                    if is_image {
-                        format!("Görsel {stamp}")
-                    } else {
-                        format!("Metin {stamp}")
-                    }
-                });
-            let ext = if is_image { "png" } else { "txt" };
-            let out = crate::jobs::naming::output_path(
-                &dir.join(format!("{stem}.clip")),
-                ext,
-                Some(dir),
-                None,
-            );
-            if is_image {
-                let Some(src) = item.edited.as_ref().or(item.image.as_ref()) else {
-                    continue;
-                };
-                std::fs::copy(src, &out)?;
-            } else {
-                std::fs::write(&out, item.text.as_deref().unwrap_or(""))?;
-            }
-            written += 1;
-        }
-        Ok(written)
+        let items: Vec<ClipItem> = ids.iter().filter_map(|id| self.get(*id).cloned()).collect();
+        export_items(&items, dir)
     }
+}
+
+/// Write items into `dir`: images as `<title or "Görsel <stamp>">.png` (the edited version if
+/// any), texts and links as `.txt`. Names never overwrite (`jobs::naming`). Returns the number of
+/// files written. Takes copies of the items, so a caller holding the store in a mutex can release
+/// it before the files are written.
+pub fn export_items(items: &[ClipItem], dir: &Path) -> Result<usize> {
+    std::fs::create_dir_all(dir)?;
+    let mut written = 0;
+    for item in items {
+        let stamp = stamp(item.created_at);
+        let is_image = item.kind == ClipKind::Image;
+        let stem = item
+            .title
+            .as_deref()
+            .and_then(file_stem)
+            .or_else(|| item.link_title.as_deref().and_then(file_stem))
+            .or_else(|| {
+                let first = item
+                    .text
+                    .as_deref()?
+                    .lines()
+                    .find(|l| !l.trim().is_empty())?;
+                file_stem(&first.chars().take(40).collect::<String>())
+            })
+            .unwrap_or_else(|| {
+                if is_image {
+                    format!("Görsel {stamp}")
+                } else {
+                    format!("Metin {stamp}")
+                }
+            });
+        let ext = if is_image { "png" } else { "txt" };
+        let out = crate::jobs::naming::output_path(
+            &dir.join(format!("{stem}.clip")),
+            ext,
+            Some(dir),
+            None,
+        );
+        if is_image {
+            let Some(src) = item.edited.as_ref().or(item.image.as_ref()) else {
+                continue;
+            };
+            std::fs::copy(src, &out)?;
+        } else {
+            std::fs::write(&out, item.text.as_deref().unwrap_or(""))?;
+        }
+        written += 1;
+    }
+    Ok(written)
 }
 
 fn matches_text(i: &ClipItem, needle: &str) -> bool {

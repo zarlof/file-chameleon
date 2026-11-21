@@ -1,40 +1,160 @@
 {
   "title": "Clipboard",
-  "search": "Search clipboard history",
-  "filter": {
+  "search": "Search the clipboard",
+  "paused": "Recording paused",
+  "resume": "Resume",
+  "filters": {
+    "label": "Clipboard filters",
     "all": "All",
+    "images": "Images",
+    "texts": "Text",
     "links": "Links",
-    "text": "Text",
-    "images": "Images"
+    "pinned": "Pinned",
+    "folders": "Folders",
+    "tags": "Tags",
+    "trash": "Trash",
+    "noFolders": "No folders yet",
+    "noTags": "No tags yet"
   },
-  "pause": "Pause recording",
-  "paused": "Paused",
-  "clearUnpinned": "Clear unpinned",
-  "clear": {
-    "title": "Clear clipboard history?",
-    "message": "All unpinned items will be removed. Pinned items stay.",
-    "confirm": "Clear"
+  "folder": {
+    "new": "New folder",
+    "namePlaceholder": "Folder name",
+    "rename": "Rename",
+    "delete": "Delete folder",
+    "deleteTitle": "Delete “{name}”?",
+    "deleteMessage": "The items in it are kept and become unfiled.",
+    "deleteConfirm": "Delete folder",
+    "none": "No folder"
+  },
+  "tags": {
+    "placeholder": "Add a tag",
+    "add": "Add tag",
+    "remove": "Remove tag #{tag}"
+  },
+  "view": {
+    "list": "List",
+    "grid": "Grid",
+    "inspector": "Details panel"
+  },
+  "batch": {
+    "label": "Selected items",
+    "selected": {
+      "one": "{count} selected",
+      "other": "{count} selected"
+    },
+    "move": "Move",
+    "moveNew": "Move to a new folder",
+    "tag": "Tag",
+    "export": "Export to a folder",
+    "deselect": "Clear selection"
+  },
+  "action": {
+    "copy": "Copy",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "trash": "Move to trash",
+    "restore": "Restore",
+    "deleteForever": "Delete forever",
+    "edit": "Edit",
+    "revert": "Back to original",
+    "convert": "Convert",
+    "download": "Download",
+    "open": "Open in browser",
+    "copyOcr": "Copy recognized text"
+  },
+  "inspector": {
+    "label": "Item details",
+    "empty": "Select an item to see its details.",
+    "many": {
+      "one": "{count} item selected.",
+      "other": "{count} items selected. Batch actions are in the bar below."
+    },
+    "preview": "Large preview (Space)",
+    "edited": "Edited",
+    "saveAs": "Save:",
+    "text": "Text",
+    "link": "Link",
+    "title": "Title",
+    "titlePlaceholder": "Add a title",
+    "note": "Note",
+    "notePlaceholder": "Add a note",
+    "tags": "Tags",
+    "folder": "Folder",
+    "ocr": "Text in the image",
+    "ocrNone": "No text found in this image.",
+    "ocrPending": "Text not recognized yet.",
+    "ocrOff": "Text recognition is off.",
+    "source": "Source",
+    "created": "Copied",
+    "trashed": "Trashed",
+    "dimensions": "Dimensions",
+    "size": "File size",
+    "kept": "Kept",
+    "keptSaved": "Forever",
+    "keptRetention": "Per retention setting"
+  },
+  "preview": {
+    "title": "Preview",
+    "hint": "Press Space or Esc to close."
+  },
+  "trash": {
+    "note": "Items in the trash are deleted for good after 30 days.",
+    "empty": "Empty trash",
+    "emptyConfirmTitle": "Empty the trash?",
+    "emptyTitle": "The trash is empty",
+    "emptyMessage": "Items you delete wait here for 30 days."
+  },
+  "delete": {
+    "title": {
+      "one": "Delete this item forever?",
+      "other": "Delete {count} items forever?"
+    },
+    "message": "This can't be undone.",
+    "confirm": "Delete forever"
+  },
+  "toast": {
+    "copied": {
+      "one": "Copied to the clipboard",
+      "other": "{count} items copied to the clipboard"
+    },
+    "trashed": {
+      "one": "Moved to the trash. Press Ctrl+Z to undo.",
+      "other": "{count} items moved to the trash. Press Ctrl+Z to undo."
+    },
+    "restored": {
+      "one": "Restored",
+      "other": "{count} items restored"
+    },
+    "moved": {
+      "one": "Moved to “{folder}”",
+      "other": "{count} items moved to “{folder}”"
+    },
+    "unfiled": {
+      "one": "Removed from its folder",
+      "other": "{count} items removed from their folders"
+    },
+    "exported": {
+      "one": "{count} file exported",
+      "other": "{count} files exported"
+    },
+    "savedImage": "Saved to Downloads: {name}"
   },
   "empty": {
     "title": "Nothing copied yet",
     "message": "Text, links and images you copy show up here so you can find them again.",
     "privacy": "Passwords from password managers are never recorded."
   },
+  "emptyFilter": {
+    "title": "Nothing here yet",
+    "message": "Pin items, move them to a folder or tag them to see them here."
+  },
   "noResults": {
     "title": "No matches",
     "message": "Try a different search or filter."
   },
-  "action": {
-    "copy": "Copy",
-    "pin": "Pin",
-    "unpin": "Unpin",
-    "delete": "Delete",
-    "download": "Download",
-    "convert": "Convert",
-    "save": "Save as {format}"
+  "kind": {
+    "image": "Image"
   },
-  "copied": "Copied to the clipboard",
-  "saved": "Saved to Downloads: {name}",
   "imageSize": "{width} × {height}",
   "ago": {
     "now": "just now"

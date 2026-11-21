@@ -5,6 +5,7 @@
 mod events;
 mod ipc;
 mod platform;
+mod shelf;
 mod state;
 mod tray;
 mod windows;
@@ -49,16 +50,12 @@ pub fn run() {
             platform::start(&handle);
             // Opens once the overlay page is ready (with paths of further invocations).
             windows::queue_wheel_paths(&handle, wheel_args);
-            // Apply clipboard retention shortly after start (opening the store prunes it), so
-            // expired items are removed even if nothing is copied, and remove download leftovers
-            // of earlier runs (crash, failed cleanup). Delayed to keep startup light.
+            // Remove download leftovers of earlier runs (crash, failed cleanup), delayed to keep
+            // startup light. Clipboard retention runs in `platform::clipboard::start_maintenance`.
             let h = handle.clone();
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(10));
                 let state = h.state::<state::AppState>();
-                if state.settings().clipboard_enabled {
-                    let _ = state.clips();
-                }
                 // This run's downloads are at most ~10 s old here.
                 ipc::downloads::sweep_staging(
                     &state.paths.staging_dir(),
@@ -86,14 +83,36 @@ pub fn run() {
             ipc::downloads::start_download,
             ipc::downloads::cancel_download,
             ipc::downloads::list_downloads,
+            // Clipboard v2, shelf and hotkeys (Task 9).
             ipc::clipboard::clip_list,
+            ipc::clipboard::clip_get,
+            ipc::clipboard::clip_set_field,
             ipc::clipboard::clip_pin,
-            ipc::clipboard::clip_delete,
-            ipc::clipboard::clip_clear,
+            ipc::clipboard::clip_trash,
+            ipc::clipboard::clip_restore,
+            ipc::clipboard::clip_delete_forever,
+            ipc::clipboard::clip_empty_trash,
+            ipc::clipboard::clip_clear_unsaved,
+            ipc::clipboard::clip_folders,
+            ipc::clipboard::clip_folder_create,
+            ipc::clipboard::clip_folder_rename,
+            ipc::clipboard::clip_folder_delete,
+            ipc::clipboard::clip_move,
+            ipc::clipboard::clip_tags,
+            ipc::clipboard::clip_tag,
             ipc::clipboard::clip_copy,
+            ipc::clipboard::clip_copy_ocr,
+            ipc::clipboard::clip_export,
             ipc::clipboard::clip_save_image,
+            ipc::clipboard::clip_save_edited,
+            ipc::clipboard::clip_revert_edit,
+            ipc::clipboard::clip_stats,
             ipc::clipboard::clip_set_paused,
             ipc::clipboard::clip_get_paused,
+            ipc::clipboard::show_shelf,
+            ipc::clipboard::shelf_hide,
+            ipc::clipboard::shelf_paste,
+            ipc::clipboard::hotkey_status,
             ipc::reveal_path,
             ipc::open_path,
             ipc::show_main,
