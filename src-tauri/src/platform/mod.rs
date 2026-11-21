@@ -94,6 +94,7 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
     if old.hotkey_shelf != new.hotkey_shelf
         || old.hotkey_library != new.hotkey_library
         || old.hotkey_download_link != new.hotkey_download_link
+        || old.clipboard_enabled != new.clipboard_enabled
     {
         hotkeys::configure(app, &new);
     }

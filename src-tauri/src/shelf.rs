@@ -55,6 +55,51 @@ pub fn shelf_rect(
     (left + (work_w - width) / 2, top, width, height)
 }
 
+const VK_CONTROL: u16 = 0x11;
+const VK_V: u16 = 0x56;
+/// Left/right Shift, left/right Alt, left/right Win: still held, they turn our Ctrl+V into
+/// Ctrl+Shift+V, Ctrl+Alt+V (our own shelf hotkey, Paste Special in Word) or a Win shortcut.
+const PASTE_BLOCKERS: [u16; 6] = [0xA0, 0xA1, 0xA4, 0xA5, 0x5B, 0x5C];
+/// An unassigned virtual key. Pressed before a lone Alt or Win key-up so the target app does not
+/// open its menu bar (or Windows the Start menu).
+const VK_MASK: u16 = 0xE8;
+/// How long the user gets to let go of Shift/Alt/Win before their key-ups are injected.
+const RELEASE_WAIT: std::time::Duration = std::time::Duration::from_millis(300);
+
+fn is_alt_or_win(vk: u16) -> bool {
+    matches!(vk, 0xA4 | 0xA5 | 0x5B | 0x5C)
+}
+
+/// The masking key press, needed when Alt or Win is among `held`.
+fn mask_strokes(held: &[u16]) -> Vec<(u16, bool)> {
+    if held.iter().any(|&k| is_alt_or_win(k)) {
+        vec![(VK_MASK, false), (VK_MASK, true)]
+    } else {
+        Vec::new()
+    }
+}
+
+/// Keystrokes `(virtual key, key up)` for the paste into the previous app: key-ups for the paste
+/// blockers in `held` (after a masking key when Alt or Win is among them), then Ctrl+V. When the
+/// user still holds Ctrl (Ctrl+Enter in the shelf), Ctrl is left alone and only V is typed.
+fn paste_sequence(held: &[u16], ctrl_held: bool) -> Vec<(u16, bool)> {
+    let held: Vec<u16> = held
+        .iter()
+        .copied()
+        .filter(|k| PASTE_BLOCKERS.contains(k))
+        .collect();
+    let mut out = mask_strokes(&held);
+    out.extend(held.iter().map(|&k| (k, true)));
+    if !ctrl_held {
+        out.push((VK_CONTROL, false));
+    }
+    out.extend([(VK_V, false), (VK_V, true)]);
+    if !ctrl_held {
+        out.push((VK_CONTROL, true));
+    }
+    out
+}
+
 fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let state = app.state::<AppState>();
     WebviewWindowBuilder::new(app, SHELF, WebviewUrl::App("shelf.html".into()))
@@ -119,13 +164,17 @@ pub fn show_shelf(app: &AppHandle) {
     let existing = app.get_webview_window(SHELF);
     #[cfg(windows)]
     {
+        // No foreground window, or one of ours (the shelf, the main window): nothing to paste
+        // into later, so `shelf_paste` just copies.
         let fg = crate::platform::win::foreground_window();
-        // Re-showing while the shelf is in front keeps the app it was opened from.
-        if fg != 0 && existing.as_ref().and_then(hwnd_of) != Some(fg) {
-            app.state::<AppState>()
-                .shelf_prev
-                .store(fg, std::sync::atomic::Ordering::SeqCst);
-        }
+        let prev = if fg == 0 || crate::platform::win::is_own_window(fg) {
+            0
+        } else {
+            fg
+        };
+        app.state::<AppState>()
+            .shelf_prev
+            .store(prev, std::sync::atomic::Ordering::SeqCst);
     }
     let w = match existing {
         Some(w) => w,
@@ -171,6 +220,8 @@ pub fn toggle(app: &AppHandle) {
 /// After the items were copied: hide the shelf, bring back the app it was opened from and send
 /// Ctrl+V. If that app is gone, the items just stay on the clipboard. Our process still owns the
 /// last input (the key or click in the shelf), so Windows lets it hand the foreground back.
+/// Shift/Alt/Win still held (e.g. Ctrl+Alt kept down after Ctrl+Alt+V, then Enter) get up to
+/// 300 ms to be released; then their key-ups are injected, so the target sees a plain Ctrl+V.
 pub fn paste_into_previous(app: &AppHandle) {
     hide(app);
     #[cfg(windows)]
@@ -182,14 +233,53 @@ pub fn paste_into_previous(app: &AppHandle) {
             .load(std::sync::atomic::Ordering::SeqCst);
         if prev != 0 && win::is_window(prev) && win::set_foreground(prev) {
             std::thread::sleep(std::time::Duration::from_millis(60));
-            win::send_ctrl_v();
+            // Mask right away: Alt or Win released by hand while we wait must not open a menu.
+            win::send_keys(&mask_strokes(&win::keys_down(&PASTE_BLOCKERS)));
+            let deadline = std::time::Instant::now() + RELEASE_WAIT;
+            let mut held = win::keys_down(&PASTE_BLOCKERS);
+            while !held.is_empty() && std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(15));
+                held = win::keys_down(&PASTE_BLOCKERS);
+            }
+            let ctrl_held = !win::keys_down(&[VK_CONTROL]).is_empty();
+            win::send_keys(&paste_sequence(&held, ctrl_held));
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::shelf_rect;
+    use super::{paste_sequence, shelf_rect};
+
+    #[test]
+    fn paste_releases_held_modifiers_first() {
+        const MASK: u16 = 0xE8;
+        let ctrl_v = |held_ctrl: bool| {
+            if held_ctrl {
+                vec![(0x56, false), (0x56, true)]
+            } else {
+                vec![(0x11, false), (0x56, false), (0x56, true), (0x11, true)]
+            }
+        };
+        // Nothing held: plain Ctrl+V.
+        assert_eq!(paste_sequence(&[], false), ctrl_v(false));
+        // Ctrl still held (Ctrl+Enter in the shelf): only V, Ctrl stays as the user holds it.
+        assert_eq!(paste_sequence(&[], true), ctrl_v(true));
+        // Shift held: released first, no mask needed.
+        let mut want = vec![(0xA0, true)];
+        want.extend(ctrl_v(true));
+        assert_eq!(paste_sequence(&[0xA0], true), want);
+        // Ctrl+Alt held after Ctrl+Alt+V, Enter: a masking key, then Alt up, then V.
+        let mut want = vec![(MASK, false), (MASK, true), (0xA4, true)];
+        want.extend(ctrl_v(true));
+        assert_eq!(paste_sequence(&[0xA4], true), want);
+        // Right Win + right Shift: masked (Start menu), both released.
+        let mut want = vec![(MASK, false), (MASK, true), (0xA1, true), (0x5C, true)];
+        want.extend(ctrl_v(false));
+        assert_eq!(paste_sequence(&[0xA1, 0x5C], false), want);
+        // Keys that are not paste blockers are ignored.
+        assert_eq!(paste_sequence(&[0x41], false), ctrl_v(false));
+    }
 
     #[test]
     fn shelf_rect_is_top_centre_and_clamped() {

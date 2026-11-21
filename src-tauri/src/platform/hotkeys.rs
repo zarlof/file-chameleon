@@ -83,8 +83,8 @@ fn key_code(name: &str) -> Option<u32> {
 /// `"Ctrl+Alt+V"` -> `(MOD_CONTROL | MOD_ALT, 0x56)`. Parts are separated by `+`, any case,
 /// modifiers first (Ctrl, Alt, Shift, Win), then exactly one key: A-Z, 0-9, F1-F24, Space,
 /// Enter, Tab, Esc, Backspace, Insert, Delete, Home, End, PageUp, PageDown, arrows, PrintScreen,
-/// Pause, Num0-Num9. A key without a modifier is only accepted for F-keys. `MOD_NOREPEAT` is
-/// added when registering, not here.
+/// Pause, Num0-Num9. A key with no modifier or with Shift alone is only accepted for F-keys
+/// (Shift+letter would eat capital letters). `MOD_NOREPEAT` is added when registering, not here.
 pub fn parse_hotkey(s: &str) -> Option<(u32, u32)> {
     let mut mods = 0;
     let mut vk = None;
@@ -100,7 +100,17 @@ pub fn parse_hotkey(s: &str) -> Option<(u32, u32)> {
     }
     let vk = vk?;
     let f_key = (0x70..=0x87).contains(&vk);
-    (mods != 0 || f_key).then_some((mods, vk))
+    (mods & !MOD_SHIFT != 0 || f_key).then_some((mods, vk))
+}
+
+/// Keys to register in id order, each with whether it is active: the shelf and library hotkeys
+/// are not registered while the clipboard is off (the download-link hotkey still works).
+fn wanted_hotkeys(s: &fc_core::settings::Settings) -> [(String, bool); 3] {
+    [
+        (s.hotkey_shelf.clone(), s.clipboard_enabled),
+        (s.hotkey_library.clone(), s.clipboard_enabled),
+        (s.hotkey_download_link.clone(), true),
+    ]
 }
 
 /// Current registration result for each hotkey (waits briefly for a pending re-registration).
@@ -115,17 +125,11 @@ pub fn status() -> Vec<HotkeyStatus> {
 /// settings on every change: the thread does not read the settings itself, so it never sees a
 /// value that is not saved yet.
 pub fn configure(app: &tauri::AppHandle, s: &fc_core::settings::Settings) {
+    let wanted = wanted_hotkeys(s);
     #[cfg(windows)]
-    imp::configure(
-        app,
-        [
-            s.hotkey_shelf.clone(),
-            s.hotkey_library.clone(),
-            s.hotkey_download_link.clone(),
-        ],
-    );
+    imp::configure(app, wanted);
     #[cfg(not(windows))]
-    let _ = (app, s);
+    let _ = (app, wanted);
 }
 
 #[cfg(windows)]
@@ -147,15 +151,19 @@ mod imp {
     };
 
     struct Shared {
-        /// Wanted key strings in id order.
-        wanted: [String; 3],
+        /// Wanted key strings in id order, with whether each is active.
+        wanted: [(String, bool); 3],
         wanted_gen: u64,
         done_gen: u64,
         status: Vec<HotkeyStatus>,
     }
 
     static SHARED: Mutex<Shared> = Mutex::new(Shared {
-        wanted: [String::new(), String::new(), String::new()],
+        wanted: [
+            (String::new(), false),
+            (String::new(), false),
+            (String::new(), false),
+        ],
         wanted_gen: 0,
         done_gen: 0,
         status: Vec::new(),
@@ -167,7 +175,7 @@ mod imp {
         SHARED.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    pub fn configure(app: &AppHandle, wanted: [String; 3]) {
+    pub fn configure(app: &AppHandle, wanted: [(String, bool); 3]) {
         {
             let mut s = shared();
             s.wanted = wanted;
@@ -246,19 +254,23 @@ mod imp {
         }
     }
 
-    /// (Re-)register every hotkey from `wanted`. Runs on the hotkey thread only.
+    /// (Re-)register every hotkey from `wanted`. Runs on the hotkey thread only. All of ours are
+    /// unregistered first, so swapping two of them is not reported as a conflict. An empty or
+    /// inactive hotkey is not registered and reported as ok.
     fn register_wanted() {
         let (wanted, generation) = {
             let s = shared();
             (s.wanted.clone(), s.wanted_gen)
         };
-        let mut status = Vec::with_capacity(NAMES.len());
-        for (i, keys) in wanted.iter().enumerate() {
-            let id = i as i32 + 1;
+        for id in 1..=NAMES.len() as i32 {
             unsafe {
                 let _ = UnregisterHotKey(None, id);
             }
-            let ok = if keys.trim().is_empty() {
+        }
+        let mut status = Vec::with_capacity(NAMES.len());
+        for (i, (keys, active)) in wanted.iter().enumerate() {
+            let id = i as i32 + 1;
+            let ok = if keys.trim().is_empty() || !active {
                 true
             } else {
                 parse_hotkey(keys).is_some_and(|(mods, vk)| unsafe {
@@ -336,6 +348,34 @@ mod tests {
         assert_eq!(p("Ctrl+V+B"), None);
         assert_eq!(p("Ctrl+F25"), None);
         assert_eq!(p("Ctrl+Banana"), None);
+        // Shift alone is not enough for a normal key (it would eat capital letters); F-keys ok.
+        assert_eq!(p("Shift+V"), None);
+        assert_eq!(p("Shift+1"), None);
+        assert_eq!(p("Shift+F5"), Some((MOD_SHIFT, 0x74)));
+        assert_eq!(p("Ctrl+Shift+V"), Some((MOD_CONTROL | MOD_SHIFT, 0x56)));
+    }
+
+    #[test]
+    fn clipboard_hotkeys_are_off_while_the_clipboard_is() {
+        let mut s = fc_core::settings::Settings::default();
+        assert_eq!(
+            wanted_hotkeys(&s),
+            [
+                ("Ctrl+Alt+V".to_string(), true),
+                (String::new(), true),
+                ("Ctrl+Alt+D".to_string(), true),
+            ]
+        );
+        s.clipboard_enabled = false;
+        s.hotkey_library = "Ctrl+Alt+L".into();
+        assert_eq!(
+            wanted_hotkeys(&s),
+            [
+                ("Ctrl+Alt+V".to_string(), false),
+                ("Ctrl+Alt+L".to_string(), false),
+                ("Ctrl+Alt+D".to_string(), true),
+            ]
+        );
     }
 
     #[cfg(windows)]

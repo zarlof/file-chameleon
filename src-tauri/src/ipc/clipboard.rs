@@ -283,8 +283,16 @@ pub fn clip_copy_ocr(state: State<'_, AppState>, id: u64) -> CmdResult<()> {
 /// Write the items as files into `dir`; returns how many files.
 #[tauri::command]
 pub async fn clip_export(app: AppHandle, ids: Vec<u64>, dir: String) -> CmdResult<usize> {
-    super::blocking(move || Ok(store(&app.state::<AppState>()).export(&ids, Path::new(&dir))?))
-        .await?
+    super::blocking(move || {
+        // Copies of the items: the files are written without holding the store.
+        let state = app.state::<AppState>();
+        let items: Vec<ClipItem> = {
+            let s = store(&state);
+            ids.iter().filter_map(|id| s.get(*id).cloned()).collect()
+        };
+        Ok(history::export_items(&items, Path::new(&dir))?)
+    })
+    .await?
 }
 
 // ---------------------------------------------------------------- images
@@ -328,7 +336,7 @@ pub fn save_image(state: &AppState, id: u64, format: &str) -> CmdResult<PathBuf>
 #[tauri::command]
 pub async fn clip_save_edited(app: AppHandle, id: u64, data_url: String) -> CmdResult<ClipItem> {
     super::blocking(move || {
-        let item = save_edited_data_url(&mut store(&app.state::<AppState>()), id, &data_url)?;
+        let item = save_edited_data_url(app.state::<AppState>().clips(), id, &data_url)?;
         updated(&app, &item);
         Ok(item)
     })
@@ -336,8 +344,14 @@ pub async fn clip_save_edited(app: AppHandle, id: u64, data_url: String) -> CmdR
 }
 
 /// Decode a PNG data URL (or bare base64) and store it as the edited copy of image item `id`.
-fn save_edited_data_url(store: &mut ClipStore, id: u64, data_url: &str) -> CmdResult<ClipItem> {
+/// The base64 is decoded before the store is locked.
+fn save_edited_data_url(
+    store: &std::sync::Mutex<ClipStore>,
+    id: u64,
+    data_url: &str,
+) -> CmdResult<ClipItem> {
     let png = fc_core::b64::decode(data_url)?;
+    let mut store = store.lock().unwrap_or_else(|e| e.into_inner());
     Ok(store.save_edited(id, &png)?)
 }
 
@@ -545,17 +559,16 @@ mod helper_tests {
         let item = store.add_image_png(&png(8, 6), 8, 6, 1).unwrap().unwrap();
         let text = store.add_text("not an image", 2).unwrap().unwrap();
         let url = format!("data:image/png;base64,{}", fc_core::b64::encode(&png(4, 3)));
-        let saved = super::save_edited_data_url(&mut store, item.id, &url).unwrap();
+        let store = std::sync::Mutex::new(store);
+        let saved = super::save_edited_data_url(&store, item.id, &url).unwrap();
         let edited = saved.edited.clone().unwrap();
         assert_eq!(std::fs::read(&edited).unwrap(), png(4, 3));
         assert_eq!(saved.image, item.image);
         // Garbage, a non-PNG payload and a text item are errors, and nothing changes.
-        assert!(
-            super::save_edited_data_url(&mut store, item.id, "data:image/png;base64,@@").is_err()
-        );
+        assert!(super::save_edited_data_url(&store, item.id, "data:image/png;base64,@@").is_err());
         let not_png = format!("data:image/png;base64,{}", fc_core::b64::encode(b"hello"));
-        assert!(super::save_edited_data_url(&mut store, item.id, &not_png).is_err());
-        assert!(super::save_edited_data_url(&mut store, text.id, &url).is_err());
+        assert!(super::save_edited_data_url(&store, item.id, &not_png).is_err());
+        assert!(super::save_edited_data_url(&store, text.id, &url).is_err());
         assert_eq!(std::fs::read(&edited).unwrap(), png(4, 3));
         drop(store);
         let _ = std::fs::remove_dir_all(&dir);

@@ -223,30 +223,56 @@ pub fn set_foreground(h: isize) -> bool {
     unsafe { windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd(h)).as_bool() }
 }
 
-/// Type Ctrl+V into whatever window is in front.
-pub fn send_ctrl_v() {
-    use windows::Win32::UI::Input::KeyboardAndMouse::{
-        INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput,
-        VIRTUAL_KEY, VK_CONTROL,
-    };
-    let key = |vk: VIRTUAL_KEY, flags: KEYBD_EVENT_FLAGS| INPUT {
-        r#type: INPUT_KEYBOARD,
-        Anonymous: INPUT_0 {
-            ki: KEYBDINPUT {
-                wVk: vk,
-                dwFlags: flags,
-                ..Default::default()
-            },
-        },
-    };
-    let v = VIRTUAL_KEY(u16::from(b'V'));
-    let inputs = [
-        key(VK_CONTROL, KEYBD_EVENT_FLAGS(0)),
-        key(v, KEYBD_EVENT_FLAGS(0)),
-        key(v, KEYEVENTF_KEYUP),
-        key(VK_CONTROL, KEYEVENTF_KEYUP),
-    ];
+/// True when the window belongs to this process (one of our own windows).
+pub fn is_own_window(h: isize) -> bool {
+    let mut pid = 0u32;
     unsafe {
-        SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+        GetWindowThreadProcessId(hwnd(h), Some(&mut pid));
+    }
+    pid != 0 && pid == current_pid()
+}
+
+/// The virtual keys of `vks` that are physically down right now.
+pub fn keys_down(vks: &[u16]) -> Vec<u16> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+    vks.iter()
+        .copied()
+        .filter(|&vk| unsafe { GetAsyncKeyState(i32::from(vk)) } as u16 & 0x8000 != 0)
+        .collect()
+}
+
+/// Inject `(virtual key, key up)` strokes into whatever window is in front, in one batch.
+pub fn send_keys(strokes: &[(u16, bool)]) {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY,
+        KEYEVENTF_KEYUP, SendInput, VIRTUAL_KEY,
+    };
+    let inputs: Vec<INPUT> = strokes
+        .iter()
+        .map(|&(vk, up)| {
+            let mut flags = KEYBD_EVENT_FLAGS(0);
+            if up {
+                flags |= KEYEVENTF_KEYUP;
+            }
+            // Right Ctrl, right Alt and both Win keys are extended keys.
+            if matches!(vk, 0xA3 | 0xA5 | 0x5B | 0x5C) {
+                flags |= KEYEVENTF_EXTENDEDKEY;
+            }
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: VIRTUAL_KEY(vk),
+                        dwFlags: flags,
+                        ..Default::default()
+                    },
+                },
+            }
+        })
+        .collect();
+    if !inputs.is_empty() {
+        unsafe {
+            SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+        }
     }
 }
