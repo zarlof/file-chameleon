@@ -98,6 +98,9 @@ export function presetCategory(p: Preset): Exclude<PresetFilter, 'all'> {
     case 'zip':
     case 'extract':
     case 'copyTo':
+    case 'copyPath':
+    case 'openTerminal':
+    case 'float':
       return 'files';
   }
 }
@@ -274,6 +277,12 @@ export function presetSlot(p: Preset): WheelSlot {
       break;
     case 'extract':
       icon = 'extract';
+      break;
+    case 'copyPath':
+    case 'openTerminal':
+    case 'float':
+      icon = op.type;
+      if (op.type === 'float') kind = 'image';
       break;
   }
   return { id: p.id, name: p.name, format, detail, icon, kind, needsTools: [], children: [] };

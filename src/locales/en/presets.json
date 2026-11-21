@@ -55,7 +55,10 @@
     "zip": "Pack into ZIP",
     "extract": "Extract archive",
     "copy-to": "Copy to folder",
-    "move-to": "Move to folder"
+    "move-to": "Move to folder",
+    "copy-path": "Copy path",
+    "open-terminal": "Open in terminal",
+    "float": "Float on screen"
   },
   "profile": {
     "images": "Images",

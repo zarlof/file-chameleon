@@ -5,6 +5,7 @@ import Archive from '@lucide/svelte/icons/archive';
 import BellRing from '@lucide/svelte/icons/bell-ring';
 import Captions from '@lucide/svelte/icons/captions';
 import Contrast from '@lucide/svelte/icons/contrast';
+import ClipboardCopy from '@lucide/svelte/icons/clipboard-copy';
 import Copy from '@lucide/svelte/icons/copy';
 import Crop from '@lucide/svelte/icons/crop';
 import Droplet from '@lucide/svelte/icons/droplet';
@@ -24,6 +25,7 @@ import Package from '@lucide/svelte/icons/package';
 import PackageOpen from '@lucide/svelte/icons/package-open';
 import PenLine from '@lucide/svelte/icons/pen-line';
 import PenTool from '@lucide/svelte/icons/pen-tool';
+import Pin from '@lucide/svelte/icons/pin';
 import RefreshCcw from '@lucide/svelte/icons/refresh-ccw';
 import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 import RotateCw from '@lucide/svelte/icons/rotate-cw';
@@ -31,6 +33,7 @@ import Scaling from '@lucide/svelte/icons/scaling';
 import Shrink from '@lucide/svelte/icons/shrink';
 import Split from '@lucide/svelte/icons/split';
 import SquareDashed from '@lucide/svelte/icons/square-dashed';
+import SquareTerminal from '@lucide/svelte/icons/square-terminal';
 import Table from '@lucide/svelte/icons/table';
 import VolumeX from '@lucide/svelte/icons/volume-x';
 import type { SlotIcon } from '../types';
@@ -69,6 +72,9 @@ const icons: Record<SlotIcon, IconComponent> = {
   move: FolderInput,
   ringtone: BellRing,
   group: Layers,
+  copyPath: ClipboardCopy,
+  openTerminal: SquareTerminal,
+  float: Pin,
 };
 
 /** Icon for a slot (or a file kind); a plain file icon for null or an unknown key. */

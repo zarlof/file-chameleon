@@ -91,7 +91,17 @@ fn builtin_is_valid() {
     assert_eq!(profile(&cfg, "images").back.last().unwrap(), "group:files");
     let files = cfg.groups.iter().find(|g| g.id == "files").unwrap();
     assert_eq!(files.name, "");
-    assert_eq!(files.presets, ["zip", "copy-to", "move-to"]);
+    assert_eq!(
+        files.presets,
+        [
+            "zip",
+            "copy-to",
+            "move-to",
+            "copy-path",
+            "open-terminal",
+            "float"
+        ]
+    );
     assert!(profile(&cfg, "mixed").mixed);
     assert!(profile(&cfg, "other").extensions.is_empty());
     assert!(cfg.presets.iter().all(|p| p.builtin && p.name.is_empty()));
@@ -256,7 +266,17 @@ fn slots_hide_inapplicable_and_carry_details() {
     let group = slot(&back, "group:files");
     assert_eq!(group.icon, "group");
     assert_eq!(group.kind, None);
-    assert_eq!(ids(&group.children), ["zip", "copy-to", "move-to"]);
+    assert_eq!(
+        ids(&group.children),
+        [
+            "zip",
+            "copy-to",
+            "move-to",
+            "copy-path",
+            "open-terminal",
+            "float"
+        ]
+    );
     assert_eq!(slot(&group.children, "move-to").icon, "move");
 
     let two = cfg.slots(images, Face::Back, &paths(&["a.png", "b.jpg"]));
@@ -642,11 +662,9 @@ fn applicable_ids_for_extensions() {
             .contains(&"zip".to_string())
     );
     // No extensions (the "other" and mixed profiles) = an unknown file: the file operations.
-    assert_eq!(cfg.applicable_ids(&[]), ["zip", "copy-to", "move-to"]);
-    assert_eq!(
-        cfg.applicable_ids(&[" ".to_string()]),
-        ["zip", "copy-to", "move-to"]
-    );
+    let file_ops = ["zip", "copy-to", "move-to", "copy-path", "open-terminal"];
+    assert_eq!(cfg.applicable_ids(&[]), file_ops);
+    assert_eq!(cfg.applicable_ids(&[" ".to_string()]), file_ops);
 
     let extract = cfg.preset("extract").unwrap();
     assert!(applicable(extract, &paths(&["a.ZIP"])));
@@ -689,10 +707,16 @@ fn folders_only_get_file_operations() {
     assert_eq!(prof.id, "other");
     assert_eq!(
         ids(&cfg.slots(prof, Face::Front, &sel)),
-        ["zip", "copy-to", "move-to"]
+        ["zip", "copy-to", "move-to", "copy-path", "open-terminal"]
     );
     for p in &cfg.presets {
-        let file_op = matches!(p.op, Operation::Zip | Operation::CopyTo { .. });
+        let file_op = matches!(
+            p.op,
+            Operation::Zip
+                | Operation::CopyTo { .. }
+                | Operation::CopyPath
+                | Operation::OpenTerminal
+        );
         assert_eq!(applicable(p, &sel), file_op, "{}", p.id);
     }
     // A folder and an image: mixed, file operations only.
@@ -731,4 +755,49 @@ fn builtin_presets_are_read_only() {
     // Unchanged built-ins (even with a wrong flag) are fine; the flag is normalized.
     let cfg = edit("to-png", &|p| p.builtin = false).validate().unwrap();
     assert!(cfg.preset("to-png").unwrap().builtin);
+}
+
+#[test]
+fn file_actions_apply_to_files_folders_and_mixed() {
+    let cfg = WheelConfig::builtin();
+    let dir = tempfile::tempdir().unwrap();
+    let folder = dir.path().join("folder");
+    std::fs::create_dir(&folder).unwrap();
+    let mixed = vec![
+        PathBuf::from("a.jpg"),
+        folder.clone(),
+        PathBuf::from("b.docx"),
+    ];
+    for id in ["copy-path", "open-terminal"] {
+        let p = cfg.preset(id).unwrap();
+        assert!(applicable(p, &mixed), "{id} mixed");
+        assert!(applicable(p, std::slice::from_ref(&folder)), "{id} folder");
+        assert!(applicable(p, &paths(&["b.docx"])), "{id} unknown-kind file");
+        assert!(applicable(p, &paths(&["a.mp4"])), "{id} video");
+    }
+    let float = cfg.preset("float").unwrap();
+    assert!(applicable(float, &paths(&["a.jpg", "b.png"])));
+    assert!(!applicable(float, &mixed));
+    assert!(!applicable(float, std::slice::from_ref(&folder)));
+    assert!(!applicable(float, &paths(&["a.mp4"])));
+    assert!(!applicable(float, &paths(&["a.svg"])));
+    assert!(!applicable(float, &paths(&["b.docx"])));
+}
+
+#[test]
+fn builtin_config_still_validates() {
+    let cfg = WheelConfig::builtin();
+    for id in ["copy-path", "open-terminal", "float"] {
+        assert!(cfg.preset(id).is_some_and(|p| p.builtin), "{id}");
+    }
+    let files = cfg.groups.iter().find(|g| g.id == "files").unwrap();
+    assert!(files.presets.ends_with(&[
+        "copy-path".to_string(),
+        "open-terminal".to_string(),
+        "float".to_string()
+    ]));
+    let other = profile(&cfg, "other");
+    let at = |id: &str| other.front.iter().position(|s| s == id).unwrap();
+    assert!(at("copy-path") > at("move-to"));
+    assert!(cfg.validate().is_ok());
 }

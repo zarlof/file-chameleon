@@ -640,6 +640,7 @@ pub fn toast_action(
                 view: "recent".into(),
                 paths: vec![],
                 url: None,
+                clip: None,
             }),
         ),
         ("clipLink", "download") => show_main(
@@ -648,6 +649,7 @@ pub fn toast_action(
                 view: "download".into(),
                 paths: vec![],
                 url: s("url"),
+                clip: None,
             }),
         ),
         ("clipImage", "convert") => {
@@ -658,6 +660,7 @@ pub fn toast_action(
                         view: "convert".into(),
                         paths: vec![thumb.into()],
                         url: None,
+                        clip: None,
                     }),
                 );
             }

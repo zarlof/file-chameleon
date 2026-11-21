@@ -35,7 +35,10 @@
     "move": "Move to folder",
     "zip": "Make ZIP",
     "extract": "Extract archive",
-    "annotate": "Edit image"
+    "annotate": "Edit image",
+    "copyPath": "Copy path",
+    "openTerminal": "Open in terminal",
+    "float": "Float on screen"
   },
   "errors": {
     "cancelled": "Cancelled.",

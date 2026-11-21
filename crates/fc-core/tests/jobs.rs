@@ -757,3 +757,14 @@ fn panicking_listener_does_not_kill_workers() {
     let late = q.submit(convert(&["d.mp4"], "webm"))[0];
     wait_until("late job", || state_of(&q, late) == JobState::Done);
 }
+
+#[test]
+fn file_actions_are_not_queueable() {
+    for op in [
+        Operation::CopyPath,
+        Operation::OpenTerminal,
+        Operation::Float,
+    ] {
+        assert!(matches!(op.queueable(), Err(Error::Invalid(_))), "{op:?}");
+    }
+}

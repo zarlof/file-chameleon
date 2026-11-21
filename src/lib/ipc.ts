@@ -114,6 +114,16 @@ export const api = {
   /** Save an edited image (PNG data URL) as "<name> (düzenlendi).png" next to `path`; returns the new path. */
   saveAnnotated: (path: string, dataUrl: string) => invoke<string>('save_annotated', { path, dataUrl }),
 
+  // ---- clothesline (Rust side in the shell)
+  lineShow: (mode: 'hotkey') => invoke<void>('line_show', { mode }),
+  lineHide: () => invoke<void>('line_hide'),
+  lineActivate: () => invoke<void>('line_activate'),
+  lineDragOut: (id: number) => invoke<void>('line_drag_out', { id }),
+  lineOpenItem: (id: number) => invoke<void>('line_open_item', { id }),
+  linePaste: (ids: number[]) => invoke<void>('line_paste', { ids }),
+  openUrl: (url: string) => invoke<void>('open_url', { url }),
+  floatOpen: (paths: string[]) => invoke<void>('float_open', { paths }),
+
   // ---- watch folders (Task 10)
   watchStatus: () => invoke<WatchStatus[]>('watch_status'),
 
@@ -154,6 +164,9 @@ export const on = {
   overlayWheelThumb: (cb: (t: WheelThumb) => void) => listen<WheelThumb>('overlay://wheel-thumb', (e) => cb(e.payload)),
   overlayToast: (cb: (t: ToastPayload) => void) => listen<ToastPayload>('overlay://toast', (e) => cb(e.payload)),
   overlayHide: (cb: () => void) => listen('overlay://hide', () => cb()),
+  lineShow: (cb: (p: { mode: 'hotkey' | 'peek' | 'reveal' }) => void) =>
+    listen<{ mode: 'hotkey' | 'peek' | 'reveal' }>('line://show', (e) => cb(e.payload)),
+  lineHide: (cb: () => void) => listen('line://hide', () => cb()),
 };
 
 /** Error from a rejected `invoke` (Rust `CmdError`), normalized. */

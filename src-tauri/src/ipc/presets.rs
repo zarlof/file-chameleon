@@ -126,6 +126,7 @@ pub fn run_preset(
                     view: "editor".into(),
                     paths: vec![paths[0].to_string_lossy().into_owned()],
                     url: None,
+                    clip: None,
                 }),
             );
             return Ok(vec![]);

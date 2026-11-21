@@ -35,7 +35,10 @@
     "move": "Klasöre taşı",
     "zip": "ZIP yap",
     "extract": "Arşivi çıkar",
-    "annotate": "Görseli düzenle"
+    "annotate": "Görseli düzenle",
+    "copyPath": "Yolu kopyala",
+    "openTerminal": "Terminalde aç",
+    "float": "Ekranda sabitle"
   },
   "errors": {
     "cancelled": "İptal edildi.",

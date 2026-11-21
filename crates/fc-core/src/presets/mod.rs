@@ -554,7 +554,10 @@ pub fn applicable(preset: &Preset, paths: &[PathBuf]) -> bool {
     if paths.is_empty() {
         return false;
     }
-    let file_op = matches!(preset.op, Operation::CopyTo { .. } | Operation::Zip);
+    let file_op = matches!(
+        preset.op,
+        Operation::CopyTo { .. } | Operation::Zip | Operation::CopyPath | Operation::OpenTerminal
+    );
     // Folders (whatever their name looks like) only take the file operations.
     if paths.iter().any(|p| p.is_dir()) {
         return file_op;
@@ -596,7 +599,11 @@ pub fn applicable(preset: &Preset, paths: &[PathBuf]) -> bool {
         }
         Operation::Mute => all(|k| k == Kind::Video),
         Operation::Extract => all(|k| k == Kind::Archive),
-        Operation::CopyTo { .. } | Operation::Zip => true,
+        Operation::Float => all(|k| k == Kind::Image),
+        Operation::CopyTo { .. }
+        | Operation::Zip
+        | Operation::CopyPath
+        | Operation::OpenTerminal => true,
     }
 }
 
@@ -734,6 +741,9 @@ fn describe(p: &Preset, paths: &[PathBuf]) -> WheelSlot {
         Operation::CopyTo { move_files, .. } => (if *move_files { "move" } else { "copy" }, None),
         Operation::Zip => ("zip", None),
         Operation::Extract => ("extract", None),
+        Operation::CopyPath => ("copyPath", None),
+        Operation::OpenTerminal => ("openTerminal", None),
+        Operation::Float => ("float", Some(Kind::Image)),
     };
     WheelSlot {
         id: p.id.clone(),

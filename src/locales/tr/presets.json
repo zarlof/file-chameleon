@@ -55,7 +55,10 @@
     "zip": "ZIP'e paketle",
     "extract": "Arşivi aç",
     "copy-to": "Klasöre kopyala",
-    "move-to": "Klasöre taşı"
+    "move-to": "Klasöre taşı",
+    "copy-path": "Yolu kopyala",
+    "open-terminal": "Terminalde aç",
+    "float": "Ekranda sabitle"
   },
   "profile": {
     "images": "Görseller",

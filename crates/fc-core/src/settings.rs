@@ -64,6 +64,18 @@ pub struct Settings {
     pub hotkey_shelf: String,
     pub hotkey_library: String,
     pub hotkey_download_link: String,
+    /// Opens the clothesline.
+    pub hotkey_line: String,
+
+    /// The clothesline: a rope of recent clips that peeks in from a screen edge.
+    pub line_enabled: bool,
+    /// Moving the pointer to the top edge reveals it.
+    pub line_edge_reveal: bool,
+    /// It peeks in briefly after a copy.
+    pub line_peek_on_copy: bool,
+    /// The clips sway gently (off with reduce motion).
+    pub line_breeze: bool,
+    pub line_ropes: LineRopes,
 
     /// Watch folders: new files are run through a preset automatically.
     pub watch_folders: Vec<WatchFolder>,
@@ -101,6 +113,25 @@ pub struct Settings {
 
     /// Set after the first-run welcome was shown.
     pub onboarded: bool,
+}
+
+/// Which kinds of clips hang on the clothesline's ropes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LineRopes {
+    pub images: bool,
+    pub text: bool,
+    pub links: bool,
+}
+
+impl Default for LineRopes {
+    fn default() -> Self {
+        Self {
+            images: true,
+            text: true,
+            links: true,
+        }
+    }
 }
 
 /// One watched folder (Settings > Watch folders).
@@ -147,6 +178,12 @@ impl Default for Settings {
             hotkey_shelf: "Ctrl+Alt+V".into(),
             hotkey_library: String::new(),
             hotkey_download_link: "Ctrl+Alt+D".into(),
+            hotkey_line: "Ctrl+Alt+L".into(),
+            line_enabled: true,
+            line_edge_reveal: true,
+            line_peek_on_copy: true,
+            line_breeze: true,
+            line_ropes: LineRopes::default(),
             watch_folders: Vec::new(),
             clipboard_enabled: true,
             clipboard_capture_text: true,
@@ -309,6 +346,21 @@ mod tests {
         assert_eq!(s.clipboard_retention_text, 5);
         assert_eq!(s.clipboard_retention_links, 30);
         assert_eq!(s.clipboard_retention_images, 7);
+    }
+
+    #[test]
+    fn old_settings_get_line_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        std::fs::write(&p, br#"{"theme":"dark","hotkeyShelf":"Ctrl+Alt+V"}"#).unwrap();
+        let s = Settings::load(&p);
+        assert!(s.line_enabled && s.line_edge_reveal && s.line_peek_on_copy && s.line_breeze);
+        assert!(s.line_ropes.images && s.line_ropes.text && s.line_ropes.links);
+        assert_eq!(s.hotkey_line, "Ctrl+Alt+L");
+        // A partial rope object keeps the other ropes on.
+        std::fs::write(&p, br#"{"lineRopes":{"text":false}}"#).unwrap();
+        let s = Settings::load(&p);
+        assert!(!s.line_ropes.text && s.line_ropes.images && s.line_ropes.links);
     }
 
     #[test]

@@ -41,6 +41,13 @@ export interface Settings {
   hotkeyShelf: string;
   hotkeyLibrary: string;
   hotkeyDownloadLink: string;
+  hotkeyLine: string;
+  /** The clothesline (clip rope). */
+  lineEnabled: boolean;
+  lineEdgeReveal: boolean;
+  linePeekOnCopy: boolean;
+  lineBreeze: boolean;
+  lineRopes: { images: boolean; text: boolean; links: boolean };
   watchFolders: WatchFolder[];
   clipboardEnabled: boolean;
   clipboardCaptureText: boolean;
@@ -149,6 +156,12 @@ export type Operation =
   | { type: 'extract' }
   /** Opens the image editor (never queued). */
   | { type: 'annotate' }
+  /** Copies the paths as text (shell, never queued). */
+  | { type: 'copyPath' }
+  /** Opens a terminal in the folder (shell, never queued). */
+  | { type: 'openTerminal' }
+  /** Pins the image(s) on screen (shell, never queued). */
+  | { type: 'float' }
   | { type: 'mergePdf' }
   | { type: 'splitPdf' }
   | { type: 'compress'; level: CompressLevel }
@@ -211,7 +224,7 @@ export type SlotIcon =
   | Kind
   | 'grayscale' | 'rotateLeft' | 'rotateRight' | 'rotate180' | 'flipH' | 'flipV' | 'trim' | 'pixelate' | 'blur'
   | 'resize' | 'annotate' | 'compress' | 'mute' | 'speed' | 'crop' | 'merge' | 'split' | 'zip' | 'extract'
-  | 'copy' | 'move' | 'ringtone' | 'group';
+  | 'copy' | 'move' | 'ringtone' | 'group' | 'copyPath' | 'openTerminal' | 'float';
 
 /** One resolved wheel slot (only slots that fit every dragged file are sent). */
 export interface WheelSlot {
@@ -474,6 +487,8 @@ export interface NavPayload {
   view: View;
   paths: string[];
   url: string | null;
+  /** Clipboard item to open (clipboard view). */
+  clip?: number | null;
 }
 
 export interface WheelPayload {

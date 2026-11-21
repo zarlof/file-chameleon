@@ -449,6 +449,7 @@ pub fn show_main(
         view,
         paths: paths.unwrap_or_default(),
         url,
+        clip: None,
     });
     windows::show_main(&app, nav);
 }

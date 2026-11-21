@@ -67,6 +67,12 @@ pub enum Operation {
     Extract,
     /// Opens the image editor in the shell. Never queued.
     Annotate,
+    /// Copies the input paths to the clipboard as text. Handled by the shell, never queued.
+    CopyPath,
+    /// Opens a terminal in the input's folder. Handled by the shell, never queued.
+    OpenTerminal,
+    /// Pins the image(s) on screen in a floating window. Handled by the shell, never queued.
+    Float,
 }
 
 /// One image edit step (`Operation::Edit`).
@@ -133,6 +139,9 @@ impl Operation {
     pub fn queueable(&self) -> Result<()> {
         match self {
             Operation::Annotate => Err(invalid("annotate opens the image editor")),
+            Operation::CopyPath | Operation::OpenTerminal | Operation::Float => {
+                Err(invalid("file actions are handled by the shell"))
+            }
             Operation::CopyTo { dir: None, .. } => Err(invalid("no target folder chosen")),
             _ => Ok(()),
         }

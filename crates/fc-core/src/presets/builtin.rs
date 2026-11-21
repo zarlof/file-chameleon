@@ -109,6 +109,9 @@ pub(super) fn presets() -> Vec<Preset> {
                 move_files: true,
             },
         ),
+        preset("copy-path", Operation::CopyPath),
+        preset("open-terminal", Operation::OpenTerminal),
+        preset("float", Operation::Float),
     ]);
     v
 }
@@ -117,7 +120,14 @@ pub(super) fn groups() -> Vec<Group> {
     vec![Group {
         id: "files".into(),
         name: String::new(),
-        presets: strings(&["zip", "copy-to", "move-to"]),
+        presets: strings(&[
+            "zip",
+            "copy-to",
+            "move-to",
+            "copy-path",
+            "open-terminal",
+            "float",
+        ]),
     }]
 }
 
@@ -158,7 +168,19 @@ fn profile(id: &str, extensions: Vec<String>, front: &[&str], back: &[&str]) -> 
 
 /// The fallback for files no profile claims: ZIP / copy / move.
 pub(super) fn other() -> Profile {
-    profile("other", Vec::new(), &["zip", "copy-to", "move-to"], &[])
+    profile(
+        "other",
+        Vec::new(),
+        &[
+            "zip",
+            "copy-to",
+            "move-to",
+            "copy-path",
+            "open-terminal",
+            "float",
+        ],
+        &[],
+    )
 }
 
 const FILES: [&str; 3] = ["zip", "copy-to", "move-to"];
