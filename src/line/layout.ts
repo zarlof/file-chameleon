@@ -1,19 +1,17 @@
 import { naturalRope } from './ropeStyle';
+import table from './sizes.json';
 
-// Pure layout numbers for the line. The same table lives in src-tauri/src/line.rs (band_height); keep both in step.
+// Pure layout numbers for the line. The numbers live in sizes.json, which the Rust side
+// (src-tauri/src/line/geometry.rs) checks in a test, so the window and the page agree.
 
 export type LineSize = 'small' | 'medium' | 'large';
 
-export const SIZES: Record<LineSize, { scale: number; card: number; band: number }> = {
-  small: { scale: 0.8, card: 90, band: 144 },
-  medium: { scale: 1, card: 112, band: 178 },
-  large: { scale: 1.25, card: 140, band: 222 },
-};
+export const SIZES: Record<LineSize, { scale: number; card: number; band: number }> = table.sizes;
 
 /** Space between two bands. */
-export const GAP = 12;
+export const GAP = table.gap;
 /** Top and bottom margin of the window (half a gap). */
-export const MARGIN = 6;
+export const MARGIN = table.margin;
 
 function sizeOf(size: string): (typeof SIZES)[LineSize] {
   return Object.hasOwn(SIZES, size) ? SIZES[size as LineSize] : SIZES.medium;
@@ -34,7 +32,7 @@ export function windowHeight(n: number, size: string): number {
   return Math.max(1, n) * (sizeOf(size).band + GAP);
 }
 
-/** How many whole ropes fit a window `height` logical px high (at least one). Same rule as `max_ropes` in src-tauri/src/line.rs. */
+/** How many whole ropes fit a window `height` logical px high (at least one). Same rule as `max_ropes` in Rust. */
 export function maxRopes(height: number, size: string): number {
   const n = Math.floor(height / (sizeOf(size).band + GAP) + 0.01);
   return Number.isFinite(n) && n >= 1 ? n : 1;
@@ -55,7 +53,6 @@ export function ropeColor(setting: string, accent: string, theme: 'dark' | 'ligh
   if (NAMES.includes(setting)) return `var(--${setting})`;
   return accent;
 }
-
 
 /** CSS custom properties for the card look (set on the strip and on the settings preview). */
 export function cardVars(style: string, radius: number, shadow: boolean): Record<string, string> {
@@ -78,8 +75,8 @@ export function cardStyleAttr(style: string, radius: number, shadow: boolean): s
   return Object.entries(cardVars(style, radius, shadow)).map(([k, v]) => `${k}:${v}`).join(';');
 }
 
-/** Height of a folded rope's band (its label and the gap below it). Same as FOLD_H in src-tauri/src/line.rs. */
-export const FOLD_H = 30;
+/** Height of a folded rope's band (its label and the gap below it). */
+export const FOLD_H = table.foldH;
 
 /** Top of each band when some ropes are folded (`folded[i]` = rope i is folded). */
 export function foldedTops(folded: boolean[], size: string): number[] {
@@ -115,7 +112,7 @@ export function fitFolded(folded: boolean[], height: number, size: string): numb
 }
 
 /** The size to draw: `size`, or the next smaller one(s) when the ropes do not all fit `height`
- *  (same rule as `fit_size` in src-tauri/src/line.rs). */
+ *  (same rule as `fit_size` in src-tauri/src/line/geometry.rs). */
 export function fitSize(folded: boolean[], height: number, size: string): LineSize {
   const order: LineSize[] = ['large', 'medium', 'small'];
   const i = order.indexOf(size as LineSize);

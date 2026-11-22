@@ -1,0 +1,10 @@
+{
+  "gap": 12,
+  "margin": 6,
+  "foldH": 30,
+  "sizes": {
+    "small": { "scale": 0.8, "card": 90, "band": 144 },
+    "medium": { "scale": 1, "card": 112, "band": 178 },
+    "large": { "scale": 1.25, "card": 140, "band": 222 }
+  }
+}

@@ -382,34 +382,32 @@ mod tests {
 
     #[test]
     fn clipboard_hotkeys_are_off_while_the_clipboard_is() {
-        let mut s = fc_core::settings::Settings::default();
-        assert_eq!(
-            wanted_hotkeys(&s),
+        // Hotkeys set here, so a change of the defaults does not touch this test.
+        let mut s = fc_core::settings::Settings {
+            hotkey_library: "Ctrl+2".into(),
+            hotkey_download_link: "Ctrl+3".into(),
+            hotkey_line: "Ctrl+4".into(),
+            hotkey_line_search: "Ctrl+Alt+F".into(),
+            hotkey_capture: String::new(),
+            hotkey_copy_latest_image: String::new(),
+            ..Default::default()
+        };
+        let all_on = |lib: bool, line: bool| {
             [
-                (String::new(), true),
-                ("Ctrl+Alt+D".to_string(), true),
-                ("Ctrl+Alt+L".to_string(), true),
-                ("Ctrl+Alt+F".to_string(), true),
-                (String::new(), true),
-                (String::new(), true),
+                ("Ctrl+2".to_string(), lib),
+                ("Ctrl+3".to_string(), true),
+                ("Ctrl+4".to_string(), line),
+                ("Ctrl+Alt+F".to_string(), line),
+                (String::new(), lib),
+                (String::new(), lib),
             ]
-        );
+        };
+        assert_eq!(wanted_hotkeys(&s), all_on(true, true));
         s.clipboard_enabled = false;
-        s.hotkey_library = "Ctrl+Alt+L".into();
-        assert_eq!(
-            wanted_hotkeys(&s),
-            [
-                ("Ctrl+Alt+L".to_string(), false),
-                ("Ctrl+Alt+D".to_string(), true),
-                ("Ctrl+Alt+L".to_string(), true),
-                ("Ctrl+Alt+F".to_string(), true),
-                (String::new(), false),
-                (String::new(), false),
-            ]
-        );
-        // The clothesline hotkey follows its own switch, not the clipboard's.
+        assert_eq!(wanted_hotkeys(&s), all_on(false, true));
+        // The clothesline hotkeys follow their own switch, not the clipboard's.
         s.line_enabled = false;
-        assert_eq!(wanted_hotkeys(&s)[2], ("Ctrl+Alt+L".to_string(), false));
+        assert_eq!(wanted_hotkeys(&s), all_on(false, false));
     }
 
     #[test]

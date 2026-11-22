@@ -569,6 +569,24 @@ mod tests {
         assert_eq!(h, 936);
     }
 
+    /// The page reads its layout numbers from `src/line/sizes.json`; the window must use the
+    /// same ones, or a transparent strip hangs under the last rope.
+    #[test]
+    fn layout_numbers_match_the_page() {
+        let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/line/sizes.json");
+        let t: serde_json::Value = serde_json::from_slice(&std::fs::read(file).unwrap()).unwrap();
+        assert_eq!(t["gap"].as_f64(), Some(geometry::BAND_GAP));
+        assert_eq!(t["margin"].as_f64(), Some(geometry::BAND_GAP / 2.0));
+        assert_eq!(t["foldH"].as_f64(), Some(geometry::FOLD_H));
+        for size in ["small", "medium", "large"] {
+            assert_eq!(
+                t["sizes"][size]["band"].as_f64(),
+                Some(band_height(size)),
+                "{size}"
+            );
+        }
+    }
+
     #[test]
     fn size_steps_down_until_every_rope_fits() {
         assert_eq!(fit_size(5, 0, "large", 1040.0), "medium");

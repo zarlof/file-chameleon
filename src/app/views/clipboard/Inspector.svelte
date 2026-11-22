@@ -122,7 +122,7 @@
   }
 
   function openLink() {
-    if (item && isWebUrl(item.text)) api.openPath(item.text!.trim()).catch(() => {});
+    if (item && isWebUrl(item.text)) void guard(() => api.openPath(item.text!.trim()));
   }
 </script>
 

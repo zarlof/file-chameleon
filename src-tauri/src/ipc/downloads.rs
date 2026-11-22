@@ -45,7 +45,7 @@ fn finished(s: DlState) -> bool {
 
 impl Downloads {
     fn add(&self, url: &str, title: String) -> (DownloadSnapshot, CancelToken) {
-        let mut g = self.inner.lock().unwrap();
+        let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         g.next_id += 1;
         let snap = DownloadSnapshot {
             id: g.next_id,
@@ -86,7 +86,7 @@ impl Downloads {
         f: impl FnOnce(&mut DownloadSnapshot),
     ) {
         let snap = {
-            let mut g = self.inner.lock().unwrap();
+            let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
             let Some(e) = g.items.iter_mut().find(|e| e.snap.id == id) else {
                 return;
             };
@@ -101,7 +101,7 @@ impl Downloads {
     }
 
     fn cancel(&self, id: u64) -> bool {
-        let g = self.inner.lock().unwrap();
+        let g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         match g.items.iter().find(|e| e.snap.id == id) {
             Some(e) if !finished(e.snap.state) => {
                 e.cancel.cancel();
@@ -112,7 +112,7 @@ impl Downloads {
     }
 
     fn snapshot(&self) -> Vec<DownloadSnapshot> {
-        let g = self.inner.lock().unwrap();
+        let g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         g.items.iter().map(|e| e.snap.clone()).collect()
     }
 
@@ -176,13 +176,13 @@ pub async fn probe_url(app: AppHandle, url: String) -> CmdResult<MediaInfo> {
     let engines = state.engines().clone();
     let cookies = state.settings().cookies_browser;
     let cancel = CancelToken::new();
-    if let Some(prev) = state
+    let prev = state
         .downloads
         .probe
         .lock()
-        .unwrap()
-        .replace(cancel.clone())
-    {
+        .unwrap_or_else(|e| e.into_inner())
+        .replace(cancel.clone());
+    if let Some(prev) = prev {
         prev.cancel();
     }
     tauri::async_runtime::spawn_blocking(move || {
@@ -357,7 +357,7 @@ mod tests {
         let d = Downloads::default();
         for i in 0..(KEEP_FINISHED + 5) {
             let (snap, _) = d.add("https://x.com/a.mp4", format!("t{i}"));
-            let mut g = d.inner.lock().unwrap();
+            let mut g = d.inner.lock().unwrap_or_else(|e| e.into_inner());
             g.items
                 .iter_mut()
                 .find(|e| e.snap.id == snap.id)
@@ -390,7 +390,13 @@ mod tests {
         assert!(a.is_cancelled() && b.is_cancelled());
         // Still active until the download threads report their final state.
         assert!(d.any_active());
-        for e in d.inner.lock().unwrap().items.iter_mut() {
+        for e in d
+            .inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .items
+            .iter_mut()
+        {
             e.snap.state = DlState::Cancelled;
         }
         assert!(!d.any_active());

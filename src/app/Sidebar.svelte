@@ -13,6 +13,7 @@
   import type { Component } from 'svelte';
   import { t } from '../lib/i18n';
   import { api } from '../lib/ipc';
+  import { guard } from '../lib/ui/guard';
   import { jobs } from '../lib/stores/jobs.svelte';
   import { nav, NAV_MAIN, NAV_SETTINGS } from '../lib/stores/nav.svelte';
   import type { View } from '../lib/types';
@@ -68,7 +69,7 @@
 
   <div class="foot">
     <button type="button" class="item gh" title={t('common.sidebar.githubHint')} aria-label={t('common.sidebar.githubHint')}
-      onclick={() => api.openPath(REPO_URL).catch(() => {})}>
+      onclick={() => guard(() => api.openPath(REPO_URL))}>
       <GitBranch size={16} strokeWidth={1.8} />
       {#if !collapsed}<span class="label">{t('common.sidebar.github')}</span>{/if}
     </button>

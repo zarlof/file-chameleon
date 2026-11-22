@@ -1,15 +1,16 @@
 //! Pure layout numbers of the line window: band heights, the size that fits, the window
-//! rectangle on a work area, and the full-screen guard. Mirrors `src/line/layout.ts`.
+//! rectangle on a work area, and the full-screen guard. Mirrors `src/line/layout.ts`; the
+//! numbers are the ones in `src/line/sizes.json` (checked by a test).
 
 use super::*;
 
 /// Logical metrics: the gap per band (6 above and 6 below, so the window is `n × (band + 12)`
-/// high). These must equal the layout table the page uses (`src/line/layout.ts`), so nothing
+/// high). These must equal the layout table the page uses (`src/line/sizes.json`), so nothing
 /// transparent hangs under the last rope. The window spans the whole work-area width.
-const BAND_GAP: f64 = 12.0;
+pub(super) const BAND_GAP: f64 = 12.0;
 /// Logical height of a folded rope's band (its label and the gap below it). Equal to
-/// `FOLD_H` in `src/line/layout.ts`.
-const FOLD_H: f64 = 30.0;
+/// `foldH` in `src/line/sizes.json`.
+pub(super) const FOLD_H: f64 = 30.0;
 
 /// Logical height of one rope's band for a `lineSize` ("small" | "medium" | "large"; anything
 /// else is medium).

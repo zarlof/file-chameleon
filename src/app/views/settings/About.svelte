@@ -6,13 +6,13 @@
   import { t } from '../../../lib/i18n';
   import { api } from '../../../lib/ipc';
   import { settings } from '../../../lib/stores/settings.svelte';
-  import { Button, Card, ListRow } from '../../../lib/ui';
+  import { Button, Card, guard, ListRow } from '../../../lib/ui';
 
   const REPO_URL = 'https://github.com/zarlof31/file-chameleon';
   const NOTICES_URL = `${REPO_URL}/blob/main/THIRD_PARTY_NOTICES.md`;
 
   function openUrl(url: string) {
-    api.openPath(url).catch(() => {});
+    void guard(() => api.openPath(url));
   }
 </script>
 

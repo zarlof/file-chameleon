@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
-  import { Button, Card, EmptyState, Icon, ListRow, ProgressBar, SectionHeader, SegmentedControl, Select, Spinner, TextField, toast } from '../../../lib/ui';
+  import { Button, Card, EmptyState, guard, Icon, ListRow, ProgressBar, SectionHeader, SegmentedControl, Select, Spinner, TextField, toast } from '../../../lib/ui';
   import { t } from '../../../lib/i18n';
   import { api, errorOf, on } from '../../../lib/ipc';
   import { nav } from '../../../lib/stores/nav.svelte';
@@ -184,10 +184,10 @@
 
   // ---- list
   function cancel(id: number) {
-    void api.cancelDownload(id);
+    void guard(() => api.cancelDownload(id));
   }
   function reveal(path: string) {
-    void api.revealPath(path).catch(() => {});
+    void guard(() => api.revealPath(path));
   }
   function convert(path: string) {
     nav.goto({ view: 'convert', paths: [path], url: null });

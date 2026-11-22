@@ -18,7 +18,7 @@
   import { tools } from '../../../lib/stores/tools.svelte';
   import type { CompressLevel, JobRequest, Operation, TargetsResponse, ToolOp } from '../../../lib/types';
   import {
-    Badge, Button, Card, FileChip, Icon, ListRow, ProgressBar, SectionHeader, SegmentedControl, Select, Slider, TextField,
+    Badge, Button, Card, FileChip, guard, Icon, ListRow, ProgressBar, SectionHeader, SegmentedControl, Select, Slider, TextField,
   } from '../../../lib/ui';
   import JobRow from '../recent/JobRow.svelte';
   import { jobTitle } from '../recent/logic';
@@ -384,8 +384,8 @@
           {#snippet leading()}<span class="done"><CircleCheck size={18} /></span>{/snippet}
           {#snippet trailing()}
             {#if output}
-              <Button size="sm" onclick={() => api.revealPath(output).catch(() => {})}>{t('recent.reveal')}</Button>
-              <Button size="sm" onclick={() => api.openPath(output).catch(() => {})}>{t('recent.open')}</Button>
+              <Button size="sm" onclick={() => guard(() => api.revealPath(output))}>{t('recent.reveal')}</Button>
+              <Button size="sm" onclick={() => guard(() => api.openPath(output))}>{t('recent.open')}</Button>
             {/if}
           {/snippet}
         </ListRow>

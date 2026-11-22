@@ -82,8 +82,8 @@ pub struct Settings {
     /// The clips sway gently (off with reduce motion).
     pub line_breeze: bool,
     pub line_ropes: LineRopes,
-    /// Rope colour: "natural" (hemp, the default), "accent", an accent name, or a `#rrggbb` hex
-    /// colour (anything else is natural).
+    /// Rope colour: "natural" (hemp), "accent", an accent name, or a `#rrggbb` hex colour
+    /// (default white `#ffffff`; anything else falls back to the default).
     pub line_color: String,
     /// Rope thickness in px, 1..=6.
     pub line_thickness: u8,
@@ -95,22 +95,22 @@ pub struct Settings {
     pub line_zoom_on_hover: bool,
     /// A soft sound when clips hang or fall.
     pub line_sound: bool,
-    /// "twisted" | "cord" | "thin"
+    /// "web" (default) | "twisted" | "cord" | "thin"
     pub line_rope_style: String,
     /// Rope sag in px, 0..=40.
     pub line_sag: u8,
-    /// "plastic" | "wood" | "metal"
+    /// "spider" (default) | "plastic" | "wood" | "metal"
     pub line_pin_style: String,
     /// "auto" or `#rrggbb`.
     pub line_pin_color: String,
-    /// "glassDark" | "glassLight" | "paper"
+    /// "paper" (default) | "glassDark" | "glassLight"
     pub line_card_style: String,
     /// Card corner radius in px, 0..=16.
     pub line_card_radius: u8,
     pub line_card_shadow: bool,
     pub line_show_labels: bool,
     pub line_show_numbers: bool,
-    /// Rope order, top to bottom: exactly "images", "text", "links", "files" (sanitized).
+    /// Rope order, top to bottom: exactly the [`ROPE_KEYS`] (sanitized).
     pub line_rope_order: Vec<String>,
     /// Custom rope names; "" = the default name.
     pub line_rope_names: LineRopeNames,
@@ -130,7 +130,7 @@ pub struct Settings {
     pub line_reveal_dwell_ms: u32,
     /// Delay before it hides after the pointer leaves, in ms, 200..=2000.
     pub line_hide_delay_ms: u32,
-    /// "copy" | "copyClose" | "paste"
+    /// "open" (default) | "copy" | "copyClose" | "paste"
     pub line_click_action: String,
     /// Sway strength in percent, 0..=200.
     pub line_swing: u16,
@@ -142,7 +142,8 @@ pub struct Settings {
     pub line_fall: bool,
     /// Sound volume in percent, 0..=100.
     pub line_sound_volume: u8,
-    /// Settings migration marker: below 3 the wave-3 look migration still has to run.
+    /// Settings migration marker: below [`Settings::LOOK_VERSION`] a look migration still has
+    /// to run.
     pub line_look_version: u8,
 
     /// Watch folders: new files are run through a preset automatically.
@@ -431,8 +432,9 @@ impl Settings {
     }
 
     /// Pull out-of-range line values back into their ranges and enums back into their sets
-    /// (on load and on save).
+    /// (on load and on save). An unknown enum value falls back to the default.
     pub fn clamped(mut self) -> Self {
+        let d = Self::default();
         self.line_thickness = self.line_thickness.clamp(1, 6);
         self.line_opacity = self.line_opacity.clamp(30, 100);
         let pick = |v: &mut String, allowed: &[&str], default: &str| {
@@ -443,23 +445,23 @@ impl Settings {
         pick(
             &mut self.line_rope_style,
             &["web", "twisted", "cord", "thin"],
-            "web",
+            &d.line_rope_style,
         );
         pick(
             &mut self.line_pin_style,
             &["spider", "plastic", "wood", "metal"],
-            "spider",
+            &d.line_pin_style,
         );
         pick(
             &mut self.line_card_style,
             &["glassDark", "glassLight", "paper"],
-            "glassDark",
+            &d.line_card_style,
         );
-        pick(&mut self.line_edge, &["top", "bottom"], "top");
+        pick(&mut self.line_edge, &["top", "bottom"], &d.line_edge);
         pick(
             &mut self.line_click_action,
             &["open", "copy", "copyClose", "paste"],
-            "open",
+            &d.line_click_action,
         );
         if self.line_pin_color != "auto" && !is_hex_colour(&self.line_pin_color) {
             self.line_pin_color = "auto".into();
@@ -484,7 +486,7 @@ impl Settings {
             || ["accent", "natural"].contains(&self.line_color.as_str())
             || is_hex_colour(&self.line_color))
         {
-            self.line_color = "natural".into();
+            self.line_color = d.line_color;
         }
         for n in [
             &mut self.line_rope_names.images,
@@ -611,6 +613,27 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The frontend's defaults (`src/lib/stores/default-settings.json`) are generated from
+    /// `Settings::default()`; this keeps them in sync. After changing a default run
+    /// `UPDATE_DEFAULT_SETTINGS=1 cargo test -p fc-core frontend_defaults` to rewrite the file.
+    #[test]
+    fn frontend_defaults_match() {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../src/lib/stores/default-settings.json");
+        let ours = serde_json::to_value(Settings::default()).unwrap();
+        if std::env::var_os("UPDATE_DEFAULT_SETTINGS").is_some() {
+            let mut text = serde_json::to_string_pretty(&ours).unwrap();
+            text.push('\n');
+            std::fs::write(&file, text).unwrap();
+        }
+        let theirs: Value =
+            serde_json::from_slice(&std::fs::read(&file).expect("default-settings.json")).unwrap();
+        assert_eq!(
+            ours, theirs,
+            "default-settings.json is stale: rerun with UPDATE_DEFAULT_SETTINGS=1"
+        );
+    }
 
     #[test]
     fn roundtrip_and_defaults_for_partial_files() {
@@ -776,7 +799,7 @@ mod tests {
         )
         .unwrap();
         let s = Settings::load(&p);
-        assert_eq!(s.line_color, "natural");
+        assert_eq!(s.line_color, Settings::default().line_color);
         assert_eq!(s.line_rope_names.text.chars().count(), 24);
         std::fs::write(&p, br##"{"lineMaxPerRope":50,"linePinColor":"#aabbcc"}"##).unwrap();
         let s = Settings::load(&p);

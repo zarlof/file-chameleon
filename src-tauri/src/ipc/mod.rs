@@ -160,11 +160,14 @@ pub fn targets_for_paths(paths: &[String]) -> (Vec<InputInfo>, Vec<TargetOption>
 
 fn tools_for(inputs: &[InputInfo]) -> Vec<String> {
     use formats::Kind::*;
-    let kinds: Vec<_> = inputs.iter().map(|i| i.kind).collect();
-    if kinds.is_empty() || kinds.iter().any(|k| k.is_none()) {
+    // Every input needs a known kind; otherwise no tool applies.
+    let Some(kinds) = inputs.iter().map(|i| i.kind).collect::<Option<Vec<_>>>() else {
+        return vec![];
+    };
+    if kinds.is_empty() {
         return vec![];
     }
-    let all = |f: &dyn Fn(formats::Kind) -> bool| kinds.iter().all(|k| f(k.unwrap()));
+    let all = |f: &dyn Fn(formats::Kind) -> bool| kinds.iter().all(|&k| f(k));
     // Input-only formats (ogv, amr, ...) cannot be re-encoded here, so the ffmpeg tools would
     // always fail on them.
     let ffmpeg_ok = !inputs
@@ -183,7 +186,7 @@ fn tools_for(inputs: &[InputInfo]) -> Vec<String> {
     if ffmpeg_ok && all(&|k| matches!(k, Image | Video)) && inputs.len() == 1 {
         t.push("crop");
     }
-    if all(&|k| matches!(k, Pdf | Image)) && (inputs.len() > 1 || kinds[0] == Some(Pdf)) {
+    if all(&|k| matches!(k, Pdf | Image)) && (inputs.len() > 1 || kinds[0] == Pdf) {
         t.push("mergePdf");
     }
     if all(&|k| k == Pdf) {

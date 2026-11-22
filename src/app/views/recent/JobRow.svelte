@@ -8,7 +8,7 @@
   import { api } from '../../../lib/ipc';
   import { t } from '../../../lib/i18n';
   import type { JobSnapshot } from '../../../lib/types';
-  import { Button, ListRow, ProgressBar, ProgressRing } from '../../../lib/ui';
+  import { Button, guard, ListRow, ProgressBar, ProgressRing } from '../../../lib/ui';
   import { errorKey, isActive, jobTitle, opLabel } from './logic';
 
   interface Props { job: JobSnapshot; onretry?: (job: JobSnapshot) => void }
@@ -44,10 +44,10 @@
   {#snippet trailing()}
     <span class="actions">
       {#if isActive(job)}
-        <Button size="sm" onclick={() => api.cancelJob(job.id).catch(() => {})}>{t('recent.cancel')}</Button>
+        <Button size="sm" onclick={() => guard(() => api.cancelJob(job.id))}>{t('recent.cancel')}</Button>
       {:else if job.state === 'done' && output}
-        <Button size="sm" onclick={() => api.revealPath(output).catch(() => {})}>{t('recent.reveal')}</Button>
-        <Button size="sm" onclick={() => api.openPath(output).catch(() => {})}>{t('recent.open')}</Button>
+        <Button size="sm" onclick={() => guard(() => api.revealPath(output))}>{t('recent.reveal')}</Button>
+        <Button size="sm" onclick={() => guard(() => api.openPath(output))}>{t('recent.open')}</Button>
       {:else if onretry}
         <Button size="sm" onclick={() => onretry(job)}>{t('recent.retry')}</Button>
       {/if}

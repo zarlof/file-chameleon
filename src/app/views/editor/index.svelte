@@ -27,7 +27,7 @@
   import { onDestroy } from 'svelte';
   import { t } from '../../../lib/i18n';
   import { api, errorOf } from '../../../lib/ipc';
-  import { Button, EmptyState, IconButton, modal, Sheet, Spinner, toast } from '../../../lib/ui';
+  import { Button, EmptyState, guard, IconButton, modal, Sheet, Spinner, toast } from '../../../lib/ui';
   import * as C from './canvas';
 
   type Target = { kind: 'clip'; id: number } | { kind: 'file'; path: string };
@@ -492,7 +492,7 @@
       <div class="saved" role="status">
         <Check size={15} />
         <span class="saved-name">{t('editor.savedFile', { name: fileName(saved) })}</span>
-        <Button size="sm" onclick={() => saved && api.revealPath(saved).catch(() => {})}>
+        <Button size="sm" onclick={() => saved && guard(() => api.revealPath(saved!))}>
           {#snippet icon()}<FolderOpen size={13} />{/snippet}{t('editor.reveal')}
         </Button>
         <IconButton label={t('common.actions.close')} size={24} onclick={() => (saved = null)}><X size={13} /></IconButton>

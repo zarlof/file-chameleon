@@ -118,12 +118,15 @@ impl AppState {
     }
 
     pub fn settings(&self) -> Settings {
-        self.settings.lock().unwrap().clone()
+        self.settings
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn save_settings(&self, s: Settings) {
         let _ = s.save(&self.paths.settings_file());
-        *self.settings.lock().unwrap() = s.clone();
+        *self.settings.lock().unwrap_or_else(|e| e.into_inner()) = s.clone();
         let _ = self.app.emit(events::SETTINGS_CHANGED, s);
     }
 
