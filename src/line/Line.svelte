@@ -827,7 +827,8 @@
     const wanted = slotAt(cardCenter(drag.from, size.card) + dx, size.card, rest.length);
     const slot = moved ? allowedSlot(rest, !!(moved.item?.pinned ?? moved.file?.pinned), wanted) : wanted;
     // Down: the card follows and the spider's thread stretches (further than the band = drag-out).
-    drag = { ...drag, dx, dy: Math.max(-8, dy), slot };
+    // Up: the spider stays on the rope (its thread must not poke above it); the card's own lift shows it is held.
+    drag = { ...drag, dx, dy: Math.max(0, dy), slot };
   }
 
   function dragEnd(e: PointerEvent) {
