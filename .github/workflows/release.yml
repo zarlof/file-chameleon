@@ -33,7 +33,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: File Chameleon ${{ github.ref_name }}
           releaseBody: See the README for what's new. Checksums are attached as .sha256 files.
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
 
       - name: Attach SHA-256 checksums
