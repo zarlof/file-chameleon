@@ -6,7 +6,7 @@
 -->
 <script lang="ts">
   import { fall, ropePath, ropeY } from './physics';
-  import { ropeStrokes, webExtras, type RopeStyle } from './ropeStyle';
+  import { ropeStrokes, type RopeStyle } from './ropeStyle';
   import type { LineCard } from './logic';
   import Peg from './Peg.svelte';
   import { t } from './i18n';
@@ -111,8 +111,6 @@
   const layers = $derived(ropeStrokes(ropeStyle, color, thickness));
   const knot = $derived(2 + thickness * 0.9);
   const knotY = (x: number) => ropeY(width, x, centers, sagPx);
-  const web = $derived(ropeStyle === 'web' ? webExtras(width, sagPx, TOP) : null);
-  const silk = $derived(Math.max(0.5, (layers[0]?.width ?? 1) * 0.6));
 </script>
 
 <div class="rope" class:collapsed style:top="{top}px" style:height="{collapsed ? 26 : band}px">
@@ -122,11 +120,6 @@
       {#each layers as l, i (i)}
         <path {d} fill="none" stroke={l.stroke} stroke-width={l.width} stroke-dasharray={l.dash} stroke-linecap="round" stroke-linejoin="round" opacity={l.opacity} />
       {/each}
-      {#if web}
-        <path d={web.anchors} fill="none" stroke={color} stroke-width={silk} stroke-linecap="round" stroke-linejoin="round" opacity="0.8" />
-        <path d={web.strand} fill="none" stroke={color} stroke-width={silk} stroke-linecap="round" opacity="0.7" />
-        <path d={web.rungs} fill="none" stroke={color} stroke-width={silk * 0.8} stroke-linecap="round" opacity="0.55" />
-      {/if}
       {#if ropeStyle !== 'thin' && ropeStyle !== 'web'}
         <circle cx={KNOT_INSET} cy={knotY(KNOT_INSET)} r={knot} fill={color} stroke="rgba(0,0,0,0.35)" stroke-width="0.6" />
         <circle cx={width - KNOT_INSET} cy={knotY(width - KNOT_INSET)} r={knot} fill={color} stroke="rgba(0,0,0,0.35)" stroke-width="0.6" />

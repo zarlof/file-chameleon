@@ -636,7 +636,7 @@
   // ------------------------------------------------------------ context menu
   function openMenu(c: LineCard, e: MouseEvent) {
     zoom = null;
-    const h = c.app ? 160 : c.file ? 330 : c.item?.kind === 'image' ? 370 : 290;
+    const h = (c.app ? 160 : c.file ? 330 : c.item?.kind === 'image' ? 370 : 290) + 26;
     menu = { x: Math.max(4, Math.min(e.clientX, width - MENU_W - 4)), y: Math.max(4, Math.min(e.clientY, window.innerHeight - h - 4)), card: c };
   }
 
@@ -650,10 +650,27 @@
   }
 
   // ------------------------------------------------------------ input
+  /** What a click may land on without closing the line (cards, buttons, the menu, the search…). */
+  const KEEP_OPEN = '.card, .label.tool, .menu, .search, .toast, .more, .preview, .paused';
+
   function onpointerdown(e: PointerEvent) {
     // A peek / edge reveal does not own the focus: the first click takes it before anything else.
     if (!document.hasFocus()) void api.lineActivate().catch(() => {});
-    if (menu && !menuEl?.contains(e.target as Node)) closeMenu();
+    const target = e.target as Element | null;
+    if (menu && !menuEl?.contains(target)) {
+      closeMenu();
+      return;
+    }
+    // A left click on the empty strip (between the cards, on a rope) closes the line.
+    if (e.button === 0 && !target?.closest(KEEP_OPEN)) void hide();
+  }
+
+  /** A right-click while the menu is open only closes it (on a card too). */
+  function oncontextmenuCapture(e: MouseEvent) {
+    if (!menu) return;
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
   }
 
   function itemOf(id: number | null): ClipItem | null {
@@ -833,7 +850,7 @@
   });
 </script>
 
-<svelte:window bind:innerWidth={width} bind:innerHeight={height} {onkeydown} {onpointerdown} />
+<svelte:window bind:innerWidth={width} bind:innerHeight={height} {onkeydown} {onpointerdown} oncontextmenucapture={oncontextmenuCapture} />
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="strip" class:shown class:bottom style:height="{stripH}px" style={cardVarsStyle}>
@@ -933,6 +950,9 @@
   {@const c = menu.card}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="menu" role="menu" tabindex="-1" bind:this={menuEl} style:left="{menu.x}px" style:top="{menu.y}px" style:width="{MENU_W}px">
+    <button type="button" class="menuclose" tabindex="-1" aria-label={t('close')} title={t('close')} onclick={closeMenu}>
+      <svg viewBox="0 0 10 10" width="8" height="8" aria-hidden="true"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+    </button>
     {#if c.app}
       {@const a = c.app}
       <button type="button" role="menuitem" onclick={() => menuDo(() => openCard(c))}>{t('menu.open')}</button>
@@ -1092,6 +1112,20 @@
   }
   .menu button:hover { background: var(--accent); color: var(--on-accent); }
   .menu .danger { color: var(--red); }
+  .menu { padding-top: 26px; }
+  .menu .menuclose {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border-radius: 50%;
+    color: var(--text-secondary);
+  }
+  .menu .menuclose:hover { background: var(--red); color: #fff; }
   .menu .danger:hover { background: var(--red); color: var(--on-accent); }
   .menu hr { width: 100%; height: 1px; margin: var(--space-1) 0; border: 0; background: var(--separator); }
 </style>

@@ -192,5 +192,6 @@
   "settings.place.desktop": "Masaüstü",
   "settings.shortcutsRemove": "Kaldır",
   "menu.removeShortcut": "İpten kaldır",
-  "shortcut.addHint": "Ayarlar > İp'ten kısayol ekle"
+  "shortcut.addHint": "Ayarlar > İp'ten kısayol ekle",
+  "close": "Kapat"
 }

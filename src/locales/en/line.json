@@ -192,5 +192,6 @@
   "settings.place.desktop": "Desktop",
   "settings.shortcutsRemove": "Remove",
   "menu.removeShortcut": "Remove from the rope",
-  "shortcut.addHint": "Add shortcuts in Settings > Line"
+  "shortcut.addHint": "Add shortcuts in Settings > Line",
+  "close": "Close"
 }

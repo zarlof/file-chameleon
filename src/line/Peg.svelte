@@ -311,9 +311,10 @@
   .copied .card { transform: translateY(-6px); }
   :global([data-reduce-motion]) .card { transition: none; }
 
-  .card.kind-image { box-shadow: inset 0 0 0 1px var(--c-edge, rgba(255, 255, 255, 0.18)), var(--c-shadow, none); background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
-  .print { height: calc(var(--s) * 92px); border-radius: var(--c-radius, 10px); overflow: hidden; }
-  .print img, .ph { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+  /* The whole picture, readable: scaled down to fit (a tall or wide shot is not cropped, a small icon
+     keeps its size), centred on the card. */
+  .print { height: calc(var(--s) * 92px); padding: calc(var(--s) * 5px); border-radius: var(--c-radius, 10px); overflow: hidden; }
+  .print img, .ph { display: block; width: 100%; height: 100%; object-fit: scale-down; pointer-events: none; }
   .ph { display: grid; place-items: center; background: var(--c-bg); color: var(--c-fg2); font: var(--text-caption); }
 
   .note, .tag, .file {
@@ -375,7 +376,7 @@
     text-overflow: ellipsis;
   }
   .fthumb { flex: 1; min-height: 0; display: grid; place-items: center; border-radius: calc(var(--c-radius, 10px) - 4px); background: color-mix(in srgb, var(--c-fg) 8%, transparent); overflow: hidden; }
-  .fthumb img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+  .fthumb img { display: block; width: 100%; height: 100%; object-fit: scale-down; pointer-events: none; }
   .doc { fill: color-mix(in srgb, var(--c-fg) 16%, transparent); stroke: var(--c-fg2); stroke-width: 1.3; stroke-linejoin: round; }
   .fold { fill: none; stroke: var(--c-fg2); stroke-width: 1.3; stroke-linejoin: round; }
   .meta { display: flex; align-items: center; gap: 4px; color: var(--c-fg2); font-size: calc(var(--s) * 10px); white-space: nowrap; }

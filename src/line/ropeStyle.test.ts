@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { naturalRope, ropeStrokes, webExtras } from './ropeStyle';
+import { naturalRope, ropeStrokes } from './ropeStyle';
 
 describe('ropeStyle', () => {
   it('rope_strokes_layers', () => {
@@ -25,17 +25,11 @@ describe('ropeStyle', () => {
       }
     }
   });
-  it('web_is_one_fine_strand_with_extras', () => {
+  it('web_is_a_silk_rope_with_an_edge', () => {
     const web = ropeStrokes('web', '#ffffff', 2);
-    expect(web).toHaveLength(1);
-    expect(web[0].stroke).toBe('#ffffff');
-    expect(web[0].width).toBeLessThan(2);
-    const x = webExtras(1000, 14, 22);
-    expect(x.strand.startsWith('M0.0 0.00')).toBe(true);
-    expect(x.rungs.split('M').length - 1).toBeGreaterThan(5);
-    // the corner fans reach the top edge at both ends
-    expect(x.anchors).toContain('L0.0 -22.0');
-    expect(x.anchors).toContain('L1000.0 -22.0');
-    expect(webExtras(0, 14, 22).rungs).toBe('');
+    expect(web).toHaveLength(5);
+    expect(web[0].width).toBeGreaterThan(web[1].width); // the dark edge is under, and wider
+    expect(web[1].stroke).toBe('#ffffff');
+    expect(web.some((l) => l.dash)).toBe(true);
   });
 });
