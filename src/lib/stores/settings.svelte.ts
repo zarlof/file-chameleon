@@ -38,7 +38,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hotkeyCopyLatestImage: '',
   lineEnabled: true,
   lineEdgeReveal: true,
-  linePeekOnCopy: true,
+  linePeekOnCopy: false,
   lineBreeze: true,
   lineRopes: { images: true, text: true, links: true, files: true, shortcuts: true },
   lineColor: '#ffffff',

@@ -446,7 +446,7 @@ pub fn peek(app: &AppHandle) {
 
 /// Like [`peek`] but ignores `line_peek_on_copy`: feedback for an action the user asked for
 /// (hang, capture). Still needs the line enabled and respects the full-screen guard (in `show`).
-pub fn peek_forced(app: &AppHandle) {
+fn peek_forced(app: &AppHandle) {
     if !app.state::<AppState>().settings().line_enabled {
         return;
     }

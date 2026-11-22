@@ -1,7 +1,6 @@
 //! Pasting into the window the line was opened from: wait for the hotkey keys to be released,
 //! mask Alt/Win, then send Ctrl+V.
 
-
 const VK_CONTROL: u16 = 0x11;
 const VK_V: u16 = 0x56;
 /// Left/right Shift, left/right Alt, left/right Win: still held, they turn our Ctrl+V into

@@ -353,7 +353,7 @@ impl Default for Settings {
             hotkey_copy_latest_image: String::new(),
             line_enabled: true,
             line_edge_reveal: true,
-            line_peek_on_copy: true,
+            line_peek_on_copy: false,
             line_breeze: true,
             line_ropes: LineRopes::default(),
             line_color: "#ffffff".into(),
@@ -415,8 +415,9 @@ impl Default for Settings {
 impl Settings {
     pub const MAX_RECENT_TARGETS: usize = 7;
     /// Current `line_look_version`: 3 = files rope, natural rope colour, shelf folded into the
-    /// line; 4 = white spider-web rope, spiders instead of pegs, a click opens the card.
-    pub const LOOK_VERSION: u8 = 4;
+    /// line; 4 = white spider-web rope, spiders instead of pegs, a click opens the card;
+    /// 5 = the line no longer peeks on every copy (it opens only when asked).
+    pub const LOOK_VERSION: u8 = 5;
 
     /// Missing or corrupt file -> defaults (never fails). A field with a bad value (an unknown
     /// enum variant, a wrong type) falls back to its default; the other fields are kept.
@@ -532,6 +533,10 @@ impl Settings {
             .get("lineLookVersion")
             .and_then(Value::as_u64)
             .unwrap_or(0);
+        if version < 5 {
+            // Wave 5: the user asked that copying never pops the line up.
+            file.insert("linePeekOnCopy".into(), false.into());
+        }
         if version < 4 {
             // Wave 4: the user asked for a white spider-web rope held by spiders, and for a
             // click that opens the card.
@@ -677,7 +682,7 @@ mod tests {
         let p = dir.path().join("settings.json");
         std::fs::write(&p, br#"{"theme":"dark","hotkeyShelf":"Ctrl+Alt+V"}"#).unwrap();
         let s = Settings::load(&p);
-        assert!(s.line_enabled && s.line_edge_reveal && s.line_peek_on_copy && s.line_breeze);
+        assert!(s.line_enabled && s.line_edge_reveal && !s.line_peek_on_copy && s.line_breeze);
         assert!(s.line_ropes.images && s.line_ropes.text && s.line_ropes.links);
         // Wave 3 moves the shelf hotkey onto the (default) line hotkey.
         assert_eq!(s.hotkey_line, "Ctrl+Alt+V");
@@ -794,7 +799,7 @@ mod tests {
         assert_eq!(s.hotkey_line, "Ctrl+1");
         assert_eq!(s.hotkey_shelf, "");
         assert_eq!(s.line_color, "#ffffff");
-        assert_eq!(s.line_look_version, 4);
+        assert_eq!(s.line_look_version, 5);
         // A custom line hotkey is kept.
         std::fs::write(&p, br#"{"hotkeyShelf":"Ctrl+1","hotkeyLine":"Ctrl+Alt+K"}"#).unwrap();
         assert_eq!(Settings::load(&p).hotkey_line, "Ctrl+Alt+K");
@@ -803,7 +808,20 @@ mod tests {
         s.line_color = "accent".into();
         s.save(&p).unwrap();
         let s = Settings::load(&p);
-        assert_eq!((s.line_color.as_str(), s.line_look_version), ("accent", 4));
+        assert_eq!((s.line_color.as_str(), s.line_look_version), ("accent", 5));
+    }
+
+    #[test]
+    fn wave5_stops_peeking_on_copy_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("settings.json");
+        std::fs::write(&p, br#"{"lineLookVersion":4,"linePeekOnCopy":true}"#).unwrap();
+        let s = Settings::load(&p);
+        assert!(!s.line_peek_on_copy);
+        assert_eq!(s.line_look_version, 5);
+        // Turned back on by the user after the migration: kept.
+        std::fs::write(&p, br#"{"lineLookVersion":5,"linePeekOnCopy":true}"#).unwrap();
+        assert!(Settings::load(&p).line_peek_on_copy);
     }
 
     #[test]

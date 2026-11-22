@@ -193,7 +193,12 @@ fn mtime(p: &Path) -> Option<std::time::SystemTime> {
 
 #[cfg(windows)]
 fn make_icon(src: &Path, dst: &Path) -> bool {
-    let Some((w, h, rgba)) = imp::shell_icon_rgba(src, ICON_SIDE) else {
+    // The shell's image factory fails now and then under load: one more try after a moment.
+    let picture = imp::shell_icon_rgba(src, ICON_SIDE).or_else(|| {
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        imp::shell_icon_rgba(src, ICON_SIDE)
+    });
+    let Some((w, h, rgba)) = picture else {
         eprintln!("app icon {}: the shell gave no picture", src.display());
         return false;
     };
@@ -405,7 +410,9 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn the_shell_draws_an_icon() {
-        let (w, h, rgba) = imp::shell_icon_rgba(Path::new(r"C:\Windows\explorer.exe"), ICON_SIDE)
+        let path = Path::new(r"C:\Windows\explorer.exe");
+        let (w, h, rgba) = imp::shell_icon_rgba(path, ICON_SIDE)
+            .or_else(|| imp::shell_icon_rgba(path, ICON_SIDE))
             .expect("explorer has an icon");
         assert_eq!((w, h), (64, 64));
         assert_eq!(rgba.len(), 64 * 64 * 4);

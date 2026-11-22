@@ -141,13 +141,13 @@ fn reject(app: &AppHandle) {
     );
 }
 
-/// Tell the webviews about a new item and let the line peek.
+/// Tell the webviews about a new item and let the line peek (when peeking on copy is on).
 fn announce(app: &AppHandle, added: fc_core::Result<Option<fc_core::clip::ClipItem>>) {
     if let Ok(Some(item)) = added {
         let s = app.state::<AppState>().settings();
         let _ = app.emit(events::CLIP_ADDED, &item);
         crate::line::refit(app);
-        crate::line::peek_forced(app);
+        crate::line::peek(app);
         crate::platform::clipboard::enrich(app, &item, &s);
     }
 }
