@@ -536,8 +536,9 @@
       console.error(e);
       showToast(t('wheelNone'));
     } finally {
+      // The line stays open after a drop on the wheel (the pointer is over the wheel, not gone):
+      // it closes as usual once the pointer comes back and leaves again.
       dragging = false;
-      if (!pointerInside) leave();
     }
   }
 

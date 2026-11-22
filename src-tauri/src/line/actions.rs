@@ -125,6 +125,8 @@ pub fn open_wheel(app: &AppHandle, paths: Vec<String>) {
     let app = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(WHEEL_AFTER_HIDE);
+        // The user is probably still holding Ctrl: Tab and Esc must work anyway.
+        crate::platform::allow_ctrl_keys();
         crate::windows::open_wheel_click(&app, paths);
     });
 }
@@ -160,12 +162,21 @@ pub async fn wheel_drag(
             .ok_or_else(|| CmdError::new("failed", "line window is not open"))?;
         let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
         let a = app.clone();
+        // The line stays open: the drop may move the focus to the wheel, which must not count as
+        // leaving an activated line. Its focus comes back afterwards.
+        let was_active = ACTIVE.swap(false, Ordering::SeqCst);
         app.run_on_main_thread(move || {
             let (x, y) = win::cursor_pos();
             crate::windows::show_wheel_at(&a, x, y, shift);
             let result = win::file_data_object(&files).and_then(|data| win::do_drag(owner, &data));
             // The hook sends no release for a drag it did not start: clean up the same way.
             crate::windows::on_drag_released(&a);
+            if was_active {
+                if win::foreground_window() != owner {
+                    win::set_foreground(owner);
+                }
+                ACTIVE.store(true, Ordering::SeqCst);
+            }
             let _ = tx.send(result);
         })
         .map_err(|e| CmdError::new("failed", e.to_string()))?;

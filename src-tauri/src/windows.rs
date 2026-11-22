@@ -426,12 +426,12 @@ pub fn queue_wheel_paths(app: &AppHandle, paths: Vec<String>) {
 
 /// Hook: mouse wheel or Tab while the wheel is open.
 pub fn wheel_flip(app: &AppHandle) {
-    on_main(app, |app| {
-        let open = ctl().mode == Mode::Wheel;
-        if open && let Some(w) = overlay(app) {
-            let _ = w.emit(events::OVERLAY_WHEEL_FLIP, ());
-        }
-    });
+    // No window work, so no trip to the main thread: during a Ctrl+drag that starts on the line
+    // the main thread sits in the drag loop until the drop.
+    let open = ctl().mode == Mode::Wheel;
+    if open && let Some(w) = overlay(app) {
+        let _ = w.emit(events::OVERLAY_WHEEL_FLIP, ());
+    }
 }
 
 /// Hook: Esc, or a press outside the click-mode wheel.

@@ -116,6 +116,13 @@ pub fn ensure_hooks(app: &AppHandle) {
     let _ = app;
 }
 
+/// The next click-mode wheel is opened with Ctrl held (Ctrl+click on the line): Tab and Esc
+/// work while Ctrl is still down.
+pub fn allow_ctrl_keys() {
+    #[cfg(windows)]
+    hook::allow_ctrl_keys();
+}
+
 /// Tell the hooks whether the wheel is open (they only act on input then) and where the
 /// overlay window is: (left, top, right, bottom) in physical pixels.
 pub fn set_wheel_open(open: bool, click: bool, rect: (i32, i32, i32, i32)) {

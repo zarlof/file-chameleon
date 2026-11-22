@@ -88,6 +88,7 @@ struct Mods {
     ctrl: bool,
     alt: bool,
     win: bool,
+    shift: bool,
 }
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
@@ -109,6 +110,9 @@ static RECT_R: AtomicI32 = AtomicI32::new(0);
 static RECT_B: AtomicI32 = AtomicI32::new(0);
 static FLIP_SCROLL: AtomicBool = AtomicBool::new(true);
 static FLIP_TAB: AtomicBool = AtomicBool::new(true);
+/// The click-mode wheel was opened with Ctrl held (Ctrl+click on the line): Tab and Esc still
+/// work while Ctrl is down. Cleared when the wheel closes.
+static CTRL_KEYS: AtomicBool = AtomicBool::new(false);
 /// Message time (ms) of the last mouse-wheel event while open; 0 = none since the wheel opened.
 static LAST_WHEEL: AtomicU32 = AtomicU32::new(0);
 /// Tab is held down (key repeat must not flip again and again).
@@ -222,7 +226,15 @@ pub fn set_wheel_open(open: bool, click: bool, rect: (i32, i32, i32, i32)) {
     };
     OPEN_FG.store(fg, Relaxed);
     CLICK_MODE.store(click, Relaxed);
+    if !open {
+        CTRL_KEYS.store(false, Relaxed);
+    }
     WHEEL_OPEN.store(open, Relaxed);
+}
+
+/// The next click-mode wheel is opened by a Ctrl gesture: let Tab and Esc act with Ctrl held.
+pub fn allow_ctrl_keys() {
+    CTRL_KEYS.store(true, Relaxed);
 }
 
 pub fn any_app() -> bool {
@@ -252,16 +264,18 @@ fn foreground_closes(open: bool, click: bool, new_fg: isize, open_fg: isize) -> 
 /// is on) and Esc do anything, and only while the wheel is open. They are swallowed only in
 /// click mode: during a drag the source app must still see Esc to cancel the drag. With Alt or
 /// Win held (Win+Tab, Alt+Esc) nothing happens; with Ctrl only during a drag, where Ctrl is part
-/// of the Ctrl+drag gesture and nothing is swallowed (click mode leaves Ctrl+Esc, Ctrl+Shift+Esc
-/// and Ctrl+Tab to Windows and the apps).
+/// of the Ctrl+drag gesture and nothing is swallowed, or in a click-mode wheel opened with Ctrl
+/// held (`ctrl_ok`, Ctrl+click on the line). Otherwise click mode leaves Ctrl+Esc and Ctrl+Tab to
+/// Windows and the apps, and Ctrl+Shift+Esc (Task Manager) always passes.
 fn key_action(
     open: bool,
     click: bool,
     vk: u32,
     flip_tab: bool,
     mods: Mods,
+    ctrl_ok: bool,
 ) -> (Option<HookEvent>, bool) {
-    if !open || mods.alt || mods.win || (mods.ctrl && click) {
+    if !open || mods.alt || mods.win || (mods.ctrl && click && (!ctrl_ok || mods.shift)) {
         return (None, false);
     }
     match vk {
@@ -378,6 +392,7 @@ unsafe extern "system" fn key_proc(code: i32, wparam: WPARAM, lparam: LPARAM) ->
                     ctrl: key_held(VK_CONTROL.0),
                     alt: key_held(VK_MENU.0),
                     win: key_held(VK_LWIN.0) || key_held(VK_RWIN.0),
+                    shift: key_held(VK_SHIFT.0),
                 };
                 let (ev, sw) = key_action(
                     true,
@@ -385,6 +400,7 @@ unsafe extern "system" fn key_proc(code: i32, wparam: WPARAM, lparam: LPARAM) ->
                     info.vkCode,
                     FLIP_TAB.load(Relaxed),
                     mods,
+                    CTRL_KEYS.load(Relaxed),
                 );
                 swallow = sw;
                 match ev {
@@ -513,10 +529,16 @@ mod tests {
     const TAB: u32 = VK_TAB.0 as u32;
     const ESC: u32 = VK_ESCAPE.0 as u32;
     const A: u32 = 0x41;
+    const SHIFT_CTRL: Mods = Mods {
+        ctrl: true,
+        shift: true,
+        ..NONE
+    };
     const NONE: Mods = Mods {
         ctrl: false,
         alt: false,
         win: false,
+        shift: false,
     };
     const CTRL: Mods = Mods { ctrl: true, ..NONE };
     const ALT: Mods = Mods { alt: true, ..NONE };
@@ -528,37 +550,46 @@ mod tests {
         for click in [false, true] {
             for vk in [TAB, ESC, A] {
                 for mods in [NONE, CTRL, ALT, WIN] {
-                    assert_eq!(key_action(false, click, vk, true, mods), (None, false));
+                    assert_eq!(
+                        key_action(false, click, vk, true, mods, false),
+                        (None, false)
+                    );
                 }
             }
         }
         // Open during a drag: act, but never swallow (Esc must still cancel the drag).
         assert_eq!(
-            key_action(true, false, TAB, true, NONE),
+            key_action(true, false, TAB, true, NONE, false),
             (Some(HookEvent::Flip), false)
         );
         assert_eq!(
-            key_action(true, false, ESC, true, NONE),
+            key_action(true, false, ESC, true, NONE, false),
             (Some(HookEvent::Close), false)
         );
         // Open in click mode: swallowed (the app under the wheel must not see them).
         assert_eq!(
-            key_action(true, true, TAB, true, NONE),
+            key_action(true, true, TAB, true, NONE, false),
             (Some(HookEvent::Flip), true)
         );
         assert_eq!(
-            key_action(true, true, ESC, true, NONE),
+            key_action(true, true, ESC, true, NONE, false),
             (Some(HookEvent::Close), true)
         );
         // Flipping with Tab turned off: Tab is ignored and passes through.
-        assert_eq!(key_action(true, false, TAB, false, NONE), (None, false));
-        assert_eq!(key_action(true, true, TAB, false, NONE), (None, false));
         assert_eq!(
-            key_action(true, true, ESC, false, NONE),
+            key_action(true, false, TAB, false, NONE, false),
+            (None, false)
+        );
+        assert_eq!(
+            key_action(true, true, TAB, false, NONE, false),
+            (None, false)
+        );
+        assert_eq!(
+            key_action(true, true, ESC, false, NONE, false),
             (Some(HookEvent::Close), true)
         );
         // Other keys are never touched.
-        assert_eq!(key_action(true, true, A, true, NONE), (None, false));
+        assert_eq!(key_action(true, true, A, true, NONE, false), (None, false));
     }
 
     #[test]
@@ -567,21 +598,44 @@ mod tests {
         for click in [false, true] {
             for vk in [TAB, ESC] {
                 for mods in [ALT, WIN, Mods { ctrl: true, ..WIN }] {
-                    assert_eq!(key_action(true, click, vk, true, mods), (None, false));
+                    assert_eq!(
+                        key_action(true, click, vk, true, mods, false),
+                        (None, false)
+                    );
                 }
             }
         }
         // Click mode: Ctrl+Esc (Start), Ctrl+Shift+Esc (Task Manager), Ctrl+Tab pass through.
-        assert_eq!(key_action(true, true, ESC, true, CTRL), (None, false));
-        assert_eq!(key_action(true, true, TAB, true, CTRL), (None, false));
+        assert_eq!(
+            key_action(true, true, ESC, true, CTRL, false),
+            (None, false)
+        );
+        assert_eq!(
+            key_action(true, true, TAB, true, CTRL, false),
+            (None, false)
+        );
         // During a Ctrl+drag, Ctrl is held anyway: Tab flips and Esc closes (not swallowed).
         assert_eq!(
-            key_action(true, false, TAB, true, CTRL),
+            key_action(true, false, TAB, true, CTRL, false),
             (Some(HookEvent::Flip), false)
         );
         assert_eq!(
-            key_action(true, false, ESC, true, CTRL),
+            key_action(true, false, ESC, true, CTRL, false),
             (Some(HookEvent::Close), false)
+        );
+        // A click wheel opened with Ctrl+click on the line: Tab and Esc work with Ctrl still down
+        // (and are swallowed), Ctrl+Shift+Esc still reaches Windows.
+        assert_eq!(
+            key_action(true, true, TAB, true, CTRL, true),
+            (Some(HookEvent::Flip), true)
+        );
+        assert_eq!(
+            key_action(true, true, ESC, true, CTRL, true),
+            (Some(HookEvent::Close), true)
+        );
+        assert_eq!(
+            key_action(true, true, ESC, true, SHIFT_CTRL, true),
+            (None, false)
         );
     }
 
