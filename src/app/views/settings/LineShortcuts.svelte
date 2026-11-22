@@ -162,7 +162,7 @@
   .ico { width: 24px; height: 24px; flex: none; object-fit: contain; }
   .ph { display: grid; place-items: center; border-radius: 6px; background: var(--control-bg); color: var(--text-secondary); font: var(--text-callout); font-weight: 600; }
   .picker { display: flex; flex-direction: column; gap: var(--space-2); }
-  .apps { display: flex; flex-direction: column; max-height: 360px; overflow-y: auto; margin: 0 calc(var(--space-2) * -1); }
+  .apps { display: flex; flex-direction: column; max-height: 360px; overflow-x: hidden; overflow-y: auto; margin: 0 calc(var(--space-2) * -1); }
   .center { display: flex; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-6); color: var(--text-secondary); font: var(--text-callout); }
   .app {
     display: flex;

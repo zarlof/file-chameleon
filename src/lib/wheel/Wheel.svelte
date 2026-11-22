@@ -343,7 +343,7 @@
     transform-origin: 270px 270px;
   }
   .face.out {
-    animation: face-out 280ms cubic-bezier(0.4, 0, 0.7, 0.2) both;
+    animation: face-out 190ms cubic-bezier(0.4, 0, 1, 1) both;
     will-change: transform, opacity;
   }
   .face.in {
