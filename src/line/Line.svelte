@@ -57,9 +57,12 @@
   /** Cached icon PNG per shortcut path (null = the shell has none). */
   let appIcons = $state<Record<string, string | null>>({});
   const shortcuts = $derived<ShortcutCard[]>((settings?.lineShortcuts ?? []).map((s) => ({ ...s, icon: appIcons[s.path] ?? null })));
+  /** Paths already asked for (a second load while the first runs must not ask again). */
+  const iconAsked = new Set<string>();
   async function loadIcons() {
-    const missing = (settings?.lineShortcuts ?? []).map((s) => s.path).filter((p) => !(p in appIcons));
+    const missing = (settings?.lineShortcuts ?? []).map((s) => s.path).filter((p) => !(p in appIcons) && !iconAsked.has(p));
     if (missing.length === 0) return;
+    for (const p of missing) iconAsked.add(p);
     try {
       const got = await api.appIcons(missing);
       const next = { ...appIcons };

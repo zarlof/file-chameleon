@@ -164,23 +164,27 @@ pub fn icons_dir(app: &AppHandle) -> PathBuf {
 pub fn icons(app: &AppHandle, paths: &[String]) -> Vec<Option<String>> {
     let dir = icons_dir(app);
     let _ = std::fs::create_dir_all(&dir);
-    paths
-        .iter()
-        .map(|p| {
-            let src = Path::new(p);
-            let dst = dir.join(crate::files::thumb_name(src));
-            let fresh = match (mtime(src), mtime(&dst)) {
-                (Some(s), Some(d)) => d >= s,
-                (None, Some(_)) => true,
-                _ => false,
-            };
-            if fresh || make_icon(src, &dst) {
-                Some(dst.to_string_lossy().into_owned())
-            } else {
-                None
-            }
-        })
-        .collect()
+    // A thread of its own: a pooled worker may carry a COM apartment the shell does not like.
+    std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                paths
+                    .iter()
+                    .map(|p| {
+                        let src = Path::new(p);
+                        let dst = dir.join(crate::files::thumb_name(src));
+                        let fresh = match (mtime(src), mtime(&dst)) {
+                            (Some(s), Some(d)) => d >= s,
+                            (None, Some(_)) => true,
+                            _ => false,
+                        };
+                        (fresh || make_icon(src, &dst)).then(|| dst.to_string_lossy().into_owned())
+                    })
+                    .collect()
+            })
+            .join()
+            .unwrap_or_else(|_| vec![None; paths.len()])
+    })
 }
 
 fn mtime(p: &Path) -> Option<std::time::SystemTime> {
@@ -189,10 +193,29 @@ fn mtime(p: &Path) -> Option<std::time::SystemTime> {
 
 #[cfg(windows)]
 fn make_icon(src: &Path, dst: &Path) -> bool {
-    match imp::shell_icon_rgba(src, ICON_SIDE) {
-        Some((w, h, rgba)) => image::RgbaImage::from_raw(w, h, rgba)
-            .is_some_and(|img| img.save_with_format(dst, image::ImageFormat::Png).is_ok()),
-        None => false,
+    let Some((w, h, rgba)) = imp::shell_icon_rgba(src, ICON_SIDE) else {
+        eprintln!("app icon {}: the shell gave no picture", src.display());
+        return false;
+    };
+    let Some(img) = image::RgbaImage::from_raw(w, h, rgba) else {
+        return false;
+    };
+    // Write a temporary file and rename it: two requests for the same icon never leave a torn PNG.
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = dst.with_extension(format!("{n}.tmp"));
+    let saved = img
+        .save_with_format(&tmp, image::ImageFormat::Png)
+        .and_then(|()| std::fs::rename(&tmp, dst).map_err(image::ImageError::IoError));
+    if saved.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    match saved {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("app icon {}: {e}", dst.display());
+            false
+        }
     }
 }
 
@@ -221,10 +244,21 @@ mod imp {
             // S_FALSE / RPC_E_CHANGED_MODE: COM is already up on this thread, which is fine.
             let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
             let factory: IShellItemImageFactory =
-                SHCreateItemFromParsingName(&HSTRING::from(path.as_os_str()), None).ok()?;
-            let hbm: HBITMAP = factory
-                .GetImage(SIZE { cx: side, cy: side }, SIIGBF_ICONONLY)
-                .ok()?;
+                match SHCreateItemFromParsingName(&HSTRING::from(path.as_os_str()), None) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        eprintln!("app icon {}: shell item: {e}", path.display());
+                        return None;
+                    }
+                };
+            let hbm: HBITMAP = match factory.GetImage(SIZE { cx: side, cy: side }, SIIGBF_ICONONLY)
+            {
+                Ok(h) => h,
+                Err(e) => {
+                    eprintln!("app icon {}: image: {e}", path.display());
+                    return None;
+                }
+            };
             let out = read_bitmap(hbm);
             let _ = DeleteObject(HGDIOBJ(hbm.0));
             out
@@ -376,5 +410,21 @@ mod tests {
         assert_eq!((w, h), (64, 64));
         assert_eq!(rgba.len(), 64 * 64 * 4);
         assert!(rgba.as_chunks::<4>().0.iter().any(|p| p[3] > 0));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn icon_on_an_mta_thread() {
+        std::thread::spawn(|| {
+            use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
+            let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+            let r = imp::shell_icon_rgba(Path::new(r"C:\Windows\explorer.exe"), ICON_SIDE);
+            assert!(r.is_some(), "mta");
+        })
+        .join()
+        .unwrap();
+        let d = std::env::temp_dir().join("fc-icon-test.png");
+        assert!(make_icon(Path::new(r"C:\Windows\explorer.exe"), &d), "save");
+        let _ = std::fs::remove_file(d);
     }
 }

@@ -83,6 +83,8 @@
   let cardEl = $state<HTMLElement | null>(null);
   let zoomTimer: ReturnType<typeof setTimeout> | undefined;
   let thumbFailed = $state(false);
+  /** The icon file that failed to load (a later, different one is tried). */
+  let iconFailed = $state<string | null>(null);
 
   const DRAG_PX = 6;
   let start: { x: number; y: number } | null = null;
@@ -174,8 +176,8 @@
   >
     {#if app}
       <div class="app">
-        {#if app.icon && !thumbFailed}
-          <img src={convertFileSrc(app.icon)} alt="" draggable="false" onerror={() => (thumbFailed = true)} />
+        {#if app.icon && app.icon !== iconFailed}
+          <img src={convertFileSrc(app.icon)} alt="" draggable="false" onerror={() => (iconFailed = app.icon)} />
         {:else}
           <span class="glyph" aria-hidden="true">{app.name.slice(0, 1).toUpperCase()}</span>
         {/if}
