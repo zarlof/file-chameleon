@@ -197,7 +197,7 @@
   "about": {
     "version": "Sürüm",
     "repo": "Kaynak kod",
-    "repoValue": "github.com/zarlof/file-chameleon",
+    "repoValue": "github.com/zarlof31/file-chameleon",
     "open": "Aç",
     "licenses": "Lisanslar",
     "licensesValue": "File Chameleon açık kaynaklıdır. İsteğe bağlı motorlar kendi lisanslarını taşır (FFmpeg: GPL-3.0, yt-dlp: Unlicense, PDFium: BSD-3-Clause, Deno: MIT).",

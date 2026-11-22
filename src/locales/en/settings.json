@@ -197,7 +197,7 @@
   "about": {
     "version": "Version",
     "repo": "Source code",
-    "repoValue": "github.com/zarlof/file-chameleon",
+    "repoValue": "github.com/zarlof31/file-chameleon",
     "open": "Open",
     "licenses": "Licenses",
     "licensesValue": "File Chameleon is open source. Optional engines keep their own licenses (FFmpeg: GPL-3.0, yt-dlp: Unlicense, PDFium: BSD-3-Clause, Deno: MIT).",

@@ -8,7 +8,7 @@
   import { settings } from '../../../lib/stores/settings.svelte';
   import { Button, Card, ListRow } from '../../../lib/ui';
 
-  const REPO_URL = 'https://github.com/zarlof/file-chameleon';
+  const REPO_URL = 'https://github.com/zarlof31/file-chameleon';
   const NOTICES_URL = `${REPO_URL}/blob/main/THIRD_PARTY_NOTICES.md`;
 
   function openUrl(url: string) {

@@ -19,7 +19,7 @@
 
   let { collapsed = false, version }: { collapsed?: boolean; version?: string } = $props();
 
-  const REPO_URL = 'https://github.com/zarlof/file-chameleon';
+  const REPO_URL = 'https://github.com/zarlof31/file-chameleon';
   const icons: Partial<Record<View, Component<any>>> = {
     convert: RefreshCw,
     download: Download,
