@@ -18,6 +18,7 @@
   import { setLang, t as lt } from '../../../line/i18n';
   import { lineDefaults, moveRope, ropeName, sanitizeOrder, type LineCard, type RopeKey } from '../../../line/logic';
   import Rope from '../../../line/Rope.svelte';
+  import LineShortcuts from './LineShortcuts.svelte';
 
   const s = $derived(settings.value);
   const off = $derived(!s.lineEnabled);
@@ -95,7 +96,7 @@
 
   // ---- ropes
   const order = $derived(sanitizeOrder(s.lineRopeOrder));
-  const ropeTitle = (k: RopeKey) => t(`line.settings.ropes${k === 'images' ? 'Images' : k === 'text' ? 'Text' : k === 'links' ? 'Links' : 'Files'}`);
+  const ropeTitle = (k: RopeKey) => t(`line.settings.ropes${k === 'images' ? 'Images' : k === 'text' ? 'Text' : k === 'links' ? 'Links' : k === 'files' ? 'Files' : 'Shortcuts'}`);
   function setRope(key: RopeKey, v: boolean) {
     set({ lineRopes: { ...s.lineRopes, [key]: v } });
   }
@@ -371,6 +372,9 @@
       {#snippet trailing()}<Select value={String(s.lineMaxPerRope)} options={maxOptions} disabled={off} label={t('line.settings.maxPerRope')} onchange={(v) => set({ lineMaxPerRope: Number(v) })} />{/snippet}
     </ListRow>
   </Card>
+
+  <SectionHeader title={t('line.settings.section.shortcuts')} subtitle={t('line.settings.shortcutsHint')} />
+  <LineShortcuts disabled={off} />
 
   <SectionHeader title={t('line.settings.section.position')} />
   <Card>

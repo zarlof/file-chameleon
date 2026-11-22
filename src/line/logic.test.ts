@@ -113,10 +113,10 @@ describe('rope order and names', () => {
 
 describe('settings helpers', () => {
   it('rope_reorder', () => {
-    expect(moveRope(['images', 'text', 'links', 'files'], 'files', -1)).toEqual(['images', 'text', 'files', 'links']);
-    expect(moveRope(['images', 'text', 'links', 'files'], 'images', 1)).toEqual(['text', 'images', 'links', 'files']);
-    expect(moveRope(['images', 'text', 'links', 'files'], 'images', -1)).toEqual(['images', 'text', 'links', 'files']);
-    expect(moveRope(['links'], 'links', 1)).toEqual(['images', 'links', 'text', 'files']);
+    expect(moveRope(['images', 'text', 'links', 'files'], 'files', -1)).toEqual(['images', 'text', 'files', 'links', 'shortcuts']);
+    expect(moveRope(['images', 'text', 'links', 'files'], 'images', 1)).toEqual(['text', 'images', 'links', 'files', 'shortcuts']);
+    expect(moveRope(['images', 'text', 'links', 'files'], 'images', -1)).toEqual(['images', 'text', 'links', 'files', 'shortcuts']);
+    expect(moveRope(['links'], 'links', 1)).toEqual(['images', 'links', 'text', 'files', 'shortcuts']);
   });
   it('settings_reset_keeps_switch_and_hotkeys', () => {
     const d = { lineEnabled: true, lineSag: 14, lineColor: 'natural', lineLookVersion: 3, hotkeyLine: 'X', theme: 'dark' };
@@ -127,7 +127,7 @@ describe('settings helpers', () => {
 describe('ropeCards', () => {
   it('colliding_file_ids_keep_every_card', () => {
     const f = (path: string) => ({ path, name: path, source: 'added' as const, at: 1, size: 1, kind: null, thumb: null });
-    const rope = { key: 'files' as const, items: [], files: [f('a'), f('b'), f('c')] };
+    const rope = { key: 'files' as const, items: [], files: [f('a'), f('b'), f('c')], apps: [] };
     const cards = ropeCards(rope, () => -5);
     expect(cards).toHaveLength(3);
     expect(new Set(cards.map((c) => c.id)).size).toBe(3);
@@ -150,5 +150,22 @@ describe('collapsed ropes', () => {
     expect(loadCollapsed(store)).toEqual([]);
     mem.set('fc.line.collapsed', '["nope","files"]');
     expect(loadCollapsed(store)).toEqual(['files']);
+  });
+});
+
+describe('shortcuts rope', () => {
+  it('hangs the apps in the user order with ids below every file id', async () => {
+    const { APP_ID_BASE, splitRopes, ropeCards, ropeCount } = await import('./logic');
+    const apps = [
+      { name: 'Paint', path: 'C:\p.lnk', icon: null },
+      { name: 'Notes', path: 'C:\n.exe', icon: 'C:\i.png' },
+    ];
+    const ropes = splitRopes([], { images: false, text: false, links: false, files: false, shortcuts: true }, undefined, [], apps);
+    expect(ropes.map((r) => r.key)).toEqual(['shortcuts']);
+    expect(ropeCount(ropes[0])).toBe(2);
+    const cards = ropeCards(ropes[0], () => -1);
+    expect(cards.map((c) => c.app?.name)).toEqual(['Paint', 'Notes']);
+    expect(cards.map((c) => c.id)).toEqual([APP_ID_BASE, APP_ID_BASE - 1]);
+    expect(cards.every((c) => c.id < -2147483647)).toBe(true);
   });
 });

@@ -230,16 +230,10 @@ static MODE: Mutex<Option<String>> = Mutex::new(None);
 /// that was just activated.
 static SHOW: Mutex<()> = Mutex::new(());
 
-/// Number of ropes the window has room for: those enabled in the settings AND holding at least
-/// one live item (`present`, in the order images, text, links, files). At least 1 (the empty
-/// message).
-pub fn rope_count_of(enabled: [bool; 4], present: [bool; 4]) -> usize {
-    enabled
-        .iter()
-        .zip(present)
-        .filter(|(on, has)| **on && *has)
-        .count()
-        .max(1)
+/// Number of ropes the window has room for: every enabled one (empty ropes show too, the page
+/// lets the user fold them). At least 1 (the empty message).
+pub fn rope_count_of(enabled: &[bool]) -> usize {
+    enabled.iter().filter(|on| **on).count().max(1)
 }
 
 /// Hide on focus loss? Only a line that was activated (hotkey, or a click on a peek).
@@ -307,8 +301,7 @@ fn rope_count_with(
     r: &fc_core::settings::LineRopes,
     _sources: &fc_core::settings::LineFilesSources,
 ) -> usize {
-    let enabled = [r.images, r.text, r.links, r.files];
-    rope_count_of(enabled, enabled)
+    rope_count_of(&[r.images, r.text, r.links, r.files, r.shortcuts])
 }
 
 /// `line_state`: what the page needs to catch up on a show it missed.
@@ -1125,15 +1118,10 @@ mod tests {
 
     #[test]
     fn rope_count_from_ropes_and_clips() {
-        // Enabled and non-empty only; never fewer than one (the empty message).
-        assert_eq!(rope_count_of([true; 4], [true; 4]), 4);
-        assert_eq!(rope_count_of([true; 4], [true, false, true, true]), 3);
-        assert_eq!(
-            rope_count_of([true, false, true, true], [true, true, false, false]),
-            1
-        );
-        assert_eq!(rope_count_of([true; 4], [false; 4]), 1);
-        assert_eq!(rope_count_of([false; 4], [true; 4]), 1);
+        // Every enabled rope, empty or not; never fewer than one (the empty message).
+        assert_eq!(rope_count_of(&[true; 5]), 5);
+        assert_eq!(rope_count_of(&[true, false, true, true, false]), 3);
+        assert_eq!(rope_count_of(&[false; 5]), 1);
     }
 
     #[test]

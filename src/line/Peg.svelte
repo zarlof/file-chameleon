@@ -75,10 +75,11 @@
   const words = $derived(item ? cardText(item) : { title: '', lines: [] as string[] });
   const noteHtml = $derived(item?.kind === 'text' ? renderMd((item.text ?? '').split('\n').slice(0, 7).join('\n')) : '');
   const fc = $derived(file ? fileCard(file, getLang()) : null);
-  const kindClass = $derived(file ? 'file' : item?.kind === 'image' ? 'image' : item?.kind === 'text' ? 'text' : 'link');
+  const app = $derived(model.app ?? null);
+  const kindClass = $derived(app ? 'app' : file ? 'file' : item?.kind === 'image' ? 'image' : item?.kind === 'text' ? 'text' : 'link');
   const pinned = $derived(item?.pinned ?? file?.pinned ?? false);
   const spider = $derived(pinStyle === 'spider');
-  const label = $derived(file ? file.name : words.title || t(item?.kind === 'image' ? 'image' : 'rope.text'));
+  const label = $derived(app ? app.name : file ? file.name : words.title || t(item?.kind === 'image' ? 'image' : 'rope.text'));
   let cardEl = $state<HTMLElement | null>(null);
   let zoomTimer: ReturnType<typeof setTimeout> | undefined;
   let thumbFailed = $state(false);
@@ -171,7 +172,16 @@
       oncontext(e);
     }}
   >
-    {#if file && fc}
+    {#if app}
+      <div class="app">
+        {#if app.icon && !thumbFailed}
+          <img src={convertFileSrc(app.icon)} alt="" draggable="false" onerror={() => (thumbFailed = true)} />
+        {:else}
+          <span class="glyph" aria-hidden="true">{app.name.slice(0, 1).toUpperCase()}</span>
+        {/if}
+        <b title={app.name}>{app.name}</b>
+      </div>
+    {:else if file && fc}
       <div class="file">
         <div class="fthumb">
           {#if file.thumb && !thumbFailed}
@@ -220,7 +230,7 @@
       </div>
     {/if}
     {#if num !== null}<span class="num" aria-hidden="true">{num}</span>{/if}
-    {#if onpin}
+    {#if onpin && !app}
       <button type="button" class="pinbtn" class:on={pinned} tabindex="-1" aria-pressed={pinned}
         aria-label={t(pinned ? 'menu.unpin' : 'menu.pin')} title={t(pinned ? 'menu.unpin' : 'menu.pin')}
         onpointerdown={(e) => e.stopPropagation()}
@@ -337,6 +347,29 @@
   .md :global(code) { font-family: var(--font-mono, monospace); background: color-mix(in srgb, var(--c-fg) 12%, transparent); border-radius: 3px; padding: 0 2px; }
   .note b { color: var(--c-fg); }
 
+  .app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(var(--s) * 8px);
+    height: calc(var(--s) * 92px);
+    padding: calc(var(--s) * 8px);
+    overflow: hidden;
+  }
+  .app img, .app .glyph { width: calc(var(--s) * 40px); height: calc(var(--s) * 40px); flex: none; pointer-events: none; }
+  .app img { object-fit: contain; }
+  .app .glyph { display: grid; place-items: center; border-radius: 10px; background: color-mix(in srgb, var(--c-fg) 14%, transparent); font-weight: 650; font-size: calc(var(--s) * 20px); }
+  .app b {
+    max-width: 100%;
+    font: var(--text-callout);
+    font-size: calc(var(--s) * 11.5px);
+    font-weight: 600;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .fthumb { flex: 1; min-height: 0; display: grid; place-items: center; border-radius: calc(var(--c-radius, 10px) - 4px); background: color-mix(in srgb, var(--c-fg) 8%, transparent); overflow: hidden; }
   .fthumb img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
   .doc { fill: color-mix(in srgb, var(--c-fg) 16%, transparent); stroke: var(--c-fg2); stroke-width: 1.3; stroke-linejoin: round; }

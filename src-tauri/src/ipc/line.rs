@@ -51,6 +51,30 @@ pub async fn line_file_pin(app: AppHandle, paths: Vec<String>, pinned: bool) -> 
     super::blocking(move || crate::files::pin(&app, &paths, pinned)).await?
 }
 
+/// Apps the user can put on the shortcuts rope (Start menu, taskbar, desktop).
+#[tauri::command]
+pub async fn apps_list() -> CmdResult<Vec<crate::apps::AppEntry>> {
+    super::blocking(crate::apps::list).await
+}
+
+/// Cached icon PNGs of apps / shortcuts (None where the shell has none).
+#[tauri::command]
+pub async fn app_icons(app: AppHandle, paths: Vec<String>) -> CmdResult<Vec<Option<String>>> {
+    super::blocking(move || crate::apps::icons(&app, &paths)).await
+}
+
+/// Start an app of the shortcuts rope.
+#[tauri::command(async)]
+pub fn line_shortcut_launch(app: AppHandle, path: String) -> CmdResult<()> {
+    crate::apps::launch(&app, &path)
+}
+
+/// Show an app of the shortcuts rope in Explorer.
+#[tauri::command(async)]
+pub fn line_shortcut_reveal(app: AppHandle, path: String) -> CmdResult<()> {
+    crate::apps::reveal(&app, &path)
+}
+
 /// Copy the clips, hide the line and paste into the app it was opened from.
 #[tauri::command]
 pub async fn line_paste(app: AppHandle, ids: Vec<u64>) -> CmdResult<()> {

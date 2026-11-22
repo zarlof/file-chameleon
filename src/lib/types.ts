@@ -2,7 +2,21 @@
 // Keep in sync by hand: field names are camelCase on the wire.
 
 /** The clothesline's four ropes. */
-export type LineRopeKey = 'images' | 'text' | 'links' | 'files';
+export type LineRopeKey = 'images' | 'text' | 'links' | 'files' | 'shortcuts';
+
+/** An app shortcut on the shortcuts rope. */
+export interface LineShortcut {
+  name: string;
+  path: string;
+}
+
+/** An app found in the Start menu, on the taskbar or on the desktop (Settings > İp > add shortcut). */
+export interface AppEntry {
+  name: string;
+  path: string;
+  /** Where it was found: "start", "taskbar" or "desktop". */
+  place: string;
+}
 
 /** A file on the files rope. */
 export type FileSource = 'added' | 'converted' | 'downloaded';
@@ -72,7 +86,7 @@ export interface Settings {
   lineEdgeReveal: boolean;
   linePeekOnCopy: boolean;
   lineBreeze: boolean;
-  lineRopes: { images: boolean; text: boolean; links: boolean; files: boolean };
+  lineRopes: { images: boolean; text: boolean; links: boolean; files: boolean; shortcuts: boolean };
   /** 'natural' (hemp, default), 'accent', an accent name or a #rrggbb hex. */
   lineColor: string;
   /** 1..6 px */
@@ -98,6 +112,7 @@ export interface Settings {
   lineRopeOrder: LineRopeKey[];
   /** Custom rope names; '' = the default name. */
   lineRopeNames: Record<LineRopeKey, string>;
+  lineShortcuts: LineShortcut[];
   lineFilesSources: { added: boolean; converted: boolean; downloaded: boolean };
   /** 0 = all that fit, else 3..30 */
   lineMaxPerRope: number;

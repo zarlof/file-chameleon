@@ -197,18 +197,22 @@ mod tests {
         let b = touch(dir.path(), "b.txt");
         let c = touch(dir.path(), "c.txt");
         let mut s = FileStore::open(dir.path()).unwrap();
-        s.record(&[a.clone()], FileSource::Added, 1).unwrap();
-        s.record(&[b.clone()], FileSource::Added, 2).unwrap();
-        s.set_pinned(&[a.clone()], true).unwrap();
-        s.record(&[c.clone()], FileSource::Added, 3).unwrap();
+        s.record(std::slice::from_ref(&a), FileSource::Added, 1)
+            .unwrap();
+        s.record(std::slice::from_ref(&b), FileSource::Added, 2)
+            .unwrap();
+        s.set_pinned(std::slice::from_ref(&a), true).unwrap();
+        s.record(std::slice::from_ref(&c), FileSource::Added, 3)
+            .unwrap();
         let names: Vec<PathBuf> = s.list(&ALL).into_iter().map(|e| e.path).collect();
         assert_eq!(names, vec![a.clone(), c.clone(), b.clone()]);
         // Recording a pinned file again keeps it pinned; the pin survives a reload.
-        s.record(&[a.clone()], FileSource::Converted, 4).unwrap();
+        s.record(std::slice::from_ref(&a), FileSource::Converted, 4)
+            .unwrap();
         let mut again = FileStore::open(dir.path()).unwrap();
         let first = again.list(&ALL).remove(0);
         assert!(first.pinned && first.path == a);
-        again.set_pinned(&[a.clone()], false).unwrap();
+        again.set_pinned(std::slice::from_ref(&a), false).unwrap();
         assert_eq!(again.list(&ALL)[0].path, a, "newest first once unpinned");
         assert!(!again.list(&ALL)[0].pinned);
     }

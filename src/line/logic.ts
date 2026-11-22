@@ -1,10 +1,12 @@
 // Pure helpers for the line: which clips hang on which rope, how many fit, what a card says.
-import type { ClipItem, LineFile, LineRopeKey } from '../lib/types';
+import type { ClipItem, LineFile, LineRopeKey, LineShortcut } from '../lib/types';
 
 export type RopeKey = LineRopeKey;
-export type Rope = { key: RopeKey; items: ClipItem[]; files: LineFile[] };
+/** A shortcut of the shortcuts rope with its cached icon (null = none yet). */
+export type ShortcutCard = LineShortcut & { icon: string | null };
+export type Rope = { key: RopeKey; items: ClipItem[]; files: LineFile[]; apps: ShortcutCard[] };
 
-const DEFAULT_ORDER: RopeKey[] = ['images', 'text', 'links', 'files'];
+const DEFAULT_ORDER: RopeKey[] = ['images', 'text', 'links', 'files', 'shortcuts'];
 
 function ropeOf(item: ClipItem): RopeKey {
   if (item.kind === 'image') return 'images';
@@ -29,11 +31,12 @@ export function sanitizeOrder(o: readonly string[] | undefined): RopeKey[] {
 /** Enabled ropes in `ropeOrder` (empty ones kept; see `visibleRopes`). A rope missing from `ropes` is off. Trash is left out. */
 export function splitRopes(
   items: ClipItem[],
-  ropes: { images: boolean; text: boolean; links: boolean; files?: boolean },
+  ropes: { images: boolean; text: boolean; links: boolean; files?: boolean; shortcuts?: boolean },
   ropeOrder?: readonly string[],
   files: LineFile[] = [],
+  apps: ShortcutCard[] = [],
 ): Rope[] {
-  const out: Rope[] = sanitizeOrder(ropeOrder).filter((k) => ropes[k] === true).map((key) => ({ key, items: [], files: [] }));
+  const out: Rope[] = sanitizeOrder(ropeOrder).filter((k) => ropes[k] === true).map((key) => ({ key, items: [], files: [], apps: [] }));
   for (const item of items) {
     if (item.trashedAt !== null) continue;
     out.find((r) => r.key === ropeOf(item))?.items.push(item);
@@ -41,6 +44,7 @@ export function splitRopes(
   for (const r of out) {
     r.items.sort(order);
     if (r.key === 'files') r.files = files;
+    if (r.key === 'shortcuts') r.apps = apps;
   }
   return out;
 }
@@ -53,7 +57,7 @@ export function ropeName(key: RopeKey, names: Partial<Record<RopeKey, string>> |
 
 /** How many cards a rope holds. */
 export function ropeCount(r: Rope): number {
-  return r.key === 'files' ? r.files.length : r.items.length;
+  return r.key === 'files' ? r.files.length : r.key === 'shortcuts' ? r.apps.length : r.items.length;
 }
 
 /** The ropes worth drawing: an empty rope is not shown (the window shrinks). */
@@ -119,7 +123,10 @@ export function matches(item: ClipItem, query: string): boolean {
 }
 
 /** One card on a rope: a clip or a file, with a number that is unique across both (files are negative). */
-export type LineCard = { id: number; item: ClipItem | null; file: LineFile | null };
+export type LineCard = { id: number; item: ClipItem | null; file: LineFile | null; app?: ShortcutCard | null };
+
+/** Shortcut cards get ids below every file id (files use -1 .. -2147483647). */
+export const APP_ID_BASE = -2147483649;
 
 /** The cards of a rope in display order. */
 export function ropeCards(r: Rope, fileIdOf: (path: string) => number): LineCard[] {
@@ -132,6 +139,7 @@ export function ropeCards(r: Rope, fileIdOf: (path: string) => number): LineCard
       return { id, item: null, file };
     });
   }
+  if (r.key === 'shortcuts') return r.apps.map((app, i) => ({ id: APP_ID_BASE - i, item: null, file: null, app }));
   return r.items.map((item) => ({ id: item.id, item, file: null }));
 }
 

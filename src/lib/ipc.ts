@@ -29,6 +29,7 @@ import type {
   WheelSlots,
   WheelThumb,
   WatchStatus,
+  AppEntry,
 } from './types';
 
 export const api = {
@@ -120,6 +121,10 @@ export const api = {
   lineOpenClip: (id: number) => invoke<void>('line_open_clip', { id }),
   lineShare: (ids: number[], paths: string[]) => invoke<void>('line_share', { ids, paths }),
   lineFilePin: (paths: string[], pinned: boolean) => invoke<void>('line_file_pin', { paths, pinned }),
+  appsList: () => invoke<AppEntry[]>('apps_list'),
+  appIcons: (paths: string[]) => invoke<(string | null)[]>('app_icons', { paths }),
+  lineShortcutLaunch: (path: string) => invoke<void>('line_shortcut_launch', { path }),
+  lineShortcutReveal: (path: string) => invoke<void>('line_shortcut_reveal', { path }),
   linePaste: (ids: number[]) => invoke<void>('line_paste', { ids }),
   // ---- files rope (wave 3)
   lineFiles: () => invoke<LineFile[]>('line_files'),

@@ -16,3 +16,10 @@
   DeleteRegKey HKCU "Software\Classes\*\shell\FileChameleon"
   DeleteRegKey HKCU "Software\Classes\*\shell\FileChameleonHang"
 !macroend
+
+!macro NSIS_HOOK_POSTINSTALL
+  ; The exe keeps its path across updates, so Explorer and the taskbar may keep showing the
+  ; previous build's icon from their cache. Tell the shell that icons changed
+  ; (SHCNE_ASSOCCHANGED, SHCNF_IDLIST) so it reloads them.
+  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
+!macroend

@@ -10,7 +10,7 @@
   import { convertFileSrc } from '@tauri-apps/api/core';
   import { api, errorOf, on } from '../lib/ipc';
   import type { ClipItem, ClipShelf, LineFile, Settings } from '../lib/types';
-  import { fitCount, loadCollapsed, matches, overflow, ropeCards, ropeName, saveCollapsed, splitRopes, toggleCollapsed, type LineCard, type RopeKey } from './logic';
+  import { fitCount, loadCollapsed, matches, overflow, ropeCards, ropeName, saveCollapsed, splitRopes, toggleCollapsed, type LineCard, type RopeKey, type ShortcutCard } from './logic';
   import { fileId } from './files';
   import { bandTops, cardOpacity, maxRopes, cardStyleAttr, ropeColor, sizeInfo, windowHeight } from './layout';
   import { isCommandKey, nextFocus, type Focus, type NavKey } from './keys';
@@ -53,7 +53,22 @@
   const falls = $state<Record<number, number>>({});
 
   const reduce = $derived(settings?.reduceMotion ?? false);
-  const ropeCfg = $derived(settings?.lineRopes ?? { images: true, text: true, links: true, files: true });
+  const ropeCfg = $derived(settings?.lineRopes ?? { images: true, text: true, links: true, files: true, shortcuts: true });
+  /** Cached icon PNG per shortcut path (null = the shell has none). */
+  let appIcons = $state<Record<string, string | null>>({});
+  const shortcuts = $derived<ShortcutCard[]>((settings?.lineShortcuts ?? []).map((s) => ({ ...s, icon: appIcons[s.path] ?? null })));
+  async function loadIcons() {
+    const missing = (settings?.lineShortcuts ?? []).map((s) => s.path).filter((p) => !(p in appIcons));
+    if (missing.length === 0) return;
+    try {
+      const got = await api.appIcons(missing);
+      const next = { ...appIcons };
+      missing.forEach((p, i) => (next[p] = got[i] ?? null));
+      appIcons = next;
+    } catch (e) {
+      console.error(e);
+    }
+  }
   // The ropes that exist do not depend on the search (the window height does not jump while typing).
   const shownFiles = $derived.by(() => {
     const src = settings?.lineFilesSources ?? { added: true, converted: true, downloaded: true };
@@ -69,7 +84,7 @@
     zoom = null;
   }
   const baseRopes = $derived(
-    splitRopes(items, ropeCfg, settings?.lineRopeOrder, shownFiles).slice(0, maxRopes(height, settings?.lineSize ?? 'medium')),
+    splitRopes(items, ropeCfg, settings?.lineRopeOrder, shownFiles, shortcuts).slice(0, maxRopes(height, settings?.lineSize ?? 'medium')),
   );
   const ropes = $derived(
     baseRopes.map((r) => {
@@ -163,6 +178,7 @@
     applyTheme();
     if (s.reduceMotion) stopLoop();
     if (ropesChanged) markDirty();
+    if (shown && s.lineRopes.shortcuts) void loadIcons();
     scheduleBreeze();
   }
 
@@ -265,6 +281,7 @@
       return;
     }
     if (my !== seq) return;
+    if (ropeCfg.shortcuts) void loadIcons();
     const next = lists.flat();
     const nextIds = new Set<number>([...next.map((i) => i.id), ...nextFiles.map((f) => fileId(f.path))]);
     const fresh =
@@ -436,7 +453,7 @@
   function pick(c: LineCard, e: MouseEvent) {
     clearTimeout(clickTimer);
     const mods = { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey } as MouseEvent;
-    if (opens() && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+    if (c.app || (opens() && !e.shiftKey && !e.ctrlKey && !e.metaKey)) {
       pickNow(c, mods);
       return;
     }
@@ -444,11 +461,15 @@
   }
 
   function dblclick(c: LineCard) {
-    if (opens()) return; // the first click already opened it
+    if (opens() || c.app) return; // the first click already opened it
     void openCard(c);
   }
 
   function pickNow(c: LineCard, e: MouseEvent) {
+    if (c.app) {
+      void openCard(c);
+      return;
+    }
     const ctrl = e.ctrlKey || e.metaKey;
     if ((e.shiftKey || ctrl) && selected.length > 0 && selected[0] < 0 !== c.id < 0) {
       // a selection holds clips or files, never both: the other kind starts a new one
@@ -482,13 +503,27 @@
     if (now - openedAt < 500) return;
     openedAt = now;
     try {
-      if (c.file) {
+      if (c.app) {
+        await api.lineShortcutLaunch(c.app.path);
+        await hide();
+      } else if (c.file) {
         await api.lineFileOpen(c.file.path);
         await hide();
       } else if (c.item) {
         await api.lineOpenClip(c.item.id);
         await hide();
       }
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  /** Take a shortcut off the rope (the app itself stays). */
+  async function removeShortcut(c: LineCard) {
+    if (!c.app || !settings) return;
+    const path = c.app.path;
+    try {
+      applySettings(await api.setSettings({ ...settings, lineShortcuts: settings.lineShortcuts.filter((s) => s.path !== path) }));
     } catch (e) {
       fail(e);
     }
@@ -519,6 +554,7 @@
   }
 
   async function dragOut(c: LineCard) {
+    if (c.app) return;
     dragging = true;
     menu = null;
     zoom = null;
@@ -590,7 +626,7 @@
   // ------------------------------------------------------------ context menu
   function openMenu(c: LineCard, e: MouseEvent) {
     zoom = null;
-    const h = c.file ? 330 : c.item?.kind === 'image' ? 370 : 290;
+    const h = c.app ? 160 : c.file ? 330 : c.item?.kind === 'image' ? 370 : 290;
     menu = { x: Math.max(4, Math.min(e.clientX, width - MENU_W - 4)), y: Math.max(4, Math.min(e.clientY, window.innerHeight - h - 4)), card: c };
   }
 
@@ -818,17 +854,17 @@
       ropeOp={op}
       zoomOn={settings?.lineZoomOnHover ?? false}
       onzoom={(item, rect) => (zoom = shown && item && rect ? { item, rect } : null)}
-      emptyText={query.trim() ? t('search.none') : t('rope.empty')}
+      emptyText={query.trim() ? t('search.none') : rope.key === 'shortcuts' ? t('shortcut.addHint') : t('rope.empty')}
       collapsed={collapsed.includes(rope.key)}
       ontoggle={() => toggleRope(rope.key)}
       onpin={(c) => void pinCard(c)}
       onclick={pick}
       ondblclick={dblclick}
       ondragout={dragOut}
-      onremove={(c) => void trash(targetsFor(c))}
+      onremove={(c) => void (c.app ? removeShortcut(c) : trash(targetsFor(c)))}
       oncontext={openMenu}
       onhover={onHover}
-      onmore={() => void api.showMain(rope.key === 'files' ? 'recent' : 'clipboard').then(hide).catch(fail)}
+      onmore={() => void api.showMain(rope.key === 'files' ? 'recent' : rope.key === 'shortcuts' ? 'line' : 'clipboard').then(hide).catch(fail)}
     />
   {/each}
   {#if paused && !empty}<span class="paused" class:shift={searchOpen}>{t('paused')}</span>{/if}
@@ -887,7 +923,14 @@
   {@const c = menu.card}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="menu" role="menu" tabindex="-1" bind:this={menuEl} style:left="{menu.x}px" style:top="{menu.y}px" style:width="{MENU_W}px">
-    {#if c.file}
+    {#if c.app}
+      {@const a = c.app}
+      <button type="button" role="menuitem" onclick={() => menuDo(() => openCard(c))}>{t('menu.open')}</button>
+      <button type="button" role="menuitem" onclick={() => menuDo(() => api.lineShortcutReveal(a.path))}>{t('menu.reveal')}</button>
+      <button type="button" role="menuitem" onclick={() => menuDo(async () => { await api.lineCopyText(a.path); showToast(t('pathCopied')); })}>{t('menu.copyPath')}</button>
+      <hr />
+      <button type="button" role="menuitem" class="danger" onclick={() => menuDo(() => removeShortcut(c))}>{t('menu.removeShortcut')}</button>
+    {:else if c.file}
       {@const f = c.file}
       <button type="button" role="menuitem" onclick={() => menuDo(() => openCard(c))}>{t('menu.open')}</button>
       <button type="button" role="menuitem" onclick={() => menuDo(async () => { await copy(targetsFor(c)); })}>{t('menu.copy')}</button>

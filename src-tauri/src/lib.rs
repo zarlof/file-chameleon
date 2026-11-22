@@ -2,6 +2,7 @@
 //! listener, job queue) lives in Rust; webviews only exist while visible (main) or are
 //! kept tiny (overlay), to keep memory low.
 
+mod apps;
 mod events;
 mod files;
 mod float;
@@ -153,6 +154,10 @@ pub fn run() {
             ipc::line::line_open_clip,
             ipc::line::line_share,
             ipc::line::line_file_pin,
+            ipc::line::apps_list,
+            ipc::line::app_icons,
+            ipc::line::line_shortcut_launch,
+            ipc::line::line_shortcut_reveal,
             ipc::line::line_file_drag_out,
             ipc::line::open_url,
             ipc::line::float_open,
