@@ -1,21 +1,24 @@
 <!--
   Line — the clothesline: up to four ropes (images, texts, links, files) across the top (or bottom) of the screen
-  with the latest clips and files pinned on them. Click copies, drag leaves the window, right-click opens a menu.
+  with the latest clips and files pinned on them. Click opens (or copies), dragging along a rope reorders the
+  cards (the place is kept), dragging out of the window drops the card into another app, resting on a card
+  shows a large preview, the gear on a card sets its own colour, right-click opens a menu.
   Zero work at rest: one shared rAF loop runs only while a card swings or falls, and there are no
   timers while the line is hidden. Reduce motion = no loop and no breeze.
   Never imports from src/app/.
 -->
 <script lang="ts">
   import { onMount, tick as afterRender } from 'svelte';
-  import { convertFileSrc } from '@tauri-apps/api/core';
   import { api, errorOf, on } from '../lib/ipc';
   import type { ClipItem, ClipShelf, LineFile, Settings } from '../lib/types';
-  import { fitCount, matches, overflow, ropeCards, ropeName, splitRopes, toggleCollapsed, type LineCard, type RopeKey, type ShortcutCard } from './logic';
+  import { allowedSlot, dropRank, fitCount, matches, overflow, ropeCards, ropeName, splitRopes, toggleCollapsed, type LineCard, type RopeKey } from './logic';
   import { fileId } from './files';
-  import { cardOpacity, cardStyleAttr, fitFolded, fitSize, foldedHeight, foldedTops, ropeColor, sizeInfo } from './layout';
+  import { cardCenter, cardOpacity, cardStyleAttr, colorStyle, fitFolded, fitSize, foldedHeight, foldedTops, ropeColor, sizeInfo, slotAt } from './layout';
   import { isCommandKey, nextFocus, type Focus, type NavKey } from './keys';
   import { quiet, tick as hangTick } from './sound';
   import Preview from './Preview.svelte';
+  import HoverPreview from './HoverPreview.svelte';
+  import CardPopover from './CardPopover.svelte';
   import { setLang, getLang, t } from './i18n';
   import { atRest, impulse, step, swingK, type Pend } from './physics';
   import Rope from './Rope.svelte';
@@ -26,7 +29,8 @@
   const SHELF: Record<'images' | 'text' | 'links', ClipShelf> = { images: 'images', text: 'texts', links: 'links' };
   const RELOAD_DEBOUNCE = 150;
   const MENU_W = 196;
-  const ZOOM_W = 2;
+  /** The hover preview stays this long after the pointer leaves the card (time to move onto it). */
+  const HOVER_GRACE = 160;
 
   let settings = $state<Settings | null>(null);
   let items = $state<ClipItem[]>([]);
@@ -49,31 +53,20 @@
   /** Keyboard focus (rope row, card index). Null until a key moves it; the mouse clears it. */
   let focus = $state<Focus | null>(null);
   let previewOn = $state(false);
-  let zoom = $state<{ item: ClipItem; rect: DOMRect } | null>(null);
+  /** The large preview of the card the pointer rests on. */
+  let hover = $state<{ card: LineCard; rect: DOMRect } | null>(null);
+  let hoverTimer: ReturnType<typeof setTimeout> | undefined;
+  /** A card being dragged along its rope: `r` = rope index, `from` = its slot, `slot` = where it would land. */
+  let drag = $state<{ id: number; r: number; from: number; slot: number; x0: number; y0: number; dx: number; dy: number; pointer: number } | null>(null);
+  /** The card settings panel (the gear) and the card it belongs to. */
+  let cardPop = $state<{ card: LineCard; rect: DOMRect } | null>(null);
+  let cardPopEl = $state<HTMLElement | null>(null);
   let isDark = $state(true);
   const angles = $state<Record<number, number>>({});
   const falls = $state<Record<number, number>>({});
 
   const reduce = $derived(settings?.reduceMotion ?? false);
-  const ropeCfg = $derived(settings?.lineRopes ?? { images: true, text: true, links: true, files: true, shortcuts: true });
-  /** Cached icon PNG per shortcut path (null = the shell has none). */
-  let appIcons = $state<Record<string, string | null>>({});
-  const shortcuts = $derived<ShortcutCard[]>((settings?.lineShortcuts ?? []).map((s) => ({ ...s, icon: appIcons[s.path] ?? null })));
-  /** Paths already asked for (a second load while the first runs must not ask again). */
-  const iconAsked = new Set<string>();
-  async function loadIcons() {
-    const missing = (settings?.lineShortcuts ?? []).map((s) => s.path).filter((p) => !(p in appIcons) && !iconAsked.has(p));
-    if (missing.length === 0) return;
-    for (const p of missing) iconAsked.add(p);
-    try {
-      const got = await api.appIcons(missing);
-      const next = { ...appIcons };
-      missing.forEach((p, i) => (next[p] = got[i] ?? null));
-      appIcons = next;
-    } catch (e) {
-      console.error(e);
-    }
-  }
+  const ropeCfg = $derived(settings?.lineRopes ?? { images: true, text: true, links: true, files: true });
   // The ropes that exist do not depend on the search (the window height does not jump while typing).
   const shownFiles = $derived.by(() => {
     const src = settings?.lineFilesSources ?? { added: true, converted: true, downloaded: true };
@@ -86,14 +79,14 @@
   async function toggleRope(key: RopeKey) {
     if (!settings) return;
     focus = null;
-    zoom = null;
+    closeHover();
     try {
       applySettings(await api.setSettings({ ...settings, lineFolded: toggleCollapsed(collapsed, key) }));
     } catch (e) {
       fail(e);
     }
   }
-  const allRopes = $derived(splitRopes(items, ropeCfg, settings?.lineRopeOrder, shownFiles, shortcuts));
+  const allRopes = $derived(splitRopes(items, ropeCfg, settings?.lineRopeOrder, shownFiles));
   const allFolded = $derived(allRopes.length > 0 ? allRopes.map((r) => collapsed.includes(r.key)) : [false]);
   // A size that lets every rope show (Rust sized the window with the same rule).
   const sizeName = $derived(fitSize(allFolded, height, settings?.lineSize ?? 'medium'));
@@ -116,7 +109,9 @@
   const cardOp = $derived(cardOpacity(op * 100));
   const thickness = $derived(Math.min(6, Math.max(1, settings?.lineThickness ?? 2)));
   const color = $derived(ropeColor(settings?.lineColor ?? 'natural', 'var(--accent)', isDark ? 'dark' : 'light'));
-  const cardVarsStyle = $derived(cardStyleAttr(settings?.lineCardStyle ?? 'glassDark', settings?.lineCardRadius ?? 10, settings?.lineCardShadow ?? true));
+  const cardVarsStyle = $derived(
+    cardStyleAttr(settings?.lineCardStyle ?? 'glassDark', settings?.lineCardRadius ?? 10, settings?.lineCardShadow ?? true, settings?.lineCardColor ?? ''),
+  );
   const maxPer = $derived(settings?.lineMaxPerRope ?? 0);
   const baseFit = $derived(fitCount(width - 72, size.card));
   const fit = $derived(maxPer >= 3 ? Math.min(baseFit, maxPer) : baseFit);
@@ -190,7 +185,6 @@
     applyTheme();
     if (s.reduceMotion) stopLoop();
     if (ropesChanged) markDirty();
-    if (shown && s.lineRopes.shortcuts) void loadIcons();
     scheduleBreeze();
   }
 
@@ -293,7 +287,6 @@
       return;
     }
     if (my !== seq) return;
-    if (ropeCfg.shortcuts) void loadIcons();
     const next = lists.flat();
     const nextIds = new Set<number>([...next.map((i) => i.id), ...nextFiles.map((f) => fileId(f.path))]);
     const fresh =
@@ -343,7 +336,9 @@
     searchFocused = false;
     focus = null;
     previewOn = false;
-    zoom = null;
+    closeHover();
+    endDrag();
+    cardPop = null;
     selected = [];
     anchor = null;
     toast = null;
@@ -369,8 +364,8 @@
     hoverId = null;
     clearTimeout(peekTimer);
     clearTimeout(hideTimer);
-    zoom = null;
-    if (menu || searchFocused || query || previewOn) return; // in use: Esc or a click outside closes it
+    closeHover();
+    if (menu || cardPop || drag || searchFocused || query || previewOn) return; // in use: Esc or a click outside closes it
     hideTimer = setTimeout(() => {
       if (!dragging && !menu) void hide();
     }, hideDelay);
@@ -465,7 +460,7 @@
   function pick(c: LineCard, e: MouseEvent) {
     clearTimeout(clickTimer);
     const mods = { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey } as MouseEvent;
-    if (c.app || (opens() && !e.shiftKey && !e.ctrlKey && !e.metaKey)) {
+    if (opens() && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
       pickNow(c, mods);
       return;
     }
@@ -473,15 +468,11 @@
   }
 
   function dblclick(c: LineCard) {
-    if (opens() || c.app) return; // the first click already opened it
+    if (opens()) return; // the first click already opened it
     void openCard(c);
   }
 
   function pickNow(c: LineCard, e: MouseEvent) {
-    if (c.app) {
-      void openCard(c);
-      return;
-    }
     const ctrl = e.ctrlKey || e.metaKey;
     if ((e.shiftKey || ctrl) && selected.length > 0 && selected[0] < 0 !== c.id < 0) {
       // a selection holds clips or files, never both: the other kind starts a new one
@@ -515,27 +506,13 @@
     if (now - openedAt < 500) return;
     openedAt = now;
     try {
-      if (c.app) {
-        await api.lineShortcutLaunch(c.app.path);
-        await hide();
-      } else if (c.file) {
+      if (c.file) {
         await api.lineFileOpen(c.file.path);
         await hide();
       } else if (c.item) {
         await api.lineOpenClip(c.item.id);
         await hide();
       }
-    } catch (e) {
-      fail(e);
-    }
-  }
-
-  /** Take a shortcut off the rope (the app itself stays). */
-  async function removeShortcut(c: LineCard) {
-    if (!c.app || !settings) return;
-    const path = c.app.path;
-    try {
-      applySettings(await api.setSettings({ ...settings, lineShortcuts: settings.lineShortcuts.filter((s) => s.path !== path) }));
     } catch (e) {
       fail(e);
     }
@@ -566,10 +543,9 @@
   }
 
   async function dragOut(c: LineCard) {
-    if (c.app) return;
     dragging = true;
     menu = null;
-    zoom = null;
+    closeHover();
     try {
       if (c.file) await api.lineFileDragOut(c.file.path);
       else if (c.item) await api.lineDragOut(c.item.id);
@@ -637,14 +613,15 @@
 
   // ------------------------------------------------------------ context menu
   function openMenu(c: LineCard, e: MouseEvent) {
-    zoom = null;
-    const entries = menuEntries(c, menuActions(c), t);
+    closeHover();
+    cardPop = null;
+    const entries = menuEntries(c, menuActions(c, new DOMRect(e.clientX, e.clientY, 0, 0)), t);
     const h = menuHeight(entries);
     menu = { x: Math.max(4, Math.min(e.clientX, width - MENU_W - 4)), y: Math.max(4, Math.min(e.clientY, window.innerHeight - h - 4)), card: c, entries };
   }
 
   /** What each menu entry does for card `c`. */
-  function menuActions(c: LineCard): MenuActions {
+  function menuActions(c: LineCard, at: DOMRect): MenuActions {
     const ids = () => targetsFor(c);
     return {
       open: () => openCard(c),
@@ -653,8 +630,8 @@
       edit: () => editCard(c),
       pin: () => pinCard(c),
       share: () => share(ids()),
-      trash: () => (c.app ? removeShortcut(c) : trash(ids())),
-      reveal: (path) => (c.app ? api.lineShortcutReveal(path) : api.lineFileReveal(path)),
+      trash: () => trash(ids()),
+      reveal: (path) => api.lineFileReveal(path),
       copyPath: async (path) => {
         await api.lineCopyText(path);
         showToast(t('pathCopied'));
@@ -669,13 +646,143 @@
         await api.clipSaveImage(c.item.id, 'png');
         showToast(t('saved'));
       },
-      removeShortcut: () => removeShortcut(c),
+      card: () => openCardPop(c, at),
     };
+  }
+
+  // ------------------------------------------------------------ hover preview
+  function closeHover() {
+    clearTimeout(hoverTimer);
+    hover = null;
+  }
+
+  /** A card asks for its preview (after a rest) or lets it go (`rect` null: a short grace first). */
+  function onPreview(c: LineCard, rect: DOMRect | null) {
+    clearTimeout(hoverTimer);
+    if (rect) {
+      if (shown && !drag && !menu && !cardPop && !previewOn) hover = { card: c, rect };
+      return;
+    }
+    if (hover?.card.id === c.id) hoverTimer = setTimeout(() => (hover = null), HOVER_GRACE);
+  }
+
+  // ------------------------------------------------------------ card settings (the gear)
+  function openCardPop(c: LineCard, rect: DOMRect) {
+    closeHover();
+    menu = null;
+    cardPop = { card: c, rect };
+  }
+
+  function closeCardPop() {
+    if (!cardPop) return;
+    cardPop = null;
+    if (!pointerInside) leave();
+  }
+
+  /** Give the card (or the whole selection it is part of) its own colour; null = the line's colour. */
+  async function setCardColor(color: string | null) {
+    if (!cardPop) return;
+    const { clips, paths } = splitTargets(targetsFor(cardPop.card));
+    // At once on screen; the reload that follows confirms it.
+    items = items.map((i) => (clips.includes(i.id) ? { ...i, color } : i));
+    files = files.map((f) => (paths.includes(f.path) ? { ...f, color } : f));
+    try {
+      await api.lineCardColor(clips, paths, color);
+    } catch (e) {
+      fail(e);
+      markDirty();
+    }
+  }
+
+  const popCount = $derived(cardPop ? Math.max(1, targetsFor(cardPop.card).length) : 1);
+  const popColor = $derived.by(() => {
+    if (!cardPop) return null;
+    const c = byId.get(cardPop.card.id) ?? cardPop.card;
+    return c.item?.color ?? c.file?.color ?? null;
+  });
+
+  // ------------------------------------------------------------ drag along the rope
+  /** The pointer moved 6 px on a card: from now on it follows the pointer along its rope. Leaving the
+   *  window, or the rope's band by more than half its height, hands it to Windows as a drag-out. */
+  function startDrag(c: LineCard, e: PointerEvent) {
+    closeHover();
+    menu = null;
+    cardPop = null;
+    const r = ropes.findIndex((x) => x.cards.some((k) => k.id === c.id));
+    const from = r >= 0 ? (order[r]?.indexOf(c.id) ?? -1) : -1;
+    if (r < 0 || from < 0) {
+      void dragOut(c);
+      return;
+    }
+    dragging = true;
+    drag = { id: c.id, r, from, slot: from, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, pointer: e.pointerId };
+    window.addEventListener('pointermove', dragMove);
+    window.addEventListener('pointerup', dragEnd);
+    window.addEventListener('pointercancel', dragCancel);
+  }
+
+  function dragMove(e: PointerEvent) {
+    if (!drag || e.pointerId !== drag.pointer) return;
+    const dx = e.clientX - drag.x0;
+    const dy = e.clientY - drag.y0;
+    const outside = e.clientX < 0 || e.clientY < 0 || e.clientX > width || e.clientY > window.innerHeight;
+    if (outside || Math.abs(dy) > size.band * 0.6) {
+      const c = byId.get(drag.id);
+      endDrag();
+      if (c) void dragOut(c);
+      return;
+    }
+    const visible = ropes[drag.r]?.cards.slice(0, fit) ?? [];
+    const rest = visible.filter((k) => k.id !== drag!.id);
+    const moved = visible[drag.from];
+    const wanted = slotAt(cardCenter(drag.from, size.card) + dx, size.card, rest.length);
+    const slot = moved ? allowedSlot(rest, !!(moved.item?.pinned ?? moved.file?.pinned), wanted) : wanted;
+    drag = { ...drag, dx, dy: Math.max(-12, Math.min(12, dy)), slot };
+  }
+
+  function dragEnd(e: PointerEvent) {
+    if (!drag || e.pointerId !== drag.pointer) return;
+    const d = drag;
+    endDrag();
+    const cards = ropes[d.r]?.cards ?? [];
+    const rank = dropRank(cards, d.from, d.slot);
+    const c = cards[d.from];
+    if (rank === null || !c) return;
+    // Show the new place at once; the store's change event reloads the list.
+    if (c.item) {
+      const id = c.item.id;
+      items = items.map((i) => (i.id === id ? { ...i, rank } : i));
+      void api.lineClipRank(id, rank).catch((err) => {
+        fail(err);
+        markDirty();
+      });
+    } else if (c.file) {
+      const path = c.file.path;
+      files = files.map((f) => (f.path === path ? { ...f, rank } : f));
+      void api.lineFileRank(path, rank).catch((err) => {
+        fail(err);
+        markDirty();
+      });
+    }
+  }
+
+  function dragCancel(e: PointerEvent) {
+    if (drag && e.pointerId === drag.pointer) endDrag();
+  }
+
+  function endDrag() {
+    window.removeEventListener('pointermove', dragMove);
+    window.removeEventListener('pointerup', dragEnd);
+    window.removeEventListener('pointercancel', dragCancel);
+    if (!drag) return;
+    drag = null;
+    dragging = false;
+    if (!pointerInside && shown) leave();
   }
 
   // ------------------------------------------------------------ input
   /** What a click may land on without closing the line (cards, buttons, the menu, the search…). */
-  const KEEP_OPEN = '.card, .label.tool, .menu, .search, .toast, .more, .preview, .paused';
+  const KEEP_OPEN = '.card, .label.tool, .menu, .search, .toast, .more, .preview, .paused, .hoverpv, .cardpop';
 
   function onpointerdown(e: PointerEvent) {
     // A peek / edge reveal does not own the focus: the first click takes it before anything else.
@@ -685,12 +792,22 @@
       closeMenu();
       return;
     }
+    if (cardPop && !cardPopEl?.contains(target)) {
+      closeCardPop();
+      return;
+    }
     // A left click on the empty strip (between the cards, on a rope) closes the line.
     if (e.button === 0 && !target?.closest(KEEP_OPEN)) void hide();
   }
 
   /** A right-click while the menu is open only closes it (on a card too). */
   function oncontextmenuCapture(e: MouseEvent) {
+    if (cardPop && !cardPopEl?.contains(e.target as Node)) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeCardPop();
+      return;
+    }
     if (!menu) return;
     e.preventDefault();
     e.stopPropagation();
@@ -741,6 +858,7 @@
     if (e.key === 'Escape') {
       e.preventDefault();
       if (previewOn) previewOn = false;
+      else if (cardPop) closeCardPop();
       else if (menu) closeMenu();
       else if (selected.length > 0) selected = [];
       else if (query) query = '';
@@ -795,14 +913,14 @@
       if (e.repeat) return;
       if (previewOn) previewOn = false;
       else if (ensureFocus() && itemOf(focusedId)) {
-        zoom = null;
+        closeHover();
         previewOn = true;
       }
     } else if (key.startsWith('Arrow') || key === 'Home' || key === 'End') {
       // the first arrow press only shows the focus (on the hovered or first card); the next ones move it
       if (focus === null || focusedId === null) ensureFocus();
       else focus = nextFocus(order.map((r) => r.length), focus, key as NavKey);
-      zoom = null;
+      closeHover();
     } else if (/^[1-9]$/.test(key)) {
       if (!ensureFocus() || !focus) return;
       const n = Number(key) - 1;
@@ -868,7 +986,8 @@
       root.removeEventListener('pointerleave', leave);
       root.removeEventListener('pointermove', moved);
       if (raf) cancelAnimationFrame(raf);
-      for (const timer of [hideTimer, peekTimer, breezeTimer, toastTimer, copiedTimer, clickTimer, reloadTimer]) clearTimeout(timer);
+      for (const timer of [hideTimer, peekTimer, breezeTimer, toastTimer, copiedTimer, clickTimer, reloadTimer, hoverTimer]) clearTimeout(timer);
+      endDrag();
       unlisten.forEach((u) => u());
     };
   });
@@ -903,19 +1022,21 @@
       pinColor={settings?.linePinColor ?? 'auto'}
       {cardOp}
       ropeOp={op}
-      zoomOn={settings?.lineZoomOnHover ?? false}
-      onzoom={(item, rect) => (zoom = shown && item && rect ? { item, rect } : null)}
-      emptyText={query.trim() ? t('search.none') : rope.key === 'shortcuts' ? t('shortcut.addHint') : t('rope.empty')}
+      previewOn={settings?.lineZoomOnHover ?? true}
+      onpreview={onPreview}
+      drag={drag && drag.r === i ? drag : null}
+      emptyText={query.trim() ? t('search.none') : t('rope.empty')}
       collapsed={collapsed.includes(rope.key)}
       ontoggle={() => void toggleRope(rope.key)}
       onpin={(c) => void pinCard(c)}
       onclick={pick}
       ondblclick={dblclick}
-      ondragout={dragOut}
-      onremove={(c) => void (c.app ? removeShortcut(c) : trash(targetsFor(c)))}
+      ondragstart={startDrag}
+      onremove={(c) => void trash(targetsFor(c))}
       oncontext={openMenu}
       onhover={onHover}
-      onmore={() => void api.showMain(rope.key === 'files' ? 'recent' : rope.key === 'shortcuts' ? 'line' : 'clipboard').then(hide).catch(fail)}
+      onmore={() => void api.showMain(rope.key === 'files' ? 'recent' : 'clipboard').then(hide).catch(fail)}
+      ongear={openCardPop}
     />
   {/each}
   {#if paused && !empty}<span class="paused" class:shift={searchOpen}>{t('paused')}</span>{/if}
@@ -951,23 +1072,27 @@
   {/if}
 </div>
 
-{#if zoom && !previewOn}
-  {@const z = zoom}
-  {@const file = z.item.edited ?? z.item.image ?? z.item.thumb}
-  {@const zw = Math.min(z.rect.width * ZOOM_W, width - 8)}
-  {@const ratio = z.item.width && z.item.height ? z.item.height / z.item.width : 0.75}
-  {@const zh = Math.min(zw * ratio, Math.max(60, stripH - 8))}
-  {#if file}
-    <img
-      class="zoom"
-      src={convertFileSrc(file)}
-      alt=""
-      style:width="{zw}px"
-      style:height="{zh}px"
-      style:left="{Math.max(4, Math.min(z.rect.left + z.rect.width / 2 - zw / 2, width - zw - 4))}px"
-      style:top="{Math.max(4, Math.min(z.rect.bottom + 6, stripH - zh - 4))}px"
-    />
-  {/if}
+{#if hover && !previewOn && !drag}
+  {@const h = hover}
+  <HoverPreview
+    card={byId.get(h.card.id) ?? h.card}
+    rect={h.rect}
+    cardW={size.card}
+    winW={width}
+    winH={height}
+    vars={`${cardVarsStyle};${colorStyle(h.card.item?.color ?? h.card.file?.color ?? null)}`}
+    onenter={() => clearTimeout(hoverTimer)}
+    onleave={() => closeHover()}
+    onopen={() => {
+      const c = byId.get(h.card.id) ?? h.card;
+      closeHover();
+      void openCard(c);
+    }}
+  />
+{/if}
+
+{#if cardPop}
+  <CardPopover rect={cardPop.rect} winW={width} winH={height} count={popCount} current={popColor} bind:el={cardPopEl} onpick={(c) => void setCardColor(c)} onclose={closeCardPop} />
 {/if}
 
 {#if menu}
@@ -1016,15 +1141,6 @@
     outline: none;
   }
   .search:focus { box-shadow: inset 0 0 0 2px var(--accent), var(--shadow-sm); }
-  .zoom {
-    position: fixed;
-    z-index: 9;
-    object-fit: contain;
-    border-radius: var(--radius-sm);
-    background: var(--elevated-bg);
-    box-shadow: var(--shadow-lg);
-    pointer-events: none;
-  }
   .empty {
     position: absolute;
     left: 50%;

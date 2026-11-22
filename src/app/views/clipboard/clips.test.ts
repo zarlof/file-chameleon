@@ -32,7 +32,7 @@ import {
 function item(id: number, kind: ClipItem['kind'], extra: Partial<ClipItem> = {}): ClipItem {
   return { id, kind, text: null, image: null, thumb: null, width: null, height: null, site: null, hash: String(id), createdAt: id, pinned: false,
     title: null, note: null, tags: [], folder: null, ocr: null, trashedAt: null, sourceApp: null, linkTitle: null,
-    edited: null, editedThumb: null, saved: false, size: 0, ...extra };
+    edited: null, editedThumb: null, saved: false, size: 0, rank: null, color: null, ...extra };
 }
 
 const ids = (list: ClipItem[]) => list.map((i) => i.id);

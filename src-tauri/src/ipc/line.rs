@@ -1,7 +1,8 @@
 //! Commands of the clothesline and the float windows. The work is in `line` and `float`.
 
 use super::CmdResult;
-use tauri::AppHandle;
+use crate::state::AppState;
+use tauri::{AppHandle, Manager};
 
 /// Show the line. The page only ever asks for "hotkey" (activating); the other modes come from
 /// the clipboard watcher and the mouse hook.
@@ -51,28 +52,67 @@ pub async fn line_file_pin(app: AppHandle, paths: Vec<String>, pinned: bool) -> 
     super::blocking(move || crate::files::pin(&app, &paths, pinned)).await?
 }
 
-/// Apps the user can put on the shortcuts rope (Start menu, taskbar, desktop).
-#[tauri::command]
-pub async fn apps_list() -> CmdResult<Vec<crate::apps::AppEntry>> {
-    super::blocking(crate::apps::list).await
-}
-
-/// Cached icon PNGs of apps / shortcuts (None where the shell has none).
-#[tauri::command]
-pub async fn app_icons(app: AppHandle, paths: Vec<String>) -> CmdResult<Vec<Option<String>>> {
-    super::blocking(move || crate::apps::icons(&app, &paths)).await
-}
-
-/// Start an app of the shortcuts rope.
+/// Place a clip where it was dropped on its rope (`rank`: higher = further left; `None` = back
+/// to its time order).
 #[tauri::command(async)]
-pub fn line_shortcut_launch(app: AppHandle, path: String) -> CmdResult<()> {
-    crate::apps::launch(&app, &path)
+pub fn line_clip_rank(app: AppHandle, id: u64, rank: Option<f64>) -> CmdResult<()> {
+    let state = app.state::<AppState>();
+    state
+        .clips()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .set_rank(id, rank)?;
+    super::clipboard::changed(&app);
+    Ok(())
 }
 
-/// Show an app of the shortcuts rope in Explorer.
-#[tauri::command(async)]
-pub fn line_shortcut_reveal(app: AppHandle, path: String) -> CmdResult<()> {
-    crate::apps::reveal(&app, &path)
+/// Place a file of the files rope where it was dropped.
+#[tauri::command]
+pub async fn line_file_rank(app: AppHandle, path: String, rank: Option<f64>) -> CmdResult<()> {
+    super::blocking(move || crate::files::set_rank(&app, &path, rank)).await?
+}
+
+/// Give cards their own colour (`#rrggbb`; `None` = the line's card colour): clips by id,
+/// files by path.
+#[tauri::command]
+pub async fn line_card_color(
+    app: AppHandle,
+    ids: Vec<u64>,
+    paths: Vec<String>,
+    color: Option<String>,
+) -> CmdResult<()> {
+    super::blocking(move || -> CmdResult<()> {
+        if !ids.is_empty() {
+            let state = app.state::<AppState>();
+            state
+                .clips()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .set_color(&ids, color.as_deref())?;
+            super::clipboard::changed(&app);
+        }
+        if !paths.is_empty() {
+            crate::files::set_color(&app, &paths, color.as_deref())?;
+        }
+        Ok(())
+    })
+    .await?
+}
+
+/// Drop the own colour of every card (clips and files): they all take the line's card colour.
+#[tauri::command]
+pub async fn line_clear_card_colors(app: AppHandle) -> CmdResult<()> {
+    super::blocking(move || -> CmdResult<()> {
+        let state = app.state::<AppState>();
+        state
+            .clips()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear_colors()?;
+        super::clipboard::changed(&app);
+        crate::files::clear_colors(&app)
+    })
+    .await?
 }
 
 /// Copy the clips, hide the line and paste into the app it was opened from.

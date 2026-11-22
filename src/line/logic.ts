@@ -1,12 +1,10 @@
 // Pure helpers for the line: which clips hang on which rope, how many fit, what a card says.
-import type { ClipItem, LineFile, LineRopeKey, LineShortcut } from '../lib/types';
+import type { ClipItem, LineFile, LineRopeKey } from '../lib/types';
 
 export type RopeKey = LineRopeKey;
-/** A shortcut of the shortcuts rope with its cached icon (null = none yet). */
-export type ShortcutCard = LineShortcut & { icon: string | null };
-export type Rope = { key: RopeKey; items: ClipItem[]; files: LineFile[]; apps: ShortcutCard[] };
+export type Rope = { key: RopeKey; items: ClipItem[]; files: LineFile[] };
 
-const DEFAULT_ORDER: RopeKey[] = ['images', 'text', 'links', 'files', 'shortcuts'];
+const DEFAULT_ORDER: RopeKey[] = ['images', 'text', 'links', 'files'];
 
 function ropeOf(item: ClipItem): RopeKey {
   if (item.kind === 'image') return 'images';
@@ -14,10 +12,20 @@ function ropeOf(item: ClipItem): RopeKey {
   return 'links'; // link + mediaLink
 }
 
-/** Pinned first, then newest first. */
+/** Where a clip sits on its rope: the place it was dragged to, else its time (newest first). */
+export const clipRank = (i: ClipItem): number => i.rank ?? i.createdAt;
+/** The same for a file of the files rope. */
+export const fileRank = (f: LineFile): number => f.rank ?? f.at;
+
+/** Pinned first, then by rank (higher first): a dragged place, else newest first. */
 function order(a: ClipItem, b: ClipItem): number {
   if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-  return b.createdAt - a.createdAt || b.id - a.id;
+  return clipRank(b) - clipRank(a) || b.id - a.id;
+}
+
+function fileOrder(a: LineFile, b: LineFile): number {
+  if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+  return fileRank(b) - fileRank(a);
 }
 
 /** `o` made safe: unknown and repeated keys dropped, missing ones appended in the default order. */
@@ -31,20 +39,18 @@ export function sanitizeOrder(o: readonly string[] | undefined): RopeKey[] {
 /** Enabled ropes in `ropeOrder` (empty ones kept: every enabled rope shows). A rope missing from `ropes` is off. Trash is left out. */
 export function splitRopes(
   items: ClipItem[],
-  ropes: { images: boolean; text: boolean; links: boolean; files?: boolean; shortcuts?: boolean },
+  ropes: { images: boolean; text: boolean; links: boolean; files?: boolean },
   ropeOrder?: readonly string[],
   files: LineFile[] = [],
-  apps: ShortcutCard[] = [],
 ): Rope[] {
-  const out: Rope[] = sanitizeOrder(ropeOrder).filter((k) => ropes[k] === true).map((key) => ({ key, items: [], files: [], apps: [] }));
+  const out: Rope[] = sanitizeOrder(ropeOrder).filter((k) => ropes[k] === true).map((key) => ({ key, items: [], files: [] }));
   for (const item of items) {
     if (item.trashedAt !== null) continue;
     out.find((r) => r.key === ropeOf(item))?.items.push(item);
   }
   for (const r of out) {
     r.items.sort(order);
-    if (r.key === 'files') r.files = files;
-    if (r.key === 'shortcuts') r.apps = apps;
+    if (r.key === 'files') r.files = [...files].sort(fileOrder);
   }
   return out;
 }
@@ -53,11 +59,6 @@ export function splitRopes(
 export function ropeName(key: RopeKey, names: Partial<Record<RopeKey, string>> | undefined, fallback: string): string {
   const n = names?.[key]?.trim();
   return n ? n : fallback;
-}
-
-/** How many cards a rope holds. */
-export function ropeCount(r: Rope): number {
-  return r.key === 'files' ? r.files.length : r.key === 'shortcuts' ? r.apps.length : r.items.length;
 }
 
 /** How many cards fit in a rope `widthPx` wide. At least 1. */
@@ -118,10 +119,7 @@ export function matches(item: ClipItem, query: string): boolean {
 }
 
 /** One card on a rope: a clip or a file, with a number that is unique across both (files are negative). */
-export type LineCard = { id: number; item: ClipItem | null; file: LineFile | null; app?: ShortcutCard | null };
-
-/** Shortcut cards get ids below every file id (files use -1 .. -2147483647). */
-export const APP_ID_BASE = -2147483649;
+export type LineCard = { id: number; item: ClipItem | null; file: LineFile | null };
 
 /** The cards of a rope in display order. */
 export function ropeCards(r: Rope, fileIdOf: (path: string) => number): LineCard[] {
@@ -134,8 +132,37 @@ export function ropeCards(r: Rope, fileIdOf: (path: string) => number): LineCard
       return { id, item: null, file };
     });
   }
-  if (r.key === 'shortcuts') return r.apps.map((app, i) => ({ id: APP_ID_BASE - i, item: null, file: null, app }));
   return r.items.map((item) => ({ id: item.id, item, file: null }));
+}
+
+const cardPinned = (c: LineCard) => (c.item ? c.item.pinned : !!c.file?.pinned);
+const cardRank = (c: LineCard) => (c.item ? clipRank(c.item) : c.file ? fileRank(c.file) : 0);
+
+/** The slot a dragged card may take: pinned cards stay among the pinned ones at the start, the
+ *  others after them. `cards` is the rope without the dragged card, `to` the wanted slot in it. */
+export function allowedSlot(cards: readonly LineCard[], pinned: boolean, to: number): number {
+  const pinnedCount = cards.filter(cardPinned).length;
+  const t = Math.max(0, Math.min(cards.length, to));
+  return pinned ? Math.min(t, pinnedCount) : Math.max(t, pinnedCount);
+}
+
+/** The rank that puts the card at `from` into slot `to` of the others (both indexes in the rope's
+ *  current order; `to` counts without the dragged card). Null when the card stays where it is. */
+export function dropRank(cards: readonly LineCard[], from: number, to: number): number | null {
+  const moved = cards[from];
+  if (!moved) return null;
+  const rest = cards.filter((_, i) => i !== from);
+  const slot = allowedSlot(rest, cardPinned(moved), to);
+  if (slot === from) return null;
+  // Ranks only order cards within their group (pinned or not): a neighbour of the other group
+  // does not count.
+  const same = (c: LineCard | undefined) => (c && cardPinned(c) === cardPinned(moved) ? c : undefined);
+  const left = same(rest[slot - 1]);
+  const right = same(rest[slot]);
+  if (left && right) return (cardRank(left) + cardRank(right)) / 2;
+  if (right) return cardRank(right) + 1;
+  if (left) return cardRank(left) - 1;
+  return null;
 }
 
 /** Move rope `key` by `delta` places in `order` (up = -1, down = 1). Same array when it cannot move. */

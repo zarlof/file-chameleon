@@ -67,21 +67,22 @@ convert it in one click. **Ctrl+7** downloads the link you just copied.
 
 ### Clipboard
 
-- **The clothesline:** up to five ropes (images, texts, links, files, shortcuts) of white spider
+- **The clothesline:** up to four ropes (images, texts, links, files) of white spider
   silk across the top or bottom of the screen; little black spiders hang from them on their own
   threads and hold your clips. Every rope shows; the eye button by a rope's name folds it away. **Ctrl+1** opens it (**Ctrl+Alt+F**
   opens it with search), or move the mouse to the screen edge and keep it there for a moment (it
   can also peek when you copy something; off by default). Click a card to open it (or copy it, copy and
   close, or paste straight into the app you were in: your choice). Right-click for copy, edit,
   share (the Windows share sheet), pin and delete; the pin at a card's top left keeps it first. **Ctrl+Enter** pastes, 1-9 picks a card,
-  typing searches, Delete moves to the trash (Ctrl+Z brings it back). Drag a card out to drop it
-  into another app. Settings → **Line** changes the edge, size, rope and pin look, cards, colors,
+  typing searches, Delete moves to the trash (Ctrl+Z brings it back). Rest on a card for a moment
+  to see it 2.5 times larger (the whole picture, all of a text, a link's full address, a file's
+  name and folder). Drag a card along its rope to put it in another place (the place is kept);
+  drag it out of the line to drop it into another app. The gear on a card gives it a colour of its
+  own. Settings → **Line** changes the edge, size, rope and pin look, cards and their colour,
   swing, sounds, rope order and names, how many cards each rope holds, and more.
 - **The files rope:** the fourth rope holds files you added, converted or downloaded. Drag them out,
   open them, show them in Explorer, or put them on the clipboard. Right-click a file for more.
   The Explorer right-click verb **Hang on the line** ("İpe as" in Turkish) puts files there.
-- **The shortcuts rope:** pick apps from the taskbar, the Start menu or the desktop (or any file)
-  in Settings → **Line** → Shortcuts rope, then start them with one click from the line.
 - **Library:** the **Clipboard** page has folders, tags, a pinned filter, a trash, a grid or list
   view, and an inspector for titles, notes and editing text. Export items to a folder.
 - **Text in images:** the built-in Windows OCR reads text in copied images, offline. You can search

@@ -25,6 +25,12 @@ pub struct FileEntry {
     /// Pinned files stay first on the rope.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pinned: bool,
+    /// Place on the rope set by dragging (higher = further left); `None` = by `at`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rank: Option<f64>,
+    /// The card's own colour (`#rrggbb`); `None` = the line's card colour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
 }
 
 pub struct FileStore {
@@ -100,12 +106,18 @@ impl FileStore {
             return Ok(());
         }
         let keys: Vec<String> = paths.iter().map(|p| key(p)).collect();
-        // A file recorded again keeps its pin.
+        // A file recorded again keeps its pin and its colour; it moves to the front, so a
+        // dragged place is dropped.
         let pinned: Vec<String> = self
             .entries
             .iter()
             .filter(|e| e.pinned)
             .map(|e| key(&e.path))
+            .collect();
+        let colors: Vec<(String, String)> = self
+            .entries
+            .iter()
+            .filter_map(|e| e.color.clone().map(|c| (key(&e.path), c)))
             .collect();
         self.entries.retain(|e| !keys.contains(&key(&e.path)));
         let mut seen = Vec::new();
@@ -117,6 +129,11 @@ impl FileStore {
                     source,
                     at: now,
                     pinned: pinned.contains(&k),
+                    rank: None,
+                    color: colors
+                        .iter()
+                        .find(|(ck, _)| *ck == k)
+                        .map(|(_, c)| c.clone()),
                 });
                 seen.push(k);
             }
@@ -156,6 +173,49 @@ impl FileStore {
                 e.pinned = pinned;
                 changed = true;
             }
+        }
+        if changed {
+            self.save()?;
+        }
+        Ok(())
+    }
+
+    /// Set the dragged place of `path` (`None` = back to its time order).
+    pub fn set_rank(&mut self, path: &Path, rank: Option<f64>) -> Result<bool> {
+        let k = key(path);
+        let rank = rank.filter(|r| r.is_finite());
+        let Some(e) = self.entries.iter_mut().find(|e| key(&e.path) == k) else {
+            return Ok(false);
+        };
+        if e.rank != rank {
+            e.rank = rank;
+            self.save()?;
+        }
+        Ok(true)
+    }
+
+    /// Give `paths` their own card colour (`None` = the line's colour). Unknown paths are ignored.
+    pub fn set_color(&mut self, paths: &[PathBuf], color: Option<&str>) -> Result<()> {
+        let color = crate::settings::hex_colour(color);
+        let keys: Vec<String> = paths.iter().map(|p| key(p)).collect();
+        let mut changed = false;
+        for e in &mut self.entries {
+            if e.color != color && keys.contains(&key(&e.path)) {
+                e.color.clone_from(&color);
+                changed = true;
+            }
+        }
+        if changed {
+            self.save()?;
+        }
+        Ok(())
+    }
+
+    /// Drop every card's own colour.
+    pub fn clear_colors(&mut self) -> Result<()> {
+        let mut changed = false;
+        for e in &mut self.entries {
+            changed |= e.color.take().is_some();
         }
         if changed {
             self.save()?;
@@ -246,6 +306,32 @@ mod tests {
     }
 
     #[test]
+    fn rank_and_colour_follow_the_file() {
+        let d = tempfile::tempdir().unwrap();
+        let a = touch(d.path(), "a.txt");
+        let mut s = FileStore::open(d.path()).unwrap();
+        s.record(std::slice::from_ref(&a), FileSource::Added, 1)
+            .unwrap();
+        assert!(s.set_rank(&a, Some(5.5)).unwrap());
+        assert!(!s.set_rank(&d.path().join("nope"), Some(1.0)).unwrap());
+        s.set_color(std::slice::from_ref(&a), Some("#ABCDEF"))
+            .unwrap();
+        let s2 = FileStore::open(d.path()).unwrap();
+        assert_eq!(s2.entries[0].rank, Some(5.5));
+        assert_eq!(s2.entries[0].color.as_deref(), Some("#abcdef"));
+        // Recorded again: back to the front (no dragged place), colour kept.
+        s.record(std::slice::from_ref(&a), FileSource::Converted, 2)
+            .unwrap();
+        assert_eq!(s.entries[0].rank, None);
+        assert_eq!(s.entries[0].color.as_deref(), Some("#abcdef"));
+        s.set_color(std::slice::from_ref(&a), Some("blue")).unwrap();
+        assert_eq!(s.entries[0].color, None);
+        s.set_color(&[a], Some("#000000")).unwrap();
+        s.clear_colors().unwrap();
+        assert_eq!(s.entries[0].color, None);
+    }
+
+    #[test]
     #[cfg(windows)]
     fn paths_differing_in_case_are_one_entry() {
         let d = tempfile::tempdir().unwrap();
@@ -255,6 +341,8 @@ mod tests {
             source: FileSource::Added,
             at: 1,
             pinned: false,
+            rank: None,
+            color: None,
         });
         s.record(&[PathBuf::from(r"c:\a\X.PNG")], FileSource::Added, 2)
             .unwrap();

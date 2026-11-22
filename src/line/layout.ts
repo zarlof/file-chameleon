@@ -54,8 +54,58 @@ export function ropeColor(setting: string, accent: string, theme: 'dark' | 'ligh
   return accent;
 }
 
+/** Space between two cards on a rope, and the rope's inset at the first card (not scaled). */
+export const CARD_GAP = 16;
+export const CARD_MARGIN = 24;
+
+/** Horizontal centre of the card in slot `i` of a rope whose cards are `card` px wide. */
+export function cardCenter(i: number, card: number): number {
+  return CARD_MARGIN + i * (card + CARD_GAP) + card / 2;
+}
+
+/** The slot nearest to a card centred at `x` (0..count). */
+export function slotAt(x: number, card: number, count: number): number {
+  return Math.max(0, Math.min(count, Math.round((x - CARD_MARGIN - card / 2) / (card + CARD_GAP))));
+}
+
+/** Card colours offered on the line and in the settings. */
+export const CARD_COLORS = [
+  '#ffffff', '#f4efe6', '#fff3b0', '#ffd6a5', '#ffc6d0', '#d4c1ff',
+  '#bde0fe', '#c7f9cc', '#2b2d31', '#1e3a5f', '#4b2a6e', '#7a1f2b',
+] as const;
+
+/** A #rrggbb colour, else null. */
+export function hexOrNull(v: string | null | undefined): string | null {
+  return v && HEX.test(v) ? v.toLowerCase() : null;
+}
+
+/** Card look variables for a solid background `hex`: the text turns dark on light colours. */
+export function colorVars(hex: string): Record<string, string> {
+  const n = parseInt(hex.slice(1), 16);
+  const lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  const light = lum > 0.6;
+  return {
+    '--c-bg': hex,
+    '--c-fg': light ? '#16161a' : '#ffffff',
+    '--c-fg2': light ? 'rgba(22,22,26,0.66)' : 'rgba(255,255,255,0.72)',
+    '--c-edge': light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.14)',
+    '--c-blur': 'none',
+  };
+}
+
+/** `colorVars` as an inline style string ('' without a colour). */
+export function colorStyle(hex: string | null | undefined): string {
+  const h = hexOrNull(hex);
+  return h ? Object.entries(colorVars(h)).map(([k, v]) => `${k}:${v}`).join(';') : '';
+}
+
 /** CSS custom properties for the card look (set on the strip and on the settings preview). */
-export function cardVars(style: string, radius: number, shadow: boolean): Record<string, string> {
+export function cardVars(style: string, radius: number, shadow: boolean, color = ''): Record<string, string> {
+  const own = hexOrNull(color);
+  if (own) {
+    const r = Math.min(16, Math.max(0, Math.round(radius)));
+    return { '--c-radius': `${r}px`, '--c-shadow': shadow ? '0 4px 12px rgba(0,0,0,0.35)' : 'none', ...colorVars(own) };
+  }
   const r = Math.min(16, Math.max(0, Math.round(radius)));
   const base: Record<string, string> = {
     '--c-radius': `${r}px`,
@@ -71,8 +121,8 @@ export function cardVars(style: string, radius: number, shadow: boolean): Record
 }
 
 /** `cardVars` as an inline style string. */
-export function cardStyleAttr(style: string, radius: number, shadow: boolean): string {
-  return Object.entries(cardVars(style, radius, shadow)).map(([k, v]) => `${k}:${v}`).join(';');
+export function cardStyleAttr(style: string, radius: number, shadow: boolean, color = ''): string {
+  return Object.entries(cardVars(style, radius, shadow, color)).map(([k, v]) => `${k}:${v}`).join(';');
 }
 
 /** Height of a folded rope's band (its label and the gap below it). */

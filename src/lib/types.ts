@@ -2,21 +2,7 @@
 // Keep in sync by hand: field names are camelCase on the wire.
 
 /** The clothesline's four ropes. */
-export type LineRopeKey = 'images' | 'text' | 'links' | 'files' | 'shortcuts';
-
-/** An app shortcut on the shortcuts rope. */
-export interface LineShortcut {
-  name: string;
-  path: string;
-}
-
-/** An app found in the Start menu, on the taskbar or on the desktop (Settings > İp > add shortcut). */
-export interface AppEntry {
-  name: string;
-  path: string;
-  /** Where it was found: "start", "taskbar" or "desktop". */
-  place: string;
-}
+export type LineRopeKey = 'images' | 'text' | 'links' | 'files';
 
 /** A file on the files rope. */
 export type FileSource = 'added' | 'converted' | 'downloaded';
@@ -32,6 +18,10 @@ export interface LineFile {
   mtime?: number;
   /** Pinned files stay first on the rope. */
   pinned?: boolean;
+  /** Place set by dragging on the line (higher = further left); null = by `at`. */
+  rank?: number | null;
+  /** The card's own colour (#rrggbb); null = the line's card colour. */
+  color?: string | null;
 }
 
 export type Kind = 'image' | 'vector' | 'video' | 'audio' | 'pdf' | 'data' | 'subtitle' | 'archive';
@@ -86,7 +76,7 @@ export interface Settings {
   lineEdgeReveal: boolean;
   linePeekOnCopy: boolean;
   lineBreeze: boolean;
-  lineRopes: { images: boolean; text: boolean; links: boolean; files: boolean; shortcuts: boolean };
+  lineRopes: { images: boolean; text: boolean; links: boolean; files: boolean };
   /** 'natural' (hemp, default), 'accent', an accent name or a #rrggbb hex. */
   lineColor: string;
   /** 1..6 px */
@@ -103,6 +93,8 @@ export interface Settings {
   /** 'auto' or a #rrggbb hex. */
   linePinColor: string;
   lineCardStyle: 'glassDark' | 'glassLight' | 'paper';
+  /** Background of every card: '' = the card style's own, or a #rrggbb hex (a card's own colour wins). */
+  lineCardColor: string;
   /** 0..16 px */
   lineCardRadius: number;
   lineCardShadow: boolean;
@@ -112,7 +104,6 @@ export interface Settings {
   lineRopeOrder: LineRopeKey[];
   /** Custom rope names; '' = the default name. */
   lineRopeNames: Record<LineRopeKey, string>;
-  lineShortcuts: LineShortcut[];
   /** Ropes folded away (only the label shows). */
   lineFolded: LineRopeKey[];
   lineFilesSources: { added: boolean; converted: boolean; downloaded: boolean };
@@ -501,6 +492,10 @@ export interface ClipItem {
   saved: boolean;
   /** Bytes of the text or the image file. */
   size: number;
+  /** Place set by dragging on the line (higher = further left); null = by `createdAt`. */
+  rank: number | null;
+  /** The card's own colour on the line (#rrggbb); null = the line's card colour. */
+  color: string | null;
 }
 
 export interface ClipQuery {

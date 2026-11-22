@@ -27,7 +27,7 @@ pub(crate) fn find(state: &AppState, id: u64) -> CmdResult<ClipItem> {
     store(state).get(id).cloned().ok_or_else(not_found)
 }
 
-fn changed(app: &AppHandle) {
+pub(crate) fn changed(app: &AppHandle) {
     let _ = app.emit(events::CLIP_CHANGED, ());
 }
 

@@ -105,6 +105,9 @@ pub struct Settings {
     pub line_pin_color: String,
     /// "paper" (default) | "glassDark" | "glassLight"
     pub line_card_style: String,
+    /// Background of every card: "" = the card style's own, or `#rrggbb` (a card's own colour,
+    /// set on the line, wins).
+    pub line_card_color: String,
     /// Card corner radius in px, 0..=16.
     pub line_card_radius: u8,
     pub line_card_shadow: bool,
@@ -114,8 +117,6 @@ pub struct Settings {
     pub line_rope_order: Vec<String>,
     /// Custom rope names; "" = the default name.
     pub line_rope_names: LineRopeNames,
-    /// The shortcuts rope's apps, in the user's order.
-    pub line_shortcuts: Vec<LineShortcut>,
     /// Ropes the user folded away (only their label shows), by key.
     pub line_folded: Vec<String>,
     /// Which files-rope sources are shown.
@@ -192,8 +193,6 @@ pub struct LineRopes {
     pub text: bool,
     pub links: bool,
     pub files: bool,
-    /// App shortcuts the user picked (`line_shortcuts`).
-    pub shortcuts: bool,
 }
 
 impl Default for LineRopes {
@@ -203,22 +202,9 @@ impl Default for LineRopes {
             text: true,
             links: true,
             files: true,
-            shortcuts: true,
         }
     }
 }
-
-/// One app shortcut on the shortcuts rope: a display name and what to start (an .exe, .lnk,
-/// .url or any file or folder).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default)]
-pub struct LineShortcut {
-    pub name: String,
-    pub path: String,
-}
-
-/// At most this many shortcuts hang on the rope.
-pub const MAX_SHORTCUTS: usize = 40;
 
 /// Custom names of the ropes ("" = default).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -228,7 +214,6 @@ pub struct LineRopeNames {
     pub text: String,
     pub links: String,
     pub files: String,
-    pub shortcuts: String,
 }
 
 /// Which sources the files rope shows.
@@ -251,7 +236,7 @@ impl Default for LineFilesSources {
 }
 
 /// The rope keys in their default order.
-pub const ROPE_KEYS: [&str; 5] = ["images", "text", "links", "files", "shortcuts"];
+pub const ROPE_KEYS: [&str; 4] = ["images", "text", "links", "files"];
 
 fn sanitize_rope_order(order: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -268,40 +253,15 @@ fn sanitize_rope_order(order: &[String]) -> Vec<String> {
     out
 }
 
-/// Shortcuts made safe: no empty paths, no repeats (paths compare case-insensitively), names
-/// trimmed to 60 characters (an empty name becomes the file name), at most [`MAX_SHORTCUTS`].
-fn sanitize_shortcuts(list: Vec<LineShortcut>) -> Vec<LineShortcut> {
-    let mut seen: Vec<String> = Vec::new();
-    let mut out = Vec::new();
-    for mut s in list {
-        s.path = s.path.trim().to_string();
-        let key = s.path.to_lowercase().replace('/', "\\");
-        if s.path.is_empty() || seen.contains(&key) {
-            continue;
-        }
-        seen.push(key);
-        let name = s.name.trim();
-        s.name = if name.is_empty() {
-            std::path::Path::new(&s.path)
-                .file_stem()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| s.path.clone())
-        } else {
-            name.to_string()
-        };
-        if s.name.chars().count() > 60 {
-            s.name = s.name.chars().take(60).collect();
-        }
-        out.push(s);
-        if out.len() == MAX_SHORTCUTS {
-            break;
-        }
-    }
-    out
-}
-
 fn is_hex_colour(s: &str) -> bool {
     s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// A card colour as stored: `#rrggbb` in lower case, or `None` for anything else (no colour).
+pub fn hex_colour(s: Option<&str>) -> Option<String> {
+    s.map(str::trim)
+        .filter(|s| is_hex_colour(s))
+        .map(str::to_ascii_lowercase)
 }
 
 /// One watched folder (Settings > Watch folders).
@@ -368,13 +328,13 @@ impl Default for Settings {
             line_pin_style: "spider".into(),
             line_pin_color: "auto".into(),
             line_card_style: "paper".into(),
+            line_card_color: String::new(),
             line_card_radius: 10,
             line_card_shadow: true,
             line_show_labels: true,
             line_show_numbers: true,
             line_rope_order: ROPE_KEYS.iter().map(|k| k.to_string()).collect(),
             line_rope_names: LineRopeNames::default(),
-            line_shortcuts: Vec::new(),
             line_folded: Vec::new(),
             line_files_sources: LineFilesSources::default(),
             line_max_per_rope: 0,
@@ -493,14 +453,13 @@ impl Settings {
             &mut self.line_rope_names.text,
             &mut self.line_rope_names.links,
             &mut self.line_rope_names.files,
-            &mut self.line_rope_names.shortcuts,
         ] {
             if n.chars().count() > 24 {
                 *n = n.chars().take(24).collect();
             }
         }
         self.line_rope_order = sanitize_rope_order(&self.line_rope_order);
-        self.line_shortcuts = sanitize_shortcuts(std::mem::take(&mut self.line_shortcuts));
+        self.line_card_color = hex_colour(Some(&self.line_card_color)).unwrap_or_default();
         let mut folded: Vec<String> = Vec::new();
         for k in std::mem::take(&mut self.line_folded) {
             if ROPE_KEYS.contains(&k.as_str()) && !folded.contains(&k) {
@@ -760,10 +719,7 @@ mod tests {
         assert_eq!(s.line_pin_color, "auto");
         assert_eq!(s.line_card_style, "paper");
         assert!(s.line_card_shadow && s.line_show_labels && s.line_show_numbers && s.line_fall);
-        assert_eq!(
-            s.line_rope_order,
-            ["images", "text", "links", "files", "shortcuts"]
-        );
+        assert_eq!(s.line_rope_order, ["images", "text", "links", "files"]);
         assert_eq!(s.line_rope_names, LineRopeNames::default());
         assert!(s.line_ropes.files);
         assert!(s.line_files_sources.added && s.line_files_sources.converted);
@@ -803,10 +759,7 @@ mod tests {
             (s.line_edge.as_str(), s.line_pin_color.as_str()),
             ("top", "auto")
         );
-        assert_eq!(
-            s.line_rope_order,
-            ["files", "text", "images", "links", "shortcuts"]
-        );
+        assert_eq!(s.line_rope_order, ["files", "text", "images", "links"]);
         std::fs::write(
             &p,
             br#"{"lineLookVersion":4,"lineColor":"banana","lineRopeNames":{"text":"abcdefghijklmnopqrstuvwxyz123"}}"#,
@@ -862,33 +815,30 @@ mod tests {
     }
 
     #[test]
-    fn shortcuts_are_sanitized() {
+    fn old_shortcuts_rope_and_card_colour() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("settings.json");
+        // The shortcuts rope is gone: its keys in an old file are ignored, the rest loads.
         std::fs::write(
             &p,
-            br#"{"lineShortcuts":[{"name":"","path":"C:\\Apps\\Paint.lnk"},
-                {"name":"Again","path":"c:/apps/paint.lnk"},{"name":"x","path":"  "},
-                {"name":"  Notes  ","path":"C:\\n.exe"}]}"#,
+            br##"{"theme":"dark","lineShortcuts":[{"name":"x","path":"C:/x.exe"}],
+                "lineRopes":{"images":false,"shortcuts":true},
+                "lineRopeOrder":["shortcuts","files"],"lineFolded":["shortcuts","text"],
+                "lineCardColor":"#AABBCC"}"##,
         )
         .unwrap();
         let s = Settings::load(&p);
-        assert!(s.line_ropes.shortcuts);
-        let names: Vec<&str> = s.line_shortcuts.iter().map(|x| x.name.as_str()).collect();
-        assert_eq!(names, ["Paint", "Notes"]);
-        let many: Vec<LineShortcut> = (0..60)
-            .map(|i| LineShortcut {
-                name: "a".repeat(80),
-                path: format!("C:\\{i}.exe"),
-            })
-            .collect();
+        assert_eq!(s.theme, "dark");
+        assert!(!s.line_ropes.images && s.line_ropes.files);
+        assert_eq!(s.line_rope_order, ["files", "images", "text", "links"]);
+        assert_eq!(s.line_folded, ["text"]);
+        assert_eq!(s.line_card_color, "#aabbcc");
         let s = Settings {
-            line_shortcuts: many,
+            line_card_color: "red".into(),
             ..Settings::default()
         }
         .clamped();
-        assert_eq!(s.line_shortcuts.len(), MAX_SHORTCUTS);
-        assert_eq!(s.line_shortcuts[0].name.chars().count(), 60);
+        assert_eq!(s.line_card_color, "");
         let s = Settings {
             line_folded: vec![
                 "links".into(),

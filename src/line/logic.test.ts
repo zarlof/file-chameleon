@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ClipItem, ClipKind } from '../lib/types';
-import { cardText, fitCount, lineDefaults, matches, moveRope, overflow, ropeCards, ropeName, splitRopes } from './logic';
+import { allowedSlot, cardText, dropRank, fitCount, lineDefaults, matches, moveRope, overflow, ropeCards, ropeName, splitRopes, type LineCard } from './logic';
 
 let n = 0;
 function item(kind: ClipKind, over: Partial<ClipItem> = {}): ClipItem {
@@ -8,7 +8,7 @@ function item(kind: ClipKind, over: Partial<ClipItem> = {}): ClipItem {
   return {
     id: n, kind, text: kind === 'image' ? null : `t${n}`, image: null, thumb: null, width: null, height: null, site: null,
     hash: `h${n}`, createdAt: n, pinned: false, title: null, note: null, tags: [], folder: null, ocr: null, trashedAt: null,
-    sourceApp: null, linkTitle: null, edited: null, editedThumb: null, saved: false, size: 0, ...over,
+    sourceApp: null, linkTitle: null, edited: null, editedThumb: null, saved: false, size: 0, rank: null, color: null, ...over,
   };
 }
 const ALL = { images: true, text: true, links: true };
@@ -112,10 +112,12 @@ describe('rope order and names', () => {
 
 describe('settings helpers', () => {
   it('rope_reorder', () => {
-    expect(moveRope(['images', 'text', 'links', 'files'], 'files', -1)).toEqual(['images', 'text', 'files', 'links', 'shortcuts']);
-    expect(moveRope(['images', 'text', 'links', 'files'], 'images', 1)).toEqual(['text', 'images', 'links', 'files', 'shortcuts']);
-    expect(moveRope(['images', 'text', 'links', 'files'], 'images', -1)).toEqual(['images', 'text', 'links', 'files', 'shortcuts']);
-    expect(moveRope(['links'], 'links', 1)).toEqual(['images', 'links', 'text', 'files', 'shortcuts']);
+    expect(moveRope(['images', 'text', 'links', 'files'], 'files', -1)).toEqual(['images', 'text', 'files', 'links']);
+    expect(moveRope(['images', 'text', 'links', 'files'], 'images', 1)).toEqual(['text', 'images', 'links', 'files']);
+    expect(moveRope(['images', 'text', 'links', 'files'], 'images', -1)).toEqual(['images', 'text', 'links', 'files']);
+    expect(moveRope(['links'], 'links', 1)).toEqual(['images', 'links', 'text', 'files']);
+    // an old order that still names the removed shortcuts rope
+    expect(moveRope(['shortcuts', 'files'] as never, 'files', -1)).toEqual(['files', 'images', 'text', 'links']);
   });
   it('settings_reset_keeps_switch_and_hotkeys', () => {
     const d = { lineEnabled: true, lineSag: 14, lineColor: 'natural', lineLookVersion: 3, hotkeyLine: 'X', theme: 'dark' };
@@ -126,7 +128,7 @@ describe('settings helpers', () => {
 describe('ropeCards', () => {
   it('colliding_file_ids_keep_every_card', () => {
     const f = (path: string) => ({ path, name: path, source: 'added' as const, at: 1, size: 1, kind: null, thumb: null });
-    const rope = { key: 'files' as const, items: [], files: [f('a'), f('b'), f('c')], apps: [] };
+    const rope = { key: 'files' as const, items: [], files: [f('a'), f('b'), f('c')] };
     const cards = ropeCards(rope, () => -5);
     expect(cards).toHaveLength(3);
     expect(new Set(cards.map((c) => c.id)).size).toBe(3);
@@ -143,20 +145,48 @@ describe('collapsed ropes', () => {
   });
 });
 
-describe('shortcuts rope', () => {
-  it('hangs the apps in the user order with ids below every file id', async () => {
-    const { APP_ID_BASE, splitRopes, ropeCards, ropeCount } = await import('./logic');
-    const apps = [
-      { name: 'Paint', path: 'C:\p.lnk', icon: null },
-      { name: 'Notes', path: 'C:\n.exe', icon: 'C:\i.png' },
-    ];
-    const ropes = splitRopes([], { images: false, text: false, links: false, files: false, shortcuts: true }, undefined, [], apps);
-    expect(ropes.map((r) => r.key)).toEqual(['shortcuts']);
-    expect(ropeCount(ropes[0])).toBe(2);
-    const cards = ropeCards(ropes[0], () => -1);
-    expect(cards.map((c) => c.app?.name)).toEqual(['Paint', 'Notes']);
-    expect(cards.map((c) => c.id)).toEqual([APP_ID_BASE, APP_ID_BASE - 1]);
-    expect(cards.every((c) => c.id < -2147483647)).toBe(true);
+describe('drag order', () => {
+  const card = (it: ClipItem): LineCard => ({ id: it.id, item: it, file: null });
+
+  it('a dragged place beats the time order', () => {
+    const a = item('text', { createdAt: 10 });
+    const b = item('text', { createdAt: 30 });
+    const c = item('text', { createdAt: 20, rank: 40 });
+    const [, text] = splitRopes([a, b, c], ALL);
+    expect(text.items.map((i) => i.id)).toEqual([c.id, b.id, a.id]);
+  });
+
+  it('drops between, before and after the neighbours', () => {
+    // order on the rope: b (30), c (20), a (10)
+    const a = card(item('text', { createdAt: 10 }));
+    const b = card(item('text', { createdAt: 30 }));
+    const c = card(item('text', { createdAt: 20 }));
+    const rope = [b, c, a];
+    expect(dropRank(rope, 2, 0)).toBe(31); // a to the front
+    expect(dropRank(rope, 0, 2)).toBe(9); // b to the end
+    expect(dropRank(rope, 0, 1)).toBe(15); // b between c and a
+    expect(dropRank(rope, 1, 1)).toBeNull(); // c stays
+    expect(dropRank(rope, 5, 0)).toBeNull();
+  });
+
+  it('pinned cards stay among the pinned ones', () => {
+    const p1 = card(item('text', { createdAt: 50, pinned: true }));
+    const p2 = card(item('text', { createdAt: 40, pinned: true }));
+    const u1 = card(item('text', { createdAt: 30 }));
+    const u2 = card(item('text', { createdAt: 20 }));
+    const rope = [p1, p2, u1, u2];
+    // an unpinned card dropped in front of the pinned ones lands right after them
+    expect(allowedSlot([p1, p2, u1], false, 0)).toBe(2);
+    expect(dropRank(rope, 3, 0)).toBe(31); // before u1; the pinned p2 is no neighbour
+    // a pinned card dropped among the others stays the last pinned one
+    expect(allowedSlot([p2, u1, u2], true, 3)).toBe(1);
+    expect(dropRank(rope, 0, 3)).toBe(39); // after p2; u1 is no neighbour
+  });
+
+  it('files sort by their dragged place too', () => {
+    const f = (path: string, at: number, rank: number | null = null, pinned = false) => ({ path, name: path, source: 'added' as const, at, size: 1, kind: null, thumb: null, rank, pinned });
+    const ropes = splitRopes([], { images: false, text: false, links: false, files: true }, undefined, [f('old', 1, 99), f('new', 5), f('pin', 0, null, true)]);
+    expect(ropes[0].files.map((x) => x.path)).toEqual(['pin', 'old', 'new']);
   });
 });
 
@@ -164,15 +194,15 @@ describe('card menu', () => {
   it('lists the entries a card gets', async () => {
     const { menuEntries, menuHeight } = await import('./menu');
     const noop = () => undefined;
-    const a = { open: noop, copy: noop, paste: noop, edit: noop, pin: noop, share: noop, trash: noop, reveal: noop, copyPath: noop, convert: noop, float: noop, save: noop, removeShortcut: noop };
+    const a = { open: noop, copy: noop, paste: noop, edit: noop, pin: noop, share: noop, trash: noop, reveal: noop, copyPath: noop, convert: noop, float: noop, save: noop, card: noop };
     const tt = (k: string) => k;
     const labels = (c: Parameters<typeof menuEntries>[0]) => menuEntries(c, a, tt).map((x) => (x === 'sep' ? '-' : x.label));
     const img = { id: 1, kind: 'image', pinned: false, image: 'C:/i.png', edited: null } as unknown as ClipItem;
-    expect(labels({ id: 1, item: img, file: null })).toEqual(['menu.open', 'menu.copy', 'menu.paste', 'menu.edit', 'menu.pin', 'menu.share', 'menu.float', 'menu.save', '-', 'menu.delete']);
+    expect(labels({ id: 1, item: img, file: null })).toEqual(['menu.open', 'menu.copy', 'menu.paste', 'menu.edit', 'menu.pin', 'menu.share', 'menu.float', 'menu.save', 'menu.card', '-', 'menu.delete']);
     const link = { id: 2, kind: 'link', pinned: true } as unknown as ClipItem;
-    expect(labels({ id: 2, item: link, file: null })).toEqual(['menu.openLink', 'menu.copy', 'menu.paste', 'menu.unpin', 'menu.share', '-', 'menu.delete']);
-    const app = { name: 'A', path: 'C:/a.lnk', icon: null };
-    expect(labels({ id: -3, item: null, file: null, app })).toEqual(['menu.open', 'menu.reveal', 'menu.copyPath', '-', 'menu.removeShortcut']);
-    expect(menuHeight(menuEntries({ id: -3, item: null, file: null, app }, a, tt))).toBe(26 + 8 + 4 * 30 + 9);
+    expect(labels({ id: 2, item: link, file: null })).toEqual(['menu.openLink', 'menu.copy', 'menu.paste', 'menu.unpin', 'menu.share', 'menu.card', '-', 'menu.delete']);
+    expect(menuHeight(menuEntries({ id: 2, item: link, file: null }, a, tt))).toBe(26 + 8 + 7 * 30 + 9);
+    const file = { path: 'C:/f.pdf', name: 'f.pdf', source: 'added' as const, at: 1, size: 1, kind: null, thumb: null, pinned: false };
+    expect(labels({ id: -3, item: null, file })).toEqual(['menu.open', 'menu.copy', 'menu.reveal', 'menu.convert', 'menu.copyPath', 'menu.pin', 'menu.share', 'menu.card', '-', 'menu.removeFromList']);
   });
 });

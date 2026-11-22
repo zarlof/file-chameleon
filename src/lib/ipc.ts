@@ -29,7 +29,6 @@ import type {
   WheelSlots,
   WheelThumb,
   WatchStatus,
-  AppEntry,
 } from './types';
 
 export const api = {
@@ -121,10 +120,12 @@ export const api = {
   lineOpenClip: (id: number) => invoke<void>('line_open_clip', { id }),
   lineShare: (ids: number[], paths: string[]) => invoke<void>('line_share', { ids, paths }),
   lineFilePin: (paths: string[], pinned: boolean) => invoke<void>('line_file_pin', { paths, pinned }),
-  appsList: () => invoke<AppEntry[]>('apps_list'),
-  appIcons: (paths: string[]) => invoke<(string | null)[]>('app_icons', { paths }),
-  lineShortcutLaunch: (path: string) => invoke<void>('line_shortcut_launch', { path }),
-  lineShortcutReveal: (path: string) => invoke<void>('line_shortcut_reveal', { path }),
+  /** Where a dragged clip lands on its rope (higher = further left; null = back to time order). */
+  lineClipRank: (id: number, rank: number | null) => invoke<void>('line_clip_rank', { id, rank }),
+  lineFileRank: (path: string, rank: number | null) => invoke<void>('line_file_rank', { path, rank }),
+  /** A card's own colour (#rrggbb; null = the line's card colour): clips by id, files by path. */
+  lineCardColor: (ids: number[], paths: string[], color: string | null) => invoke<void>('line_card_color', { ids, paths, color }),
+  lineClearCardColors: () => invoke<void>('line_clear_card_colors'),
   linePaste: (ids: number[]) => invoke<void>('line_paste', { ids }),
   // ---- files rope (wave 3)
   lineFiles: () => invoke<LineFile[]>('line_files'),

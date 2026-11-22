@@ -18,15 +18,12 @@ export interface MenuActions {
   convert: (path: string) => unknown;
   float: (file: string) => unknown;
   save: () => unknown;
-  removeShortcut: () => unknown;
+  /** The card's own settings (its colour). */
+  card: () => unknown;
 }
 
 export function menuEntries(c: LineCard, a: MenuActions, t: (key: string) => string): MenuEntry[] {
   const e = (key: string, run: () => unknown, danger = false): MenuEntry => ({ label: t(key), run, danger });
-  if (c.app) {
-    const path = c.app.path;
-    return [e('menu.open', a.open), e('menu.reveal', () => a.reveal(path)), e('menu.copyPath', () => a.copyPath(path)), 'sep', e('menu.removeShortcut', a.removeShortcut, true)];
-  }
   if (c.file) {
     const f = c.file;
     return [
@@ -37,6 +34,7 @@ export function menuEntries(c: LineCard, a: MenuActions, t: (key: string) => str
       e('menu.copyPath', () => a.copyPath(f.path)),
       e(f.pinned ? 'menu.unpin' : 'menu.pin', a.pin),
       e('menu.share', a.share),
+      e('menu.card', a.card),
       'sep',
       e('menu.removeFromList', a.trash, true),
     ];
@@ -52,7 +50,7 @@ export function menuEntries(c: LineCard, a: MenuActions, t: (key: string) => str
     if (file) out.push(e('menu.float', () => a.float(file)));
     out.push(e('menu.save', a.save));
   }
-  out.push('sep', e('menu.delete', a.trash, true));
+  out.push(e('menu.card', a.card), 'sep', e('menu.delete', a.trash, true));
   return out;
 }
 

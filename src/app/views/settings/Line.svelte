@@ -1,8 +1,8 @@
 <!--
   Line settings ("İp") — the clothesline: on/off, look (rope style, colour, thickness, sag, clothespins, cards,
-  labels, number badges) with a live preview drawn by the real Rope/Peg components, the four ropes (order,
-  names, switches, files sources, cards per rope), screen edge, behaviour, motion and sound, the hotkeys
-  (with conflict status), "show now" and a reset to defaults. Texts live in line.json.
+  labels, number badges, card colour) with a live preview drawn by the real Rope/Peg components, the four
+  ropes (order, names, switches, files sources, cards per rope), screen edge, behaviour, motion and sound,
+  the hotkeys (with conflict status), "show now" and a reset to defaults. Texts live in line.json.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -14,11 +14,10 @@
   import { DEFAULT_SETTINGS, settings } from '../../../lib/stores/settings.svelte';
   import type { ClipItem, HotkeyStatus, LineFile, Settings } from '../../../lib/types';
   import { Button, Card, HotkeyRecorder, IconButton, ListRow, SectionHeader, SegmentedControl, Select, Slider, TextField, Toggle, toast } from '../../../lib/ui';
-  import { cardOpacity, cardStyleAttr, ropeColor, sizeInfo } from '../../../line/layout';
+  import { CARD_COLORS, cardOpacity, cardStyleAttr, ropeColor, sizeInfo } from '../../../line/layout';
   import { setLang, t as lt } from '../../../line/i18n';
   import { lineDefaults, moveRope, ropeName, sanitizeOrder, type LineCard, type RopeKey } from '../../../line/logic';
   import Rope from '../../../line/Rope.svelte';
-  import LineShortcuts from './LineShortcuts.svelte';
 
   const s = $derived(settings.value);
   const off = $derived(!s.lineEnabled);
@@ -92,11 +91,21 @@
   ]);
   const isHex = (v: string) => /^#[0-9a-f]{6}$/i.test(v);
   const custom = $derived(isHex(s.lineColor) && !SWATCHES.some((w) => w.id === s.lineColor));
+  const customCard = $derived(isHex(s.lineCardColor) && !(CARD_COLORS as readonly string[]).includes(s.lineCardColor.toLowerCase()));
+
+  async function resetCardColors() {
+    try {
+      await api.lineClearCardColors();
+      toast.show(t('line.settings.cardColorsResetDone'), 'info');
+    } catch (e) {
+      toast.show(errorOf(e).message, 'error');
+    }
+  }
   const customPin = $derived(isHex(s.linePinColor));
 
   // ---- ropes
   const order = $derived(sanitizeOrder(s.lineRopeOrder));
-  const ropeTitle = (k: RopeKey) => t(`line.settings.ropes${k === 'images' ? 'Images' : k === 'text' ? 'Text' : k === 'links' ? 'Links' : k === 'files' ? 'Files' : 'Shortcuts'}`);
+  const ropeTitle = (k: RopeKey) => t(`line.settings.ropes${k === 'images' ? 'Images' : k === 'text' ? 'Text' : k === 'links' ? 'Links' : 'Files'}`);
   function setRope(key: RopeKey, v: boolean) {
     set({ lineRopes: { ...s.lineRopes, [key]: v } });
   }
@@ -134,8 +143,8 @@
   const fitScale = $derived(wrapW > 0 ? Math.min(1, wrapW / PW) : 1);
   const dark = $derived(s.theme === 'dark' || (s.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches));
   const pcolor = $derived(ropeColor(s.lineColor, 'var(--accent)', dark ? 'dark' : 'light'));
-  const pcardVars = $derived(cardStyleAttr(s.lineCardStyle, vals.lineCardRadius, s.lineCardShadow));
-  const base = { image: null, thumb: null, width: null, height: null, site: null, hash: '', createdAt: 0, pinned: false, note: null, tags: [], folder: null, ocr: null, trashedAt: null, sourceApp: null, edited: null, editedThumb: null, saved: false, size: 0 };
+  const pcardVars = $derived(cardStyleAttr(s.lineCardStyle, vals.lineCardRadius, s.lineCardShadow, s.lineCardColor));
+  const base = { image: null, thumb: null, width: null, height: null, site: null, hash: '', createdAt: 0, pinned: false, note: null, tags: [], folder: null, ocr: null, trashedAt: null, sourceApp: null, edited: null, editedThumb: null, saved: false, size: 0, rank: null, color: null };
   const sampleCards: LineCard[] = $derived([
     { id: 1, item: { ...base, id: 1, kind: 'text', text: lt('settings.sampleNote'), title: null, linkTitle: null } as unknown as ClipItem, file: null },
     { id: 2, item: { ...base, id: 2, kind: 'link', text: 'https://example.com/page', title: null, linkTitle: lt('settings.sampleLinkTitle'), pinned: true } as unknown as ClipItem, file: null },
@@ -275,7 +284,7 @@
           ropeOp={Math.min(100, Math.max(30, vals.lineOpacity)) / 100}
           onclick={noop}
           ondblclick={noop}
-          ondragout={noop}
+          ondragstart={noop}
           onremove={noop}
           oncontext={noop}
           onhover={noop}
@@ -320,6 +329,25 @@
     <ListRow title={t('line.settings.cardStyle')}>
       {#snippet trailing()}<SegmentedControl options={cardStyleOptions} value={s.lineCardStyle} size="sm" disabled={off} onchange={(v) => set({ lineCardStyle: v })} />{/snippet}
     </ListRow>
+    <ListRow title={t('line.settings.cardColor')} subtitle={t('line.settings.cardColorHint')}>
+      {#snippet trailing()}
+        <span class="swatches cardsw" role="radiogroup" aria-label={t('line.settings.cardColor')}>
+          <button type="button" class="chip" class:on={!s.lineCardColor} disabled={off} onclick={() => set({ lineCardColor: '' })}>{t('line.settings.cardColorStyle')}</button>
+          {#each CARD_COLORS as c (c)}
+            <button type="button" role="radio" aria-checked={s.lineCardColor.toLowerCase() === c} class="swatch" class:on={s.lineCardColor.toLowerCase() === c} disabled={off}
+              style:--c={c} title={c} aria-label={c} onclick={() => set({ lineCardColor: c })}>
+              {#if s.lineCardColor.toLowerCase() === c}<Check size={12} strokeWidth={3} color={['#2b2d31', '#1e3a5f', '#4b2a6e', '#7a1f2b'].includes(c) ? '#fff' : '#16161a'} />{/if}
+            </button>
+          {/each}
+          <input type="color" class="custom" class:on={customCard} disabled={off} value={isHex(s.lineCardColor) ? s.lineCardColor : '#ffffff'}
+            title={t('line.settings.cardColorCustom')} aria-label={t('line.settings.cardColorCustom')}
+            onchange={(e) => set({ lineCardColor: e.currentTarget.value })} />
+        </span>
+      {/snippet}
+    </ListRow>
+    <ListRow title={t('line.settings.cardColorsReset')} subtitle={t('line.settings.cardColorsResetHint')}>
+      {#snippet trailing()}<Button size="sm" disabled={off} onclick={resetCardColors}>{t('line.settings.cardColorsReset')}</Button>{/snippet}
+    </ListRow>
     {@render slideRow('lineCardRadius', t('line.settings.cardRadius'), 0, 16, 1, ' px')}
     <ListRow title={t('line.settings.cardShadow')} subtitle={t('line.settings.cardShadowHint')}>
       {#snippet trailing()}<Toggle checked={s.lineCardShadow} disabled={off} label={t('line.settings.cardShadow')} onchange={(v) => set({ lineCardShadow: v })} />{/snippet}
@@ -339,7 +367,7 @@
     </ListRow>
   </Card>
 
-  <SectionHeader title={t('line.settings.section.ropes')} />
+  <SectionHeader title={t('line.settings.section.ropes')} subtitle={t('line.settings.dragHint')} />
   <Card>
     {#each order as key, i (key)}
       <ListRow title={ropeTitle(key)}>
@@ -372,9 +400,6 @@
       {#snippet trailing()}<Select value={String(s.lineMaxPerRope)} options={maxOptions} disabled={off} label={t('line.settings.maxPerRope')} onchange={(v) => set({ lineMaxPerRope: Number(v) })} />{/snippet}
     </ListRow>
   </Card>
-
-  <SectionHeader title={t('line.settings.section.shortcuts')} subtitle={t('line.settings.shortcutsHint')} />
-  <LineShortcuts disabled={off} />
 
   <SectionHeader title={t('line.settings.section.position')} />
   <Card>
@@ -463,6 +488,7 @@
   }
   .swatch.on { box-shadow: 0 0 0 2px var(--window-bg), 0 0 0 4px var(--accent); }
   .swatch:disabled { opacity: 0.45; }
+  .cardsw { flex-wrap: wrap; justify-content: flex-end; max-width: 330px; row-gap: 6px; }
   .custom { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: default; }
   .custom.on { box-shadow: 0 0 0 2px var(--window-bg), 0 0 0 4px var(--accent); }
   .chip { padding: 2px 10px; border: 0; border-radius: 999px; background: var(--control-bg); color: var(--text); font: var(--text-callout); cursor: default; }

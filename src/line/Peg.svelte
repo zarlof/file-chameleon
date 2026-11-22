@@ -3,7 +3,9 @@
   (`theta`, driven by the shared loop in Line.svelte). Dark glass by default (see cardVars in layout.ts):
   image = rounded thumbnail with a thin border, text = translucent note, link = preview image, title and
   domain, file = thumbnail or type glyph, name, extension chip, size and source icon. A small 1-9 badge
-  sits at the bottom left. Gestures: click, Ctrl/Shift-click, double-click, drag out (6 px), right-click, hover x.
+  sits at the bottom left. Gestures: click, Ctrl/Shift-click, double-click, drag (6 px: Line.svelte moves it
+  along the rope, or out of the window into another app), right-click, and on hover the x, the pin and the
+  gear (the card's own settings). Resting on a card asks for the large hover preview.
 -->
 <script lang="ts">
   import { convertFileSrc } from '@tauri-apps/api/core';
@@ -12,9 +14,10 @@
   import Pin from './Pin.svelte';
   import Spider from './Spider.svelte';
   import { renderMd } from './markdown';
+  import { colorStyle } from './layout';
   import { getLang, t } from './i18n';
 
-  const ZOOM_DELAY = 400;
+  const PREVIEW_DELAY = 400;
 
   let {
     card: model,
@@ -29,15 +32,17 @@
     pinStyle = 'plastic',
     pinColor = 'auto',
     num = null,
-    zoomOn = false,
-    onzoom,
+    previewOn = false,
+    lifted = false,
+    onpreview,
     onclick,
     ondblclick,
-    ondragout,
+    ondragstart,
     onremove,
     oncontext,
     onhover,
     onpin,
+    ongear,
   }: {
     card: LineCard;
     theta: number;
@@ -56,17 +61,22 @@
     pinColor?: string;
     /** 1..9 badge (the key that picks this card), or null. */
     num?: number | null;
-    /** After a 400 ms rest on an image card, report its box (null when the pointer leaves). */
-    zoomOn?: boolean;
-    onzoom?: (item: NonNullable<LineCard['item']> | null, rect: DOMRect | null) => void;
+    /** After a 400 ms rest on the card, report its box (null when the pointer leaves). */
+    previewOn?: boolean;
+    /** Being dragged along the rope (drawn above the others, no hover lift). */
+    lifted?: boolean;
+    onpreview?: (rect: DOMRect | null) => void;
     onclick: (e: MouseEvent) => void;
     ondblclick: () => void;
-    ondragout: () => void;
+    /** The pointer moved 6 px with the button down: the line takes the drag over from here. */
+    ondragstart: (e: PointerEvent) => void;
     onremove: () => void;
     oncontext: (e: MouseEvent) => void;
     onhover: (dir: number) => void;
     /** The pin button at the top left (pinned cards stay first). */
     onpin?: () => void;
+    /** The gear at the top right: the card's own settings, next to its box. */
+    ongear?: (rect: DOMRect) => void;
   } = $props();
 
   const item = $derived(model.item);
@@ -75,16 +85,18 @@
   const words = $derived(item ? cardText(item) : { title: '', lines: [] as string[] });
   const noteHtml = $derived(item?.kind === 'text' ? renderMd((item.text ?? '').split('\n').slice(0, 7).join('\n')) : '');
   const fc = $derived(file ? fileCard(file, getLang()) : null);
-  const app = $derived(model.app ?? null);
-  const kindClass = $derived(app ? 'app' : file ? 'file' : item?.kind === 'image' ? 'image' : item?.kind === 'text' ? 'text' : 'link');
+  const kindClass = $derived(file ? 'file' : item?.kind === 'image' ? 'image' : item?.kind === 'text' ? 'text' : 'link');
   const pinned = $derived(item?.pinned ?? file?.pinned ?? false);
   const spider = $derived(pinStyle === 'spider');
-  const label = $derived(app ? app.name : file ? file.name : words.title || t(item?.kind === 'image' ? 'image' : 'rope.text'));
+  const label = $derived(file ? file.name : words.title || t(item?.kind === 'image' ? 'image' : 'rope.text'));
+  /** The card's own colour (set with the gear) over the line's card look. */
+  const ownColor = $derived(colorStyle(item?.color ?? file?.color ?? null));
   let cardEl = $state<HTMLElement | null>(null);
-  let zoomTimer: ReturnType<typeof setTimeout> | undefined;
-  let thumbFailed = $state(false);
-  /** The icon file that failed to load (a later, different one is tried). */
-  let iconFailed = $state<string | null>(null);
+  let previewTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The picture that failed to load: a new picture (an edit, a fresh thumbnail) is tried again. */
+  let failedSrc = $state<string | null>(null);
+  const fileThumb = $derived(file?.thumb ? `${convertFileSrc(file.thumb)}?v=${file.mtime ?? 0}` : null);
+  const clipThumb = $derived(thumb ? convertFileSrc(thumb) : null);
 
   const DRAG_PX = 6;
   let start: { x: number; y: number } | null = null;
@@ -103,7 +115,15 @@
     if (Math.hypot(e.clientX - start.x, e.clientY - start.y) >= DRAG_PX) {
       dragged = true;
       cleanup();
-      ondragout();
+      clearTimeout(previewTimer);
+      onpreview?.(null);
+      // Keep getting the moves when the pointer leaves the window: that is how a drag goes out.
+      try {
+        cardEl?.setPointerCapture(e.pointerId);
+      } catch {
+        /* the pointer is already gone */
+      }
+      ondragstart(e);
     }
   }
   function up() {
@@ -124,16 +144,16 @@
   }
   function enter(e: PointerEvent) {
     onhover(e.movementX === 0 ? 1 : Math.sign(e.movementX));
-    clearTimeout(zoomTimer);
-    if (zoomOn && item?.kind === 'image' && onzoom) zoomTimer = setTimeout(() => cardEl && item && onzoom(item, cardEl.getBoundingClientRect()), ZOOM_DELAY);
+    clearTimeout(previewTimer);
+    if (previewOn && onpreview && !lifted) previewTimer = setTimeout(() => cardEl && !start && onpreview(cardEl.getBoundingClientRect()), PREVIEW_DELAY);
   }
   function leave() {
-    clearTimeout(zoomTimer);
-    onzoom?.(null, null);
+    clearTimeout(previewTimer);
+    onpreview?.(null);
   }
   $effect(() => () => {
     cleanup();
-    clearTimeout(zoomTimer);
+    clearTimeout(previewTimer);
   });
 </script>
 
@@ -143,6 +163,7 @@
   class:selected
   class:copied
   class:focused
+  class:lifted
   style:--s={scale}
   style:width="{width}px"
   style:--card-op={cardOp}
@@ -163,10 +184,14 @@
   <div
     bind:this={cardEl}
     class="card kind-{kindClass}"
+    style={ownColor}
     role="button"
     tabindex="-1"
     aria-label={label}
-    onpointerdown={down}
+    onpointerdown={(e) => {
+      clearTimeout(previewTimer);
+      down(e);
+    }}
     onclick={click}
     ondblclick={ondblclick}
     oncontextmenu={(e) => {
@@ -174,20 +199,11 @@
       oncontext(e);
     }}
   >
-    {#if app}
-      <div class="app">
-        {#if app.icon && app.icon !== iconFailed}
-          <img src={convertFileSrc(app.icon)} alt="" draggable="false" onerror={() => (iconFailed = app.icon)} />
-        {:else}
-          <span class="glyph" aria-hidden="true">{app.name.slice(0, 1).toUpperCase()}</span>
-        {/if}
-        <b title={app.name}>{app.name}</b>
-      </div>
-    {:else if file && fc}
+    {#if file && fc}
       <div class="file">
         <div class="fthumb">
-          {#if file.thumb && !thumbFailed}
-            <img src={`${convertFileSrc(file.thumb)}?v=${file.mtime ?? 0}`} alt="" draggable="false" onerror={() => (thumbFailed = true)} />
+          {#if fileThumb && fileThumb !== failedSrc}
+            <img src={fileThumb} alt="" draggable="false" onerror={() => (failedSrc = fileThumb)} />
           {:else}
             <svg viewBox="0 0 24 28" width={22 * scale} height={26 * scale} aria-hidden="true">
               <path d="M3 1.5h12l6 6v19a1.5 1.5 0 0 1-1.5 1.5h-16.5a1.5 1.5 0 0 1-1.5-1.5v-23.5a1.5 1.5 0 0 1 1.5-1.5Z" class="doc" />
@@ -213,8 +229,8 @@
       </div>
     {:else if item?.kind === 'image'}
       <div class="print">
-        {#if thumb && !thumbFailed}
-          <img src={convertFileSrc(thumb)} alt="" draggable="false" onerror={() => (thumbFailed = true)} />
+        {#if clipThumb && clipThumb !== failedSrc}
+          <img src={clipThumb} alt="" draggable="false" onerror={() => (failedSrc = clipThumb)} />
         {:else}
           <span class="ph">{t('noPreview')}</span>
         {/if}
@@ -232,7 +248,7 @@
       </div>
     {/if}
     {#if num !== null}<span class="num" aria-hidden="true">{num}</span>{/if}
-    {#if onpin && !app}
+    {#if onpin}
       <button type="button" class="pinbtn" class:on={pinned} tabindex="-1" aria-pressed={pinned}
         aria-label={t(pinned ? 'menu.unpin' : 'menu.pin')} title={t(pinned ? 'menu.unpin' : 'menu.pin')}
         onpointerdown={(e) => e.stopPropagation()}
@@ -246,6 +262,22 @@
             <path d="M12 17v5" />
             <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" class="head" />
           </g>
+        </svg>
+      </button>
+    {/if}
+    {#if ongear}
+      <button type="button" class="gear" tabindex="-1" aria-label={t('card.settings')} title={t('card.settings')}
+        onpointerdown={(e) => e.stopPropagation()}
+        ondblclick={(e) => e.stopPropagation()}
+        onclick={(e) => {
+          e.stopPropagation();
+          clearTimeout(previewTimer);
+          onpreview?.(null);
+          if (cardEl) ongear(cardEl.getBoundingClientRect());
+        }}>
+        <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
       </button>
     {/if}
@@ -306,6 +338,8 @@
   .peg.spider { padding-top: calc(var(--s) * 26px); }
   .spider .card { margin-top: 0; }
   .peg:hover .card { transform: translateY(-1px); }
+  .peg.lifted { z-index: 5; }
+  .lifted .card { transform: translateY(-4px) scale(1.04); box-shadow: inset 0 0 0 1px var(--c-edge, rgba(255, 255, 255, 0.1)), 0 10px 24px rgba(0, 0, 0, 0.45); }
   .selected .card { box-shadow: 0 0 0 2px var(--accent), var(--c-shadow, none); }
   .focused .card { outline: 2px solid var(--c-fg, #fff); outline-offset: 2px; }
   .copied .card { transform: translateY(-6px); }
@@ -352,29 +386,6 @@
   .md :global(code) { font-family: var(--font-mono, monospace); background: color-mix(in srgb, var(--c-fg) 12%, transparent); border-radius: 3px; padding: 0 2px; }
   .note b { color: var(--c-fg); }
 
-  .app {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: calc(var(--s) * 8px);
-    height: calc(var(--s) * 92px);
-    padding: calc(var(--s) * 8px);
-    overflow: hidden;
-  }
-  .app img, .app .glyph { width: calc(var(--s) * 40px); height: calc(var(--s) * 40px); flex: none; pointer-events: none; }
-  .app img { object-fit: contain; }
-  .app .glyph { display: grid; place-items: center; border-radius: 10px; background: color-mix(in srgb, var(--c-fg) 14%, transparent); font-weight: 650; font-size: calc(var(--s) * 20px); }
-  .app b {
-    max-width: 100%;
-    font: var(--text-callout);
-    font-size: calc(var(--s) * 11.5px);
-    font-weight: 600;
-    text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
   .fthumb { flex: 1; min-height: 0; display: grid; place-items: center; border-radius: calc(var(--c-radius, 10px) - 4px); background: color-mix(in srgb, var(--c-fg) 8%, transparent); overflow: hidden; }
   .fthumb img { display: block; width: 100%; height: 100%; object-fit: scale-down; pointer-events: none; }
   .doc { fill: color-mix(in srgb, var(--c-fg) 16%, transparent); stroke: var(--c-fg2); stroke-width: 1.3; stroke-linejoin: round; }
@@ -455,4 +466,26 @@
   .pinbtn.on .head { fill: currentColor; }
   .pinbtn:hover { background: var(--accent); color: var(--on-accent); }
   .x:hover { background: var(--red); }
+  .gear {
+    position: absolute;
+    top: 4px;
+    right: 26px;
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    opacity: 0;
+    cursor: default;
+    transition: opacity var(--dur-fast);
+    z-index: 1;
+  }
+  .gear svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .card:hover .gear { opacity: 1; }
+  .gear:hover { background: var(--accent); color: var(--on-accent); }
+  .lifted .x, .lifted .gear, .lifted .pinbtn:not(.on) { opacity: 0; }
 </style>

@@ -92,7 +92,7 @@ fn serialized_keys_match_the_typescript_clip_item() {
         .filter_map(|l| l.trim().split([':', '?']).next().map(str::to_string))
         .collect();
     ts.sort();
-    assert_eq!(ts.len(), 23, "{ts:?}");
+    assert_eq!(ts.len(), 25, "{ts:?}");
 
     let (_d, mut s) = store();
     let item = s.add_text("x", 1).unwrap().unwrap();
@@ -354,5 +354,44 @@ fn export_writes_unique_files() {
         names
             .iter()
             .any(|n| n.starts_with("Görsel ") && n.ends_with(".png"))
+    );
+}
+
+#[test]
+fn rank_and_colour() {
+    let (_d, mut s) = store();
+    let a = s.add_text("a", 1).unwrap().unwrap();
+    let b = s.add_text("b", 2).unwrap().unwrap();
+    s.set_rank(a.id, Some(10.0)).unwrap();
+    assert!(s.set_rank(999, Some(1.0)).is_err());
+    assert_eq!(s.set_color(&[a.id, b.id], Some("#FF0000")).unwrap(), 2);
+    let got = s.query(&Default::default());
+    let a2 = got.iter().find(|i| i.id == a.id).unwrap();
+    assert_eq!(
+        (a2.rank, a2.color.as_deref()),
+        (Some(10.0), Some("#ff0000"))
+    );
+    // Not a colour: cleared.
+    s.set_color(&[b.id], Some("red")).unwrap();
+    assert_eq!(
+        s.query(&Default::default())
+            .iter()
+            .find(|i| i.id == b.id)
+            .unwrap()
+            .color,
+        None
+    );
+    // Copied again: to the front, the dragged place is dropped, the colour stays.
+    let again = s.add_text("a", 3).unwrap().unwrap();
+    assert_eq!(again.id, a.id);
+    assert_eq!(
+        (again.rank, again.color.as_deref()),
+        (None, Some("#ff0000"))
+    );
+    s.clear_colors().unwrap();
+    assert!(
+        s.query(&Default::default())
+            .iter()
+            .all(|i| i.color.is_none())
     );
 }

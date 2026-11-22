@@ -40,8 +40,7 @@
     "images": true,
     "text": true,
     "links": true,
-    "files": true,
-    "shortcuts": true
+    "files": true
   },
   "lineColor": "#ffffff",
   "lineThickness": 1,
@@ -54,6 +53,7 @@
   "linePinStyle": "spider",
   "linePinColor": "auto",
   "lineCardStyle": "paper",
+  "lineCardColor": "",
   "lineCardRadius": 10,
   "lineCardShadow": true,
   "lineShowLabels": true,
@@ -62,17 +62,14 @@
     "images",
     "text",
     "links",
-    "files",
-    "shortcuts"
+    "files"
   ],
   "lineRopeNames": {
     "images": "",
     "text": "",
     "links": "",
-    "files": "",
-    "shortcuts": ""
+    "files": ""
   },
-  "lineShortcuts": [],
   "lineFolded": [],
   "lineFilesSources": {
     "added": true,

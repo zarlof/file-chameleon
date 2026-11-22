@@ -161,7 +161,6 @@ fn rope_count_with(
         ("text", r.text),
         ("links", r.links),
         ("files", r.files),
-        ("shortcuts", r.shortcuts),
     ];
     let on: Vec<&str> = keys.iter().filter(|(_, on)| *on).map(|(k, _)| *k).collect();
     let folded = on.iter().filter(|k| folded.iter().any(|f| f == *k)).count();

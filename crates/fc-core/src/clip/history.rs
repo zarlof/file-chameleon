@@ -69,6 +69,12 @@ pub struct ClipItem {
     /// Bytes of the text or the original image file.
     #[serde(default)]
     pub size: u64,
+    /// Place on the line set by dragging (higher = further left); `None` = by `created_at`.
+    #[serde(default)]
+    pub rank: Option<f64>,
+    /// The card's own colour on the line (`#rrggbb`); `None` = the line's card colour.
+    #[serde(default)]
+    pub color: Option<String>,
 }
 
 impl ClipItem {
@@ -93,7 +99,7 @@ impl ClipItem {
 /// `saved` is computed, so it is written but never read back.
 impl Serialize for ClipItem {
     fn serialize<S: Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
-        let mut st = s.serialize_struct("ClipItem", 23)?;
+        let mut st = s.serialize_struct("ClipItem", 25)?;
         st.serialize_field("id", &self.id)?;
         st.serialize_field("kind", &self.kind)?;
         st.serialize_field("text", &self.text)?;
@@ -117,6 +123,8 @@ impl Serialize for ClipItem {
         st.serialize_field("editedThumb", &self.edited_thumb)?;
         st.serialize_field("saved", &self.saved())?;
         st.serialize_field("size", &self.size)?;
+        st.serialize_field("rank", &self.rank)?;
+        st.serialize_field("color", &self.color)?;
         st.end()
     }
 }
@@ -352,6 +360,8 @@ impl ClipStore {
         let mut item = self.items.remove(pos);
         item.created_at = now;
         item.trashed_at = None;
+        // Copied again: it goes to the front, so a dragged place no longer applies.
+        item.rank = None;
         self.items.insert(0, item.clone());
         self.save()?;
         Ok(Some(item))
@@ -383,6 +393,8 @@ impl ClipStore {
             edited: None,
             edited_thumb: None,
             size: 0,
+            rank: None,
+            color: None,
         }
     }
 
@@ -477,6 +489,41 @@ impl ClipStore {
             i.pinned = pinned;
             true
         })
+    }
+
+    /// Set the dragged place of item `id` (`None` = back to its time order).
+    pub fn set_rank(&mut self, id: u64, rank: Option<f64>) -> Result<()> {
+        let rank = rank.filter(|r| r.is_finite());
+        let item = self.item_mut(id)?;
+        if item.rank != rank {
+            item.rank = rank;
+            self.save()?;
+        }
+        Ok(())
+    }
+
+    /// Give items their own card colour (`None`, or anything that is not `#rrggbb`, clears it).
+    pub fn set_color(&mut self, ids: &[u64], color: Option<&str>) -> Result<usize> {
+        let color = crate::settings::hex_colour(color);
+        self.update_many(ids, |i| {
+            if i.color == color {
+                return false;
+            }
+            i.color.clone_from(&color);
+            true
+        })
+    }
+
+    /// Drop every item's own colour.
+    pub fn clear_colors(&mut self) -> Result<()> {
+        let mut changed = false;
+        for i in &mut self.items {
+            changed |= i.color.take().is_some();
+        }
+        if changed {
+            self.save()?;
+        }
+        Ok(())
     }
 
     /// Title and note: empty clears. Text: text kinds only, re-hashed and re-classified.

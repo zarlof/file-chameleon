@@ -69,22 +69,22 @@ az önce kopyaladığınız linki indirir.
 
 ### Pano
 
-- **Çamaşır ipi:** resimler, metinler, linkler, dosyalar ve kısayollar için en çok beş beyaz örümcek
+- **Çamaşır ipi:** resimler, metinler, linkler ve dosyalar için en çok dört beyaz örümcek
   ağı ip; ekranın üstünde ya da altında durur. Küçük siyah örümcekler kendi iplerinden sarkıp
   kartlarınızı tutar. Bütün ipler görünür; ip adının yanındaki göz düğmesi bir ipi gizler. **Ctrl+1** açar
   (**Ctrl+Alt+F** aramayla açar), ya da fareyi ekran kenarına götürüp bir an bekleyin (bir şey
   kopyalayınca kısa süre görünmesi de açılabilir; varsayılan olarak kapalı). Karta tıklamak onu açar (ya da kopyalar, kopyalayıp kapatır
   veya önceki uygulamaya doğrudan yapıştırır: ayarınıza göre). Sağ tık kopyala, düzenle, paylaş
   (Windows paylaşım penceresi), sabitle ve sil verir; kartın sol üstündeki iğne onu hep başta tutar. **Ctrl+Enter** yapıştırır, 1–9 bir kart
-  seçer, yazmak arar, Delete çöp kutusuna taşır (Ctrl+Z geri getirir). Kartı sürükleyip başka bir
-  uygulamaya bırakabilirsiniz. Ayarlar → **İp** bölümünden kenar, boyut, ip ve mandal görünümü,
-  kartlar, renkler, sallanma, sesler, ip sırası ve adları, her ipte kaç kart durduğu ve daha fazlası
-  değiştirilir.
+  seçer, yazmak arar, Delete çöp kutusuna taşır (Ctrl+Z geri getirir). Bir kartın üzerinde biraz
+  durunca 2,5 kat büyük önizlemesi açılır (resmin tamamı, metnin hepsi, linkin tam adresi, dosyanın
+  adı ve klasörü). Kartı ipin üzerinde sürükleyerek yerini değiştirebilirsiniz (yeri hatırlanır);
+  ipin dışına sürüklerseniz başka bir uygulamaya bırakılır. Karttaki dişli ona kendi rengini verir.
+  Ayarlar → **İp** bölümünden kenar, boyut, ip ve mandal görünümü, kartlar ve renkleri, sallanma,
+  sesler, ip sırası ve adları, her ipte kaç kart durduğu ve daha fazlası değiştirilir.
 - **Dosyalar ipi:** dördüncü ip eklediğiniz, dönüştürdüğünüz ya da indirdiğiniz dosyaları tutar.
   Sürükleyebilir, açabilir, Gezgin'de gösterebilir veya panoya koyabilirsiniz. Sağ tık daha fazlasını
   verir. Gezgin'in sağ tık menüsündeki **İpe as** komutu dosyaları buraya asar.
-- **Kısayollar ipi:** Ayarlar → **İp** → Kısayollar ipi bölümünden görev çubuğu, Başlat menüsü ya
-  da masaüstündeki uygulamaları (veya herhangi bir dosyayı) seçin, sonra ipten tek tıkla açın.
 - **Kütüphane:** **Pano** sayfasında klasörler, etiketler, sabitlenenler filtresi, çöp kutusu, ızgara
   veya liste görünümü ve başlık, not ve metin düzenleme için bir ayrıntı paneli vardır. Öğeleri bir
   klasöre dışa aktarabilirsiniz.

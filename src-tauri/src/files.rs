@@ -33,6 +33,10 @@ pub struct LineFile {
     /// so a replaced file does not show the old cached picture.
     pub mtime: u64,
     pub pinned: bool,
+    /// Place set by dragging on the line (`None` = by `at`).
+    pub rank: Option<f64>,
+    /// The card's own colour (`#rrggbb`).
+    pub color: Option<String>,
 }
 
 /// File name of the cached thumbnail of `path`: a stable 64-bit FNV-1a hash of the path (case
@@ -263,6 +267,8 @@ pub fn list(app: &AppHandle) -> Vec<LineFile> {
                 thumb: thumb.map(|t| t.to_string_lossy().into_owned()),
                 mtime,
                 pinned: e.pinned,
+                rank: e.rank,
+                color: e.color.clone(),
             }
         })
         .collect();
@@ -351,6 +357,47 @@ pub fn pin(app: &AppHandle, paths: &[String], pinned: bool) -> crate::ipc::CmdRe
     Ok(())
 }
 
+/// Set the dragged place of a file of the rope.
+pub fn set_rank(app: &AppHandle, path: &str, rank: Option<f64>) -> crate::ipc::CmdResult<()> {
+    let state = app.state::<AppState>();
+    let known = lock(&state)
+        .set_rank(Path::new(path), rank)
+        .map_err(crate::ipc::CmdError::from)?;
+    if !known {
+        return Err(crate::ipc::CmdError::new(
+            "notFound",
+            "not on the files rope",
+        ));
+    }
+    let _ = app.emit(events::FILES_CHANGED, ());
+    Ok(())
+}
+
+/// Give files of the rope their own card colour (`None` = the line's colour).
+pub fn set_color(
+    app: &AppHandle,
+    paths: &[String],
+    color: Option<&str>,
+) -> crate::ipc::CmdResult<()> {
+    let state = app.state::<AppState>();
+    let paths: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
+    lock(&state)
+        .set_color(&paths, color)
+        .map_err(crate::ipc::CmdError::from)?;
+    let _ = app.emit(events::FILES_CHANGED, ());
+    Ok(())
+}
+
+/// Drop the own colour of every file card.
+pub fn clear_colors(app: &AppHandle) -> crate::ipc::CmdResult<()> {
+    let state = app.state::<AppState>();
+    lock(&state)
+        .clear_colors()
+        .map_err(crate::ipc::CmdError::from)?;
+    let _ = app.emit(events::FILES_CHANGED, ());
+    Ok(())
+}
+
 /// The entries of `paths` that are on the rope. A path that is not (never listed, or its file is
 /// gone and was just pruned) is left out and, when the file was pruned, the page is told.
 pub fn listed(app: &AppHandle, paths: &[String]) -> Vec<PathBuf> {
@@ -393,6 +440,8 @@ pub fn sweep_thumbs(app: &AppHandle) {
         .iter()
         .map(|e| thumb_name(&e.path))
         .collect();
+    // Icons of the shortcuts rope (removed in 0.4.0) were cached here.
+    let _ = std::fs::remove_dir_all(dir.join("apps"));
     let Ok(rd) = std::fs::read_dir(&dir) else {
         return;
     };

@@ -2,18 +2,18 @@
   Rope — one natural cord across the whole screen width (no band, no backdrop), a knot near each end,
   a small label pill at the left end and the cards hanging from it by clothespins. The strokes come from
   ropeStyle.ts (twisted / cord / thin); the swing angles and falling progress are owned by Line.svelte's
-  shared animation loop. The settings page draws its live preview with this same component.
+  shared animation loop. While a card is dragged along the rope (`drag`, owned by Line.svelte) it follows
+  the pointer and the others step aside to show where it will land. The settings page draws its live
+  preview with this same component.
 -->
 <script lang="ts">
   import { fall, ropePath, ropeY } from './physics';
   import { ropeStrokes, type RopeStyle } from './ropeStyle';
   import type { LineCard } from './logic';
+  import { cardCenter } from './layout';
   import Peg from './Peg.svelte';
   import { t } from './i18n';
 
-  /** Space between two cards, and the rope's inset at the first card (not scaled). */
-  const GAP = 16;
-  const MARGIN = 24;
   /** The knots sit this far inside each screen edge. */
   const KNOT_INSET = 6;
 
@@ -41,19 +41,21 @@
     pinColor = 'auto',
     cardOp,
     ropeOp = 1,
-    zoomOn = false,
-    onzoom,
+    previewOn = false,
+    onpreview,
+    drag = null,
     emptyText = '',
     collapsed = false,
     ontoggle,
     onpin,
     onclick,
     ondblclick,
-    ondragout,
+    ondragstart,
     onremove,
     oncontext,
     onhover,
     onmore,
+    ongear,
   }: {
     label: string;
     showLabel?: boolean;
@@ -85,8 +87,11 @@
     cardOp: number;
     /** Opacity of the rope itself (cord, knots, label), 0.3..1. */
     ropeOp?: number;
-    zoomOn?: boolean;
-    onzoom?: (item: NonNullable<LineCard['item']> | null, rect: DOMRect | null) => void;
+    previewOn?: boolean;
+    onpreview?: (c: LineCard, rect: DOMRect | null) => void;
+    /** A card of this rope being dragged: its offset from where it hangs and the slot it would take
+     *  among the others. */
+    drag?: { id: number; dx: number; dy: number; slot: number } | null;
     /** Shown on the rope when a search leaves it empty. */
     emptyText?: string;
     /** Folded away: only the label (with its show button) is drawn. */
@@ -97,16 +102,27 @@
     onpin?: (c: LineCard) => void;
     onclick: (c: LineCard, e: MouseEvent) => void;
     ondblclick: (c: LineCard) => void;
-    ondragout: (c: LineCard) => void;
+    ondragstart: (c: LineCard, e: PointerEvent) => void;
     onremove: (c: LineCard) => void;
     oncontext: (c: LineCard, e: MouseEvent) => void;
     onhover: (c: LineCard, dir: number) => void;
     onmore: () => void;
+    /** The gear on a card (its own settings). */
+    ongear?: (c: LineCard, rect: DOMRect) => void;
   } = $props();
 
   const TOP = $derived(22 * scale);
   const sagPx = $derived(Math.min(40, Math.max(0, sag)) * scale);
-  const centers = $derived(cards.map((_, i) => MARGIN + i * (card + GAP) + card / 2));
+  /** Where each card hangs. A dragged card follows the pointer; the others make room at its slot. */
+  const dragFrom = $derived(drag ? cards.findIndex((c) => c.id === drag.id) : -1);
+  const centers = $derived(
+    cards.map((_, i) => {
+      if (dragFrom < 0 || !drag) return cardCenter(i, card);
+      if (i === dragFrom) return cardCenter(i, card) + drag.dx;
+      const rest = i < dragFrom ? i : i - 1;
+      return cardCenter(rest < drag.slot ? rest : rest + 1, card);
+    }),
+  );
   const d = $derived(ropePath(width, centers, sagPx));
   const layers = $derived(ropeStrokes(ropeStyle, color, thickness));
   const knot = $derived(2 + thickness * 0.9);
@@ -142,7 +158,14 @@
   {#if !collapsed}
   {#if cards.length === 0 && emptyText}<span class="none">{emptyText}</span>{/if}
   {#each cards as c, i (c.id)}
-    <div class="slot" style:left="{centers[i] - card / 2}px" style:top="{TOP + ropeY(width, centers[i], centers, sagPx) + 8 * scale}px" style:width="{card}px">
+    {@const lifted = i === dragFrom}
+    <div
+      class="slot"
+      class:lifted
+      style:left="{centers[i] - card / 2}px"
+      style:top="{TOP + ropeY(width, lifted ? cardCenter(i, card) : centers[i], centers, sagPx) + 8 * scale + (lifted && drag ? drag.dy : 0)}px"
+      style:width="{card}px"
+    >
       <Peg
         card={c}
         theta={angles[c.id] ?? 0}
@@ -156,15 +179,17 @@
         {pinStyle}
         {pinColor}
         num={numbers && i < 9 ? i + 1 : null}
-        {zoomOn}
-        {onzoom}
+        {previewOn}
+        {lifted}
+        onpreview={onpreview ? (rect) => onpreview(c, rect) : undefined}
         onclick={(e) => onclick(c, e)}
         ondblclick={() => ondblclick(c)}
-        ondragout={() => ondragout(c)}
+        ondragstart={(e) => ondragstart(c, e)}
         onremove={() => onremove(c)}
         oncontext={(e) => oncontext(c, e)}
         onhover={(dir) => onhover(c, dir)}
         onpin={onpin ? () => onpin(c) : undefined}
+        ongear={ongear ? (rect) => ongear(c, rect) : undefined}
       />
     </div>
   {/each}
@@ -215,6 +240,7 @@
   .eye svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
   .eye .slash { stroke-width: 1.7; }
   .slot { position: absolute; transition: left var(--dur) var(--ease-out), top var(--dur) var(--ease-out); }
+  .slot.lifted { z-index: 5; transition: none; }
   :global([data-reduce-motion]) .slot { transition: none; }
   .none {
     position: absolute;
