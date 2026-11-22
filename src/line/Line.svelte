@@ -459,6 +459,11 @@
   const opens = () => (settings?.lineClickAction ?? 'open') === 'open';
   function pick(c: LineCard, e: MouseEvent) {
     clearTimeout(clickTimer);
+    // Ctrl+click: the format wheel for the card (or the selection it belongs to). Shift selects.
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+      void wheelFor(c);
+      return;
+    }
     const mods = { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey } as MouseEvent;
     if (opens() && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
       pickNow(c, mods);
@@ -497,6 +502,24 @@
     anchor = c.id;
     if (opens()) void openCard(c);
     else void activate([c.id]);
+  }
+
+  /** The format wheel for a card (or the selection it is part of): files and image clips with their
+   *  own file, text and link clips as a .txt. The line steps aside for the wheel. */
+  async function wheelFor(c: LineCard) {
+    const { clips, paths } = splitTargets(targetsFor(c));
+    closeHover();
+    try {
+      const files = clips.length > 0 ? await api.lineClipFiles(clips) : [];
+      const all = [...paths, ...files];
+      if (all.length === 0) return;
+      await api.wheelOpen(all);
+      selected = [];
+      await hide();
+    } catch (e) {
+      console.error(e);
+      showToast(t('wheelNone'));
+    }
   }
 
   /** Open a card: a file or an image in its default app, text in the library, a link in the browser. */
@@ -737,7 +760,8 @@
     const moved = visible[drag.from];
     const wanted = slotAt(cardCenter(drag.from, size.card) + dx, size.card, rest.length);
     const slot = moved ? allowedSlot(rest, !!(moved.item?.pinned ?? moved.file?.pinned), wanted) : wanted;
-    drag = { ...drag, dx, dy: Math.max(-12, Math.min(12, dy)), slot };
+    // Down: the card follows and the spider's thread stretches (further than the band = drag-out).
+    drag = { ...drag, dx, dy: Math.max(-8, dy), slot };
   }
 
   function dragEnd(e: PointerEvent) {

@@ -29,7 +29,7 @@
   "float.close": "Close",
   "float.missing": "Could not open the image",
   "settings.title": "Line",
-  "settings.intro": "Keeps what you copied last on a rope stretched across the screen. Click a card to copy it, or drag it out to drop it where you want.",
+  "settings.intro": "Keeps what you copied last on ropes across the screen. Click a card to open it, rest on it for a large preview, drag it to reorder or out into another app, Ctrl+click it for the format wheel.",
   "settings.section.general": "General",
   "settings.enable": "Use the line",
   "settings.enableHint": "When off, the line never opens.",
@@ -189,6 +189,7 @@
   "settings.cardColorsReset": "Reset own colours",
   "settings.cardColorsResetHint": "Cards with a colour of their own take the line's colour again.",
   "settings.cardColorsResetDone": "The cards' own colours were reset",
-  "settings.dragHint": "Drag cards along a rope to reorder them; drag one out of the window to drop it into another app.",
-  "preview.path": "Folder"
+  "settings.dragHint": "Drag cards along a rope to reorder them; drag one out of the window to drop it into another app. Ctrl+click a card to open the format wheel, Shift+click to select cards.",
+  "preview.path": "Folder",
+  "wheelNone": "Nothing to convert on this card"
 }

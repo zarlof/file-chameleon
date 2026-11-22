@@ -5,19 +5,59 @@
 <h1 align="center">File Chameleon</h1>
 
 <p align="center">
-  Dosyaları internetsiz dönüştürün, linklerden medya indirin, panoda akıllı öneriler alın.<br>
-  Hepsi tek, küçük ve hızlı bir Windows uygulamasında.
+  <b>Her gün yaptığın üç iş için tek, küçük bir Windows uygulaması:</b><br>
+  dosyaları internete yüklemeden dönüştür, linklerden video ve müzik indir,<br>
+  kopyaladığın her şey elinin altında dursun.
 </p>
 
 <p align="center">
+  <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/zarlof31/file-chameleon?label=indir&color=2ea44f" alt="Son sürüm"></a>
+  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4" alt="Windows 10 ve 11">
+  <img src="https://img.shields.io/badge/internetsiz-çalışır-6f42c1" alt="İnternetsiz çalışır">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/lisans-MIT-blue" alt="MIT lisansı"></a>
+</p>
+
+<p align="center">
+  <a href="../../releases/latest"><b>İndir</b></a> ·
   <a href="README.md">English</a> ·
+  <a href="#ne-işe-yarar">Ne işe yarar?</a> ·
   <a href="#özellikler">Özellikler</a> ·
   <a href="#kurulum">Kurulum</a> ·
-  <a href="#kaynaktan-derleme">Derleme</a> ·
   <a href="#gizlilik">Gizlilik</a>
 </p>
 
----
+<p align="center">
+  <img src="docs/images/line.jpg" width="900" alt="Çamaşır ipi: kopyalanan resimler, metinler, linkler ve dosyalar ekranın üstündeki iplerde asılı">
+  <br><sub>Çamaşır ipi: kopyaladıkların ekranın üstünde, her tür kendi ipinde asılı durur.</sub>
+</p>
+
+## Ne işe yarar?
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/wheel.png" alt="Dönüştürme çarkı"></td>
+    <td width="50%"><img src="docs/images/line-preview.jpg" alt="Kopyalanmış bir notun büyük önizlemesi"></td>
+  </tr>
+  <tr>
+    <td><b>Sürükleyerek dönüştür.</b> Dosya Gezgini'nde bir dosyayı <kbd>Ctrl</kbd>'ye basılı tutarak
+      sürükle, imlecin altında bir çark açılır. JPG, WebP, PDF, MP3… üstünde bırak, iş arka planda,
+      senin bilgisayarında yapılır. Orijinal dosyaya dokunulmaz.</td>
+    <td><b>Kopyaladığın hiçbir şey kaybolmaz.</b> Kopyaladığın her resim, metin, link ve dosya ekranın
+      üstündeki bir ipe asılır (<kbd>Ctrl</kbd>+<kbd>1</kbd>). Kartın üzerinde dur, hepsini oku;
+      tıkla, aç; istediğin uygulamaya sürükle.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/convert.png" alt="Dönüştür sayfası"></td>
+    <td width="50%"><img src="docs/images/library.png" alt="Pano kütüphanesi"></td>
+  </tr>
+  <tr>
+    <td><b>558 dönüşüm, yükleme yok.</b> Resim, video, ses, PDF, altyazı, veri dosyaları ve arşivler;
+      ayrıca sıkıştırma, kırpma, kesme, boyutlandırma ve daha fazlası. YouTube, Instagram ya da TikTok
+      linkini yapıştır, MP4, MP3 veya GIF olarak kaydet.</td>
+    <td><b>Aranabilir bir pano.</b> Klasörler, etiketler, sabitlenenler, çöp kutusu, resimlerdeki
+      yazıyı okuma (internetsiz OCR) ve küçük bir resim düzenleyici. Geçmişin bilgisayarında kalır.</td>
+  </tr>
+</table>
 
 ## Özellikler
 
@@ -26,6 +66,8 @@
 Dosyaları pencereye bırakın ya da Dosya Gezgini'nde **Ctrl'ye basılı tutarak dosya sürükleyin**.
 İmlecin altında bir çark açılır. Bir dilimin üstünde bırakınca iş arka planda yapılır. Dosyalarınız
 bilgisayarınızdan çıkmaz, orijinal dosyalar asla değiştirilmez veya silinmez.
+
+<p align="center"><img src="docs/images/wheel.png" width="460" alt="Bir PNG dosyası için dönüştürme çarkı"></p>
 
 - **Her dosya türüne ayrı çark.** Resim, video, ses, PDF, metin, veri, altyazı, arşiv, karışık seçim
   ve diğer tüm dosyaların kendi çark profili vardır.
@@ -69,6 +111,17 @@ az önce kopyaladığınız linki indirir.
 
 ### Pano
 
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/line-colors.png" alt="Kart ayarları: tek bir karta renk"></td>
+    <td width="50%"><img src="docs/images/line-drag.png" alt="Bir kartı ipin üzerinde sürüklemek"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Karttaki dişli ona kendi rengini verir.</sub></td>
+    <td align="center"><sub>Kartı ipin üzerinde sürükle; örümceğin ipi onunla uzar.</sub></td>
+  </tr>
+</table>
+
 - **Çamaşır ipi:** resimler, metinler, linkler ve dosyalar için en çok dört beyaz örümcek
   ağı ip; ekranın üstünde ya da altında durur. Küçük siyah örümcekler kendi iplerinden sarkıp
   kartlarınızı tutar. Bütün ipler görünür; ip adının yanındaki göz düğmesi bir ipi gizler. **Ctrl+1** açar
@@ -79,7 +132,9 @@ az önce kopyaladığınız linki indirir.
   seçer, yazmak arar, Delete çöp kutusuna taşır (Ctrl+Z geri getirir). Bir kartın üzerinde biraz
   durunca 2,5 kat büyük önizlemesi açılır (resmin tamamı, metnin hepsi, linkin tam adresi, dosyanın
   adı ve klasörü). Kartı ipin üzerinde sürükleyerek yerini değiştirebilirsiniz (yeri hatırlanır);
-  ipin dışına sürüklerseniz başka bir uygulamaya bırakılır. Karttaki dişli ona kendi rengini verir.
+  ipin dışına sürüklerseniz başka bir uygulamaya bırakılır. **Ctrl+tık** kart için dönüştürme
+  çarkını açar (metin ve link .txt olarak dönüştürülür), **Shift+tık** kart seçer. Karttaki dişli ona
+  kendi rengini verir.
   Ayarlar → **İp** bölümünden kenar, boyut, ip ve mandal görünümü, kartlar ve renkleri, sallanma,
   sesler, ip sırası ve adları, her ipte kaç kart durduğu ve daha fazlası değiştirilir.
 - **Dosyalar ipi:** dördüncü ip eklediğiniz, dönüştürdüğünüz ya da indirdiğiniz dosyaları tutar.
@@ -98,6 +153,13 @@ az önce kopyaladığınız linki indirir.
   silinmez. Link başlıkları sadece siz açarsanız internetten alınır.
 - Bir medya linki kopyalayınca File Chameleon indirmeyi, bir resim kopyalayınca kaydetmeyi veya
   dönüştürmeyi önerir.
+
+### Sana göre ayarla
+
+Ayarlar → **İp** sayfasında ipi, örümcekleri, kartları ve renklerini değiştirirken canlı bir önizleme
+görürsün; Ayarlar → **Çark** ve **Ön ayarlar** ile her dilimi düzenleyebilirsin.
+
+<p align="center"><img src="docs/images/settings-line.png" width="760" alt="İp ayarları ve canlı önizleme"></p>
 
 ### Hafif olacak şekilde tasarlandı
 
@@ -123,6 +185,7 @@ Gereksinimler: Windows 10 (1809 ve üstü) veya Windows 11, 64 bit. WebView2 yok
 - Çarkı açmak için Dosya Gezgini'nden veya masaüstünden dosya ya da klasörleri **Ctrl + sürükleyin**.
   İptal etmek için **Esc**'ye basın ya da çarkın dışında bırakın. **Ctrl+Shift + sürükle** arka yüzü
   açar.
+- İpte bir karta **Ctrl+tık** onu çarkla dönüştürür, **Shift+tık** birden çok kart seçer.
 - **Ctrl+1** çamaşır ipini, **Ctrl+2** pano kitaplığını açar, **Ctrl+3** ekran görüntüsünü ipe asar,
   **Ctrl+7** kopyalanan linki indirir. Bu kısayolları Ayarlar →
   **Kısayollar** bölümünden değiştirebilir veya kapatabilirsiniz.
@@ -157,7 +220,8 @@ Proje yapısı:
 crates/fc-core/   çekirdek mantık: formatlar, dönüştürme motorları, iş kuyruğu, motor yöneticisi,
                   indirici, pano geçmişi (arayüz kodu yok)
 src-tauri/        masaüstü kabuğu: pencereler, tepsi, Ctrl+sürükle kancası, pano dinleyici, IPC
-src/              Svelte 5 arayüzü: ana pencere (index.html) ile çark ve bildirim katmanı (overlay.html)
+src/              Svelte 5 arayüzü: ana pencere (index.html), çark ve bildirim katmanı (overlay.html),
+                  çamaşır ipi (line.html) ve ekranda sabit resim penceresi (float.html)
 ```
 
 ## Gizlilik

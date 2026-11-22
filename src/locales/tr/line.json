@@ -29,7 +29,7 @@
   "float.close": "Kapat",
   "float.missing": "Görsel açılamadı",
   "settings.title": "İp",
-  "settings.intro": "Son kopyaladıklarını ekran boyunca gerilmiş bir ipte tutar. Kartı tıklayınca kopyalanır, dışarı sürükleyince bırakılan yere gider.",
+  "settings.intro": "Son kopyaladıklarını ekranın üstündeki iplerde tutar. Bir karta tıklarsan açılır, üzerinde durursan büyük önizlemesi çıkar; sürükleyerek yerini değiştirir ya da başka bir uygulamaya bırakırsın, Ctrl ile tıklarsan dönüştürme çarkı açılır.",
   "settings.section.general": "Genel",
   "settings.enable": "İpi kullan",
   "settings.enableHint": "Kapalıyken ip hiçbir şekilde açılmaz.",
@@ -189,6 +189,7 @@
   "settings.cardColorsReset": "Özel renkleri sıfırla",
   "settings.cardColorsResetHint": "Kendi rengi olan kartlar da genel rengi alır.",
   "settings.cardColorsResetDone": "Kartların özel renkleri sıfırlandı",
-  "settings.dragHint": "Kartları ipin üzerinde sürükleyerek sıralayabilirsin; pencerenin dışına sürüklersen başka bir uygulamaya bırakılır.",
-  "preview.path": "Konum"
+  "settings.dragHint": "Kartları ipin üzerinde sürükleyerek sıralayabilirsin; pencerenin dışına sürüklersen başka bir uygulamaya bırakılır. Ctrl basılıyken bir karta tıklarsan dönüştürme çarkı açılır, Shift ile kart seçersin.",
+  "preview.path": "Konum",
+  "wheelNone": "Bu kartta dönüştürülecek bir şey yok"
 }

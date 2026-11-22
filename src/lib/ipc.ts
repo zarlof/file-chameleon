@@ -123,6 +123,8 @@ export const api = {
   /** Where a dragged clip lands on its rope (higher = further left; null = back to time order). */
   lineClipRank: (id: number, rank: number | null) => invoke<void>('line_clip_rank', { id, rank }),
   lineFileRank: (path: string, rank: number | null) => invoke<void>('line_file_rank', { path, rank }),
+  /** Files the wheel can convert for clips: an image's picture, a text or link as a .txt. */
+  lineClipFiles: (ids: number[]) => invoke<string[]>('line_clip_files', { ids }),
   /** A card's own colour (#rrggbb; null = the line's card colour): clips by id, files by path. */
   lineCardColor: (ids: number[], paths: string[], color: string | null) => invoke<void>('line_card_color', { ids, paths, color }),
   lineClearCardColors: () => invoke<void>('line_clear_card_colors'),

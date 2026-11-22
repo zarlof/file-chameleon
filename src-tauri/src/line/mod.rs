@@ -733,6 +733,35 @@ mod tests {
     }
 
     #[test]
+    fn wheel_files_for_clips() {
+        let dir = tempfile::tempdir().unwrap();
+        let pic = dir.path().join("1.png");
+        std::fs::write(&pic, b"png").unwrap();
+        let img = clip(serde_json::json!({
+            "id": 1, "kind": "image", "image": pic, "hash": "h", "createdAt": 1
+        }));
+        assert_eq!(wheel_file(&img, dir.path()).unwrap(), pic);
+        // A text (or a link) becomes <id>.txt, written again each time.
+        let text_dir = dir.path().join("text");
+        let note = clip(serde_json::json!({
+            "id": 7, "kind": "text", "text": "hello", "hash": "h", "createdAt": 1
+        }));
+        let p = wheel_file(&note, &text_dir).unwrap();
+        assert_eq!(p, text_dir.join("7.txt"));
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "hello");
+        let edited = clip(serde_json::json!({
+            "id": 7, "kind": "text", "text": "hello again", "hash": "h", "createdAt": 1
+        }));
+        wheel_file(&edited, &text_dir).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "hello again");
+        // An image whose file is gone has nothing to convert.
+        let gone = clip(serde_json::json!({
+            "id": 2, "kind": "image", "image": dir.path().join("gone.png"), "hash": "h", "createdAt": 1
+        }));
+        assert!(wheel_file(&gone, dir.path()).is_err());
+    }
+
+    #[test]
     fn drag_plan_cases() {
         let img = clip(serde_json::json!({
             "id": 1, "kind": "image", "image": "C:/c/1.png", "hash": "h", "createdAt": 1

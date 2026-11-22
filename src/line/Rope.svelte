@@ -163,7 +163,7 @@
       class="slot"
       class:lifted
       style:left="{centers[i] - card / 2}px"
-      style:top="{TOP + ropeY(width, lifted ? cardCenter(i, card) : centers[i], centers, sagPx) + 8 * scale + (lifted && drag ? drag.dy : 0)}px"
+      style:top="{TOP + ropeY(width, centers[i], centers, sagPx) + 8 * scale + (lifted && drag ? drag.dy : 0)}px"
       style:width="{card}px"
     >
       <Peg
@@ -181,6 +181,7 @@
         num={numbers && i < 9 ? i + 1 : null}
         {previewOn}
         {lifted}
+        stretch={lifted && drag ? Math.max(0, drag.dy) : 0}
         onpreview={onpreview ? (rect) => onpreview(c, rect) : undefined}
         onclick={(e) => onclick(c, e)}
         ondblclick={() => ondblclick(c)}

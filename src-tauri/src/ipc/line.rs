@@ -40,6 +40,13 @@ pub fn line_open_clip(app: AppHandle, id: u64) -> CmdResult<()> {
     crate::line::open_clip(&app, id)
 }
 
+/// Files the wheel can convert for clips (Ctrl+click on cards): image clips give their picture,
+/// text and link clips a `.txt` in the clipboard store.
+#[tauri::command(async)]
+pub fn line_clip_files(app: AppHandle, ids: Vec<u64>) -> CmdResult<Vec<String>> {
+    crate::line::clip_files(&app, &ids)
+}
+
 /// The Windows share sheet for clips and files of the files rope.
 #[tauri::command(async)]
 pub fn line_share(app: AppHandle, ids: Vec<u64>, paths: Vec<String>) -> CmdResult<()> {

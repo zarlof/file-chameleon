@@ -5,19 +5,59 @@
 <h1 align="center">File Chameleon</h1>
 
 <p align="center">
-  Convert files offline, download media from links and get smart clipboard suggestions,<br>
-  all in one small, fast Windows app.
+  <b>One small Windows app for three everyday jobs:</b><br>
+  convert any file without uploading it, download videos and music from links,<br>
+  and keep everything you copy within reach.
 </p>
 
 <p align="center">
+  <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/zarlof31/file-chameleon?label=download&color=2ea44f" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4" alt="Windows 10 and 11">
+  <img src="https://img.shields.io/badge/works-offline-6f42c1" alt="Works offline">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+</p>
+
+<p align="center">
+  <a href="../../releases/latest"><b>Download</b></a> ·
   <a href="README.tr.md">Türkçe</a> ·
+  <a href="#what-it-does">What it does</a> ·
   <a href="#features">Features</a> ·
   <a href="#install">Install</a> ·
-  <a href="#build-from-source">Build</a> ·
   <a href="#privacy">Privacy</a>
 </p>
 
----
+<p align="center">
+  <img src="docs/images/line.jpg" width="900" alt="The clothesline: copied images, texts, links and files hanging from ropes at the top of the screen">
+  <br><sub>The clothesline: what you copied, hanging at the top of your screen, one rope per kind.</sub>
+</p>
+
+## What it does
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/wheel.png" alt="The format wheel"></td>
+    <td width="50%"><img src="docs/images/line-preview.jpg" alt="A large preview of a copied note"></td>
+  </tr>
+  <tr>
+    <td><b>Convert by dragging.</b> Hold <kbd>Ctrl</kbd> while you drag a file in File Explorer and a
+      wheel opens under the cursor. Let go on JPG, WebP, PDF, MP3… and it is done in the background,
+      on your PC. The original file is never touched.</td>
+    <td><b>Never lose what you copied.</b> Every image, text, link and file you copy hangs on a rope at
+      the top of the screen (<kbd>Ctrl</kbd>+<kbd>1</kbd>). Rest on a card to read all of it, click to
+      open it, drag it out into any app.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/convert.png" alt="The Convert page"></td>
+    <td width="50%"><img src="docs/images/library.png" alt="The clipboard library"></td>
+  </tr>
+  <tr>
+    <td><b>558 conversions, no upload.</b> Images, video, audio, PDF, subtitles, data files and
+      archives, plus compress, trim, crop, resize and more. Paste a YouTube, Instagram or TikTok link
+      to save it as MP4, MP3 or GIF.</td>
+    <td><b>A clipboard you can search.</b> Folders, tags, pins, a trash, text recognised in images
+      (offline OCR) and a small image editor. Your history stays on your PC.</td>
+  </tr>
+</table>
 
 ## Features
 
@@ -26,6 +66,8 @@
 Drop files on the window, or **hold Ctrl while dragging files** in File Explorer. A wheel opens under
 your cursor: release on a slice and the job runs in the background. Your files never leave your
 computer, and the originals are never changed or deleted.
+
+<p align="center"><img src="docs/images/wheel.png" width="460" alt="The format wheel for a PNG file"></p>
 
 - **A wheel per file type.** Images, video, audio, PDF, text, data, subtitles, archives, mixed
   selections and any other file each get their own wheel profile.
@@ -67,6 +109,17 @@ convert it in one click. **Ctrl+7** downloads the link you just copied.
 
 ### Clipboard
 
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/line-colors.png" alt="Card settings: a colour for one card"></td>
+    <td width="50%"><img src="docs/images/line-drag.png" alt="Dragging a card along its rope"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>The gear on a card gives it a colour of its own.</sub></td>
+    <td align="center"><sub>Drag a card along the rope; the spider's thread stretches with it.</sub></td>
+  </tr>
+</table>
+
 - **The clothesline:** up to four ropes (images, texts, links, files) of white spider
   silk across the top or bottom of the screen; little black spiders hang from them on their own
   threads and hold your clips. Every rope shows; the eye button by a rope's name folds it away. **Ctrl+1** opens it (**Ctrl+Alt+F**
@@ -77,8 +130,9 @@ convert it in one click. **Ctrl+7** downloads the link you just copied.
   typing searches, Delete moves to the trash (Ctrl+Z brings it back). Rest on a card for a moment
   to see it 2.5 times larger (the whole picture, all of a text, a link's full address, a file's
   name and folder). Drag a card along its rope to put it in another place (the place is kept);
-  drag it out of the line to drop it into another app. The gear on a card gives it a colour of its
-  own. Settings → **Line** changes the edge, size, rope and pin look, cards and their colour,
+  drag it out of the line to drop it into another app. **Ctrl+click** a card to open the format
+  wheel for it (a text or a link is converted as a .txt); **Shift+click** selects cards. The gear on
+  a card gives it a colour of its own. Settings → **Line** changes the edge, size, rope and pin look, cards and their colour,
   swing, sounds, rope order and names, how many cards each rope holds, and more.
 - **The files rope:** the fourth rope holds files you added, converted or downloaded. Drag them out,
   open them, show them in Explorer, or put them on the clipboard. Right-click a file for more.
@@ -94,6 +148,13 @@ convert it in one click. **Ctrl+7** downloads the link you just copied.
   tagged or titled items never expire. Link titles are fetched only if you turn that on.
 - Copy a media link and File Chameleon offers to download it; copy an image and it offers to save or
   convert it.
+
+### Make it yours
+
+Settings → **Line** shows a live preview while you change the rope, the spiders, the cards and their
+colours; Settings → **Wheel** and **Presets** let you arrange every slice.
+
+<p align="center"><img src="docs/images/settings-line.png" width="760" alt="Settings for the line, with a live preview"></p>
 
 ### Light by design
 
@@ -119,6 +180,7 @@ is missing.
 
 - **Ctrl + drag** files or folders from File Explorer or the desktop to open the wheel. Press
   **Esc** or release outside the wheel to cancel. **Ctrl+Shift + drag** opens the back face.
+- On the line, **Ctrl+click** a card to convert it with the wheel, **Shift+click** to select several.
 - **Ctrl+1** opens the clothesline, **Ctrl+2** the clipboard library, **Ctrl+3** hangs a screenshot
   on it and **Ctrl+7** downloads the copied link. Change or turn off these shortcuts in Settings →
   **Shortcuts**.
@@ -152,7 +214,8 @@ Project layout:
 crates/fc-core/   core logic: formats, conversion engines, job queue, engine manager,
                   downloader, clipboard history (no UI code)
 src-tauri/        desktop shell: windows, tray, Ctrl+drag hook, clipboard watcher, IPC
-src/              Svelte 5 interface: main window (index.html) and wheel/toast overlay (overlay.html)
+src/              Svelte 5 interface: main window (index.html), wheel/toast overlay (overlay.html),
+                  the clothesline (line.html) and the floating image window (float.html)
 ```
 
 ## Privacy

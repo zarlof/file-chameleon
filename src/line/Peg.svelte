@@ -3,7 +3,7 @@
   (`theta`, driven by the shared loop in Line.svelte). Dark glass by default (see cardVars in layout.ts):
   image = rounded thumbnail with a thin border, text = translucent note, link = preview image, title and
   domain, file = thumbnail or type glyph, name, extension chip, size and source icon. A small 1-9 badge
-  sits at the bottom left. Gestures: click, Ctrl/Shift-click, double-click, drag (6 px: Line.svelte moves it
+  sits at the bottom left. Gestures: click, Ctrl-click (the wheel), Shift-click (select), double-click, drag (6 px: Line.svelte moves it
   along the rope, or out of the window into another app), right-click, and on hover the x, the pin and the
   gear (the card's own settings). Resting on a card asks for the large hover preview.
 -->
@@ -34,6 +34,7 @@
     num = null,
     previewOn = false,
     lifted = false,
+    stretch = 0,
     onpreview,
     onclick,
     ondblclick,
@@ -65,6 +66,8 @@
     previewOn?: boolean;
     /** Being dragged along the rope (drawn above the others, no hover lift). */
     lifted?: boolean;
+    /** Pulled this many px below the rope while dragged: the spider's thread stretches to it. */
+    stretch?: number;
     onpreview?: (rect: DOMRect | null) => void;
     onclick: (e: MouseEvent) => void;
     ondblclick: () => void;
@@ -175,6 +178,7 @@
   onpointerleave={leave}
 >
   {#if spider}
+    {#if stretch > 0}<span class="thread" style:height="{stretch}px" style:top="calc(var(--s) * -8px - {stretch}px)"></span>{/if}
     <span class="hanger"><Spider {scale} /></span>
   {:else}
     <span class="pin"><Pin pinStyle={pinStyle === 'spider' ? 'plastic' : pinStyle} color={pinColor} {pinned} {scale} /></span>
@@ -317,6 +321,17 @@
     margin-left: calc(var(--s) * -13px);
     z-index: 2;
     line-height: 0;
+    pointer-events: none;
+  }
+  /* The spider's own thread, stretched up to the rope while the card is pulled down. */
+  .thread {
+    position: absolute;
+    left: 50%;
+    width: 1px;
+    margin-left: -0.5px;
+    background: #fff;
+    box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.45);
+    z-index: 2;
     pointer-events: none;
   }
   .card {

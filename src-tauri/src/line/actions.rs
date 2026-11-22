@@ -76,6 +76,44 @@ pub fn drag_plan(item: &fc_core::clip::ClipItem) -> DragPlan {
     }
 }
 
+/// A file the wheel can convert for clip `item` (Ctrl+click on a card): an image clip's picture
+/// (the edited copy first), a text or link clip saved as `<text_dir>/<id>.txt` (written again
+/// each time, so an edited text is current). The folder is inside the clipboard store, so the
+/// results go to the Downloads folder like other clipboard conversions.
+pub fn wheel_file(item: &fc_core::clip::ClipItem, text_dir: &Path) -> CmdResult<PathBuf> {
+    match drag_plan(item) {
+        DragPlan::File(p) if p.is_file() => Ok(p),
+        DragPlan::Text(t) => {
+            std::fs::create_dir_all(text_dir).map_err(|e| CmdError::new("io", e.to_string()))?;
+            let p = text_dir.join(format!("{}.txt", item.id));
+            std::fs::write(&p, t).map_err(|e| CmdError::new("io", e.to_string()))?;
+            Ok(p)
+        }
+        _ => Err(CmdError::new("notFound", "the clip has no file to convert")),
+    }
+}
+
+/// `line_clip_files`: the wheel's files for clips `ids` (see [`wheel_file`]); clips without one
+/// are left out.
+pub fn clip_files(app: &AppHandle, ids: &[u64]) -> CmdResult<Vec<String>> {
+    let state = app.state::<AppState>();
+    let text_dir = state.paths.clipboard_dir().join("text");
+    let mut out = Vec::new();
+    for id in ids {
+        let item = crate::ipc::clipboard::find(&state, *id)?;
+        if let Ok(p) = wheel_file(&item, &text_dir) {
+            out.push(p.to_string_lossy().into_owned());
+        }
+    }
+    if out.is_empty() {
+        return Err(CmdError::new(
+            "notFound",
+            "the clips have no file to convert",
+        ));
+    }
+    Ok(out)
+}
+
 /// Only web links are opened.
 pub fn is_web_url(url: &str) -> bool {
     let lower = url.trim().to_ascii_lowercase();
