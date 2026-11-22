@@ -416,10 +416,10 @@ mod tests {
         assert_eq!(NAMES.len(), 6);
         // A leftover shelf hotkey in old settings registers nothing.
         let s = fc_core::settings::Settings {
-            hotkey_shelf: "Ctrl+1".into(),
+            hotkey_shelf: "Ctrl+Alt+9".into(),
             ..Default::default()
         };
-        assert!(wanted_hotkeys(&s).iter().all(|(k, _)| k != "Ctrl+1"));
+        assert!(wanted_hotkeys(&s).iter().all(|(k, _)| k != "Ctrl+Alt+9"));
     }
 
     #[test]

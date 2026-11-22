@@ -64,16 +64,16 @@ dosyalar, kopyalanmaları bitince otomatik olarak `converted` alt klasörüne d�
 YouTube, Instagram (reels ve gönderiler), TikTok, X/Twitter, Facebook, Reddit, Vimeo, Twitch klipleri
 ve Pinterest linklerini yapıştırabilirsiniz. Doğrudan resim veya video adresleri de olur. Video (MP4),
 ses (MP3), GIF veya orijinal dosya olarak, En iyi, 1080p ya da 720p kalitede kaydedebilirsiniz.
-İndirme bitince dosyayı klasörde gösterebilir veya tek tıkla dönüştürebilirsiniz. **Ctrl+Alt+D**
+İndirme bitince dosyayı klasörde gösterebilir veya tek tıkla dönüştürebilirsiniz. **Ctrl+7**
 az önce kopyaladığınız linki indirir.
 
 ### Pano
 
 - **Çamaşır ipi:** resimler, metinler, linkler, dosyalar ve kısayollar için en çok beş beyaz örümcek
   ağı ip; ekranın üstünde ya da altında durur. Küçük siyah örümcekler kendi iplerinden sarkıp
-  kartlarınızı tutar. Bütün ipler görünür; ip adının yanındaki göz düğmesi bir ipi gizler. **Ctrl+Alt+L** açar
-  (**Ctrl+Alt+F** aramayla açar), ya da fareyi ekran kenarına götürüp bir an bekleyin; bir şey
-  kopyalayınca da kısa süre göz atar. Karta tıklamak onu açar (ya da kopyalar, kopyalayıp kapatır
+  kartlarınızı tutar. Bütün ipler görünür; ip adının yanındaki göz düğmesi bir ipi gizler. **Ctrl+1** açar
+  (**Ctrl+Alt+F** aramayla açar), ya da fareyi ekran kenarına götürüp bir an bekleyin (bir şey
+  kopyalayınca kısa süre görünmesi de açılabilir; varsayılan olarak kapalı). Karta tıklamak onu açar (ya da kopyalar, kopyalayıp kapatır
   veya önceki uygulamaya doğrudan yapıştırır: ayarınıza göre). Sağ tık kopyala, düzenle, paylaş
   (Windows paylaşım penceresi), sabitle ve sil verir; kartın sol üstündeki iğne onu hep başta tutar. **Ctrl+Enter** yapıştırır, 1–9 bir kart
   seçer, yazmak arar, Delete çöp kutusuna taşır (Ctrl+Z geri getirir). Kartı sürükleyip başka bir
@@ -123,7 +123,8 @@ Gereksinimler: Windows 10 (1809 ve üstü) veya Windows 11, 64 bit. WebView2 yok
 - Çarkı açmak için Dosya Gezgini'nden veya masaüstünden dosya ya da klasörleri **Ctrl + sürükleyin**.
   İptal etmek için **Esc**'ye basın ya da çarkın dışında bırakın. **Ctrl+Shift + sürükle** arka yüzü
   açar.
-- **Ctrl+Alt+L** çamaşır ipini açar, **Ctrl+Alt+D** kopyalanan linki indirir. Bu kısayolları Ayarlar →
+- **Ctrl+1** çamaşır ipini, **Ctrl+2** pano kitaplığını açar, **Ctrl+3** ekran görüntüsünü ipe asar,
+  **Ctrl+7** kopyalanan linki indirir. Bu kısayolları Ayarlar →
   **Kısayollar** bölümünden değiştirebilir veya kapatabilirsiniz.
 - Pencereyi kapatınca File Chameleon tepside çalışmaya devam eder (Ayarlar → **Genel** bölümünden
   değiştirebilirsiniz). Çıkmak için tepsi menüsünde **Çıkış**'ı seçin.

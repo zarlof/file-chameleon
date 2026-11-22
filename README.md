@@ -63,15 +63,15 @@ there are left alone.
 Paste a link from YouTube, Instagram (reels and posts), TikTok, X/Twitter, Facebook, Reddit, Vimeo,
 Twitch clips, Pinterest, or a direct image or video URL. You can save it as video (MP4), audio (MP3),
 GIF or the original file, at Best, 1080p or 720p. After it finishes, you can show it in its folder or
-convert it in one click. **Ctrl+Alt+D** downloads the link you just copied.
+convert it in one click. **Ctrl+7** downloads the link you just copied.
 
 ### Clipboard
 
 - **The clothesline:** up to five ropes (images, texts, links, files, shortcuts) of white spider
   silk across the top or bottom of the screen; little black spiders hang from them on their own
-  threads and hold your clips. Every rope shows; the eye button by a rope's name folds it away. **Ctrl+Alt+L** opens it (**Ctrl+Alt+F**
-  opens it with search), or move the mouse to the screen edge and keep it there for a moment; it
-  also peeks for a moment when you copy something. Click a card to open it (or copy it, copy and
+  threads and hold your clips. Every rope shows; the eye button by a rope's name folds it away. **Ctrl+1** opens it (**Ctrl+Alt+F**
+  opens it with search), or move the mouse to the screen edge and keep it there for a moment (it
+  can also peek when you copy something; off by default). Click a card to open it (or copy it, copy and
   close, or paste straight into the app you were in: your choice). Right-click for copy, edit,
   share (the Windows share sheet), pin and delete; the pin at a card's top left keeps it first. **Ctrl+Enter** pastes, 1-9 picks a card,
   typing searches, Delete moves to the trash (Ctrl+Z brings it back). Drag a card out to drop it
@@ -118,8 +118,9 @@ is missing.
 
 - **Ctrl + drag** files or folders from File Explorer or the desktop to open the wheel. Press
   **Esc** or release outside the wheel to cancel. **Ctrl+Shift + drag** opens the back face.
-- **Ctrl+Alt+L** opens the clothesline; **Ctrl+Alt+D** downloads the copied link. Change or turn
-  off these shortcuts in Settings → **Shortcuts**.
+- **Ctrl+1** opens the clothesline, **Ctrl+2** the clipboard library, **Ctrl+3** hangs a screenshot
+  on it and **Ctrl+7** downloads the copied link. Change or turn off these shortcuts in Settings →
+  **Shortcuts**.
 - Closing the window keeps File Chameleon in the tray (you can change that in Settings → **General**).
   Use **Quit** in the tray menu to exit.
 - Settings → **Engines** shows which engines are installed and lets you update or remove them.

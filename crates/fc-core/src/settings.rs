@@ -340,17 +340,17 @@ impl Default for Settings {
             wheel_flip_tab: true,
             wheel_shift_back: true,
             wheel_excluded_apps: Vec::new(),
-            wheel_labels: "text".into(),
+            wheel_labels: "iconText".into(),
             wheel_opacity: 100,
-            wheel_color: "purple".into(),
+            wheel_color: "blue".into(),
             wheel_scale: 100,
             wheel_show_detail: true,
             hotkey_shelf: String::new(),
             hotkey_library: "Ctrl+2".into(),
-            hotkey_download_link: "Ctrl+3".into(),
-            hotkey_line: "Ctrl+4".into(),
+            hotkey_download_link: "Ctrl+7".into(),
+            hotkey_line: "Ctrl+1".into(),
             hotkey_line_search: "Ctrl+Alt+F".into(),
-            hotkey_capture: String::new(),
+            hotkey_capture: "Ctrl+3".into(),
             hotkey_copy_latest_image: String::new(),
             line_enabled: true,
             line_edge_reveal: true,
@@ -358,13 +358,13 @@ impl Default for Settings {
             line_breeze: true,
             line_ropes: LineRopes::default(),
             line_color: "#ffffff".into(),
-            line_thickness: 3,
+            line_thickness: 1,
             line_opacity: 100,
             line_size: "large".into(),
-            line_zoom_on_hover: false,
+            line_zoom_on_hover: true,
             line_sound: true,
             line_rope_style: "web".into(),
-            line_sag: 14,
+            line_sag: 25,
             line_pin_style: "spider".into(),
             line_pin_color: "auto".into(),
             line_card_style: "paper".into(),
@@ -721,13 +721,23 @@ mod tests {
         let p = dir.path().join("settings.json");
         std::fs::write(&p, br#"{"theme":"dark"}"#).unwrap();
         let s = Settings::load(&p);
-        assert_eq!(s.line_color, "#ffffff");
-        assert_eq!((s.line_thickness, s.line_opacity), (3, 100));
-        assert_eq!(s.line_size, "large");
-        assert!(!s.line_zoom_on_hover && s.line_sound);
-        assert_eq!(s.hotkey_line_search, "Ctrl+Alt+F");
-        assert_eq!(s.hotkey_capture, "");
-        assert_eq!(s.hotkey_copy_latest_image, "");
+        // Missing fields take the defaults (compared to `Settings::default()`, so changing a
+        // default does not break this test).
+        let d = Settings::default();
+        assert_eq!(s.theme, "dark");
+        assert_eq!(s.line_color, d.line_color);
+        assert_eq!(
+            (s.line_thickness, s.line_opacity),
+            (d.line_thickness, d.line_opacity)
+        );
+        assert_eq!(s.line_size, d.line_size);
+        assert_eq!(
+            (s.line_zoom_on_hover, s.line_sound),
+            (d.line_zoom_on_hover, d.line_sound)
+        );
+        assert_eq!(s.hotkey_line_search, d.hotkey_line_search);
+        assert_eq!(s.hotkey_capture, d.hotkey_capture);
+        assert_eq!(s.hotkey_copy_latest_image, d.hotkey_copy_latest_image);
         std::fs::write(&p, br#"{"lineThickness":99,"lineOpacity":5}"#).unwrap();
         let s = Settings::load(&p);
         assert_eq!((s.line_thickness, s.line_opacity), (6, 30));
@@ -741,7 +751,11 @@ mod tests {
         let s = Settings::load(&p);
         // Wave 4 replaces the look of a version 3 file.
         assert_eq!(s.line_rope_style, "web");
-        assert_eq!((s.line_sag, s.line_card_radius), (14, 10));
+        let d = Settings::default();
+        assert_eq!(
+            (s.line_sag, s.line_card_radius),
+            (d.line_sag, d.line_card_radius)
+        );
         assert_eq!(s.line_pin_style, "spider");
         assert_eq!(s.line_pin_color, "auto");
         assert_eq!(s.line_card_style, "paper");

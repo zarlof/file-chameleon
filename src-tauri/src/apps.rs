@@ -425,7 +425,12 @@ mod tests {
         std::thread::spawn(|| {
             use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
             let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
-            let r = imp::shell_icon_rgba(Path::new(r"C:\Windows\explorer.exe"), ICON_SIDE);
+            // Like `make_icon`: the shell's image factory fails now and then under load.
+            let get = || imp::shell_icon_rgba(Path::new(r"C:\Windows\explorer.exe"), ICON_SIDE);
+            let r = get().or_else(|| {
+                std::thread::sleep(std::time::Duration::from_millis(80));
+                get()
+            });
             assert!(r.is_some(), "mta");
         })
         .join()
