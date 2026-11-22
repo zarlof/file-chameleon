@@ -55,3 +55,15 @@ describe('maxRopes', () => {
     expect(maxRopes(0, 'small')).toBe(1);
   });
 });
+
+describe('folded ropes', () => {
+  it('take a thin band and still fit whole', async () => {
+    const { FOLD_H, fitFolded, foldedHeight, foldedTops, windowHeight } = await import('./layout');
+    expect(foldedHeight([false, false], 'medium')).toBe(windowHeight(2, 'medium'));
+    expect(foldedHeight([false, true, true], 'medium')).toBe(190 + 2 * FOLD_H);
+    expect(foldedTops([true, false, true], 'medium')).toEqual([6, 6 + FOLD_H, 6 + FOLD_H + 190]);
+    expect(fitFolded([false, true, false], 250, 'medium')).toBe(2);
+    expect(fitFolded([false, true, false], 1000, 'medium')).toBe(3);
+    expect(fitFolded([true], 10, 'medium')).toBe(1);
+  });
+});

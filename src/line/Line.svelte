@@ -10,9 +10,9 @@
   import { convertFileSrc } from '@tauri-apps/api/core';
   import { api, errorOf, on } from '../lib/ipc';
   import type { ClipItem, ClipShelf, LineFile, Settings } from '../lib/types';
-  import { fitCount, loadCollapsed, matches, overflow, ropeCards, ropeName, saveCollapsed, splitRopes, toggleCollapsed, type LineCard, type RopeKey, type ShortcutCard } from './logic';
+  import { fitCount, matches, overflow, ropeCards, ropeName, splitRopes, toggleCollapsed, type LineCard, type RopeKey, type ShortcutCard } from './logic';
   import { fileId } from './files';
-  import { bandTops, cardOpacity, maxRopes, cardStyleAttr, ropeColor, sizeInfo, windowHeight } from './layout';
+  import { cardOpacity, cardStyleAttr, fitFolded, foldedHeight, foldedTops, ropeColor, sizeInfo } from './layout';
   import { isCommandKey, nextFocus, type Focus, type NavKey } from './keys';
   import { quiet, tick as hangTick } from './sound';
   import Preview from './Preview.svelte';
@@ -74,17 +74,23 @@
     const src = settings?.lineFilesSources ?? { added: true, converted: true, downloaded: true };
     return files.filter((f) => src[f.source]);
   });
-  // Every enabled rope is drawn, empty or not; the button by its label folds a rope away (remembered).
-  // Only whole ropes are drawn: when the window is clamped to the work area, the last ones drop off.
-  let collapsed = $state<RopeKey[]>(loadCollapsed(localStorage));
-  function toggleRope(key: RopeKey) {
-    collapsed = toggleCollapsed(collapsed, key);
-    saveCollapsed(localStorage, collapsed);
+  // Every enabled rope is drawn, empty or not; the button by its label folds a rope away (a setting,
+  // so Rust sizes the window to match). Only whole bands are drawn: when the window is clamped to the
+  // work area, the last ropes drop off.
+  const collapsed = $derived<RopeKey[]>(settings?.lineFolded ?? []);
+  async function toggleRope(key: RopeKey) {
+    if (!settings) return;
     focus = null;
     zoom = null;
+    try {
+      applySettings(await api.setSettings({ ...settings, lineFolded: toggleCollapsed(collapsed, key) }));
+    } catch (e) {
+      fail(e);
+    }
   }
+  const allRopes = $derived(splitRopes(items, ropeCfg, settings?.lineRopeOrder, shownFiles, shortcuts));
   const baseRopes = $derived(
-    splitRopes(items, ropeCfg, settings?.lineRopeOrder, shownFiles, shortcuts).slice(0, maxRopes(height, settings?.lineSize ?? 'medium')),
+    allRopes.slice(0, fitFolded(allRopes.map((r) => collapsed.includes(r.key)), height, settings?.lineSize ?? 'medium')),
   );
   const ropes = $derived(
     baseRopes.map((r) => {
@@ -97,8 +103,9 @@
   );
   const size = $derived(sizeInfo(settings?.lineSize ?? 'medium'));
   const sizeName = $derived(settings?.lineSize ?? 'medium');
-  const tops = $derived(bandTops(Math.max(1, ropes.length), sizeName));
-  const stripH = $derived(windowHeight(Math.max(1, ropes.length), sizeName));
+  const foldFlags = $derived(ropes.length > 0 ? ropes.map((r) => collapsed.includes(r.key)) : [false]);
+  const tops = $derived(foldedTops(foldFlags, sizeName));
+  const stripH = $derived(foldedHeight(foldFlags, sizeName));
   const bottom = $derived(settings?.lineEdge === 'bottom');
   const op = $derived(Math.min(100, Math.max(30, settings?.lineOpacity ?? 100)) / 100);
   const cardOp = $derived(cardOpacity(op * 100));
@@ -856,7 +863,7 @@
       onzoom={(item, rect) => (zoom = shown && item && rect ? { item, rect } : null)}
       emptyText={query.trim() ? t('search.none') : rope.key === 'shortcuts' ? t('shortcut.addHint') : t('rope.empty')}
       collapsed={collapsed.includes(rope.key)}
-      ontoggle={() => toggleRope(rope.key)}
+      ontoggle={() => void toggleRope(rope.key)}
       onpin={(c) => void pinCard(c)}
       onclick={pick}
       ondblclick={dblclick}

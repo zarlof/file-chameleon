@@ -113,6 +113,8 @@ export interface Settings {
   /** Custom rope names; '' = the default name. */
   lineRopeNames: Record<LineRopeKey, string>;
   lineShortcuts: LineShortcut[];
+  /** Ropes folded away (only the label shows). */
+  lineFolded: LineRopeKey[];
   lineFilesSources: { added: boolean; converted: boolean; downloaded: boolean };
   /** 0 = all that fit, else 3..30 */
   lineMaxPerRope: number;

@@ -194,6 +194,7 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
         || old.line_ropes != new.line_ropes
         || old.line_edge != new.line_edge
         || old.line_files_sources != new.line_files_sources
+        || old.line_folded != new.line_folded
     {
         crate::line::apply_size(app, &new);
     }

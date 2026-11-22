@@ -78,3 +78,39 @@ export function cardVars(style: string, radius: number, shadow: boolean): Record
 export function cardStyleAttr(style: string, radius: number, shadow: boolean): string {
   return Object.entries(cardVars(style, radius, shadow)).map(([k, v]) => `${k}:${v}`).join(';');
 }
+
+/** Height of a folded rope's band (its label and the gap below it). Same as FOLD_H in src-tauri/src/line.rs. */
+export const FOLD_H = 30;
+
+/** Top of each band when some ropes are folded (`folded[i]` = rope i is folded). */
+export function foldedTops(folded: boolean[], size: string): number[] {
+  const { band } = sizeOf(size);
+  const out: number[] = [];
+  let y = MARGIN;
+  for (const f of folded) {
+    out.push(y);
+    y += f ? FOLD_H : band + GAP;
+  }
+  return out;
+}
+
+/** Logical window height for these ropes (`windowHeight` when nothing is folded). */
+export function foldedHeight(folded: boolean[], size: string): number {
+  if (!folded.some(Boolean)) return windowHeight(folded.length, size);
+  const { band } = sizeOf(size);
+  return folded.reduce((h, f) => h + (f ? FOLD_H : band + GAP), 0);
+}
+
+/** How many of the ropes (in order) fit a window `height` px high: whole bands only, at least one. */
+export function fitFolded(folded: boolean[], height: number, size: string): number {
+  if (!folded.some(Boolean)) return Math.min(folded.length, maxRopes(height, size));
+  const { band } = sizeOf(size);
+  let h = 0;
+  let n = 0;
+  for (const f of folded) {
+    h += f ? FOLD_H : band + GAP;
+    if (h > height + 1) break;
+    n++;
+  }
+  return Math.max(1, n);
+}

@@ -116,6 +116,8 @@ pub struct Settings {
     pub line_rope_names: LineRopeNames,
     /// The shortcuts rope's apps, in the user's order.
     pub line_shortcuts: Vec<LineShortcut>,
+    /// Ropes the user folded away (only their label shows), by key.
+    pub line_folded: Vec<String>,
     /// Which files-rope sources are shown.
     pub line_files_sources: LineFilesSources,
     /// Cards per rope: 0 = all that fit, else 3..=30.
@@ -372,6 +374,7 @@ impl Default for Settings {
             line_rope_order: ROPE_KEYS.iter().map(|k| k.to_string()).collect(),
             line_rope_names: LineRopeNames::default(),
             line_shortcuts: Vec::new(),
+            line_folded: Vec::new(),
             line_files_sources: LineFilesSources::default(),
             line_max_per_rope: 0,
             line_edge: "top".into(),
@@ -495,6 +498,13 @@ impl Settings {
         }
         self.line_rope_order = sanitize_rope_order(&self.line_rope_order);
         self.line_shortcuts = sanitize_shortcuts(std::mem::take(&mut self.line_shortcuts));
+        let mut folded: Vec<String> = Vec::new();
+        for k in std::mem::take(&mut self.line_folded) {
+            if ROPE_KEYS.contains(&k.as_str()) && !folded.contains(&k) {
+                folded.push(k);
+            }
+        }
+        self.line_folded = folded;
         self
     }
 
@@ -824,6 +834,17 @@ mod tests {
         .clamped();
         assert_eq!(s.line_shortcuts.len(), MAX_SHORTCUTS);
         assert_eq!(s.line_shortcuts[0].name.chars().count(), 60);
+        let s = Settings {
+            line_folded: vec![
+                "links".into(),
+                "nope".into(),
+                "links".into(),
+                "files".into(),
+            ],
+            ..Settings::default()
+        }
+        .clamped();
+        assert_eq!(s.line_folded, ["links", "files"]);
     }
 
     #[test]

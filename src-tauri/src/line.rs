@@ -33,6 +33,9 @@ pub const LINE: &str = "line";
 /// high). These must equal the layout table the page uses (`src/line/layout.ts`), so nothing
 /// transparent hangs under the last rope. The window spans the whole work-area width.
 const BAND_GAP: f64 = 12.0;
+/// Logical height of a folded rope's band (its label and the gap below it). Equal to
+/// `FOLD_H` in `src/line/layout.ts`.
+const FOLD_H: f64 = 30.0;
 /// How many folders "open a terminal here" opens at most.
 const MAX_TERMINALS: usize = 5;
 
@@ -49,6 +52,15 @@ pub fn band_height(size: &str) -> f64 {
 /// Logical height of the window for `ropes` visible ropes (at least one): `n × (band + 12)`.
 pub fn window_height(ropes: usize, size: &str) -> f64 {
     ropes.max(1) as f64 * (band_height(size) + BAND_GAP)
+}
+
+/// Logical height of the window for `open` full ropes and `folded` folded ones: like
+/// [`window_height`] when nothing is folded.
+pub fn strip_height(open: usize, folded: usize, size: &str) -> f64 {
+    if folded == 0 || open + folded == 0 {
+        return window_height(open, size);
+    }
+    open as f64 * (band_height(size) + BAND_GAP) + folded as f64 * FOLD_H
 }
 
 /// The most whole ropes that fit a work area `work_h` logical pixels high at `size`
@@ -71,10 +83,24 @@ pub fn dwell(ms: u32) -> Duration {
 /// (physical pixels) of a monitor with DPI `scale`: the full work-area width, height
 /// [`window_height`] (at least one rope, never taller than the work area), at the top of the
 /// work area, or on its bottom when `edge` is "bottom".
+#[cfg(test)]
 pub fn line_rect(
     work: (i32, i32, i32, i32),
     scale: f64,
     ropes: usize,
+    size: &str,
+    edge: &str,
+) -> (i32, i32, i32, i32) {
+    line_rect_folded(work, scale, ropes, 0, size, edge)
+}
+
+/// [`line_rect`] with `folded` of the ropes folded away (they take [`FOLD_H`] each). With folded
+/// ropes the height is only capped by the work area; the page draws the ropes that fit.
+pub fn line_rect_folded(
+    work: (i32, i32, i32, i32),
+    scale: f64,
+    ropes: usize,
+    folded: usize,
     size: &str,
     edge: &str,
 ) -> (i32, i32, i32, i32) {
@@ -85,8 +111,14 @@ pub fn line_rect(
         1.0
     };
     let (work_w, work_h) = ((right - left).max(1), (bottom - top).max(1));
-    let ropes = ropes.min(max_ropes(f64::from(work_h) / scale, size));
-    let height = fit_height(ropes, size, scale, Some(work_h));
+    let folded = folded.min(ropes);
+    let height = if folded == 0 {
+        let ropes = ropes.min(max_ropes(f64::from(work_h) / scale, size));
+        fit_height(ropes, size, scale, Some(work_h))
+    } else {
+        let h = (strip_height(ropes - folded, folded, size) * scale).round() as i32;
+        h.min(work_h).max(1)
+    };
     let y = if edge == "bottom" {
         bottom - height
     } else {
@@ -246,10 +278,10 @@ static ACTIVE: AtomicBool = AtomicBool::new(false);
 
 fn create(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let state = app.state::<AppState>();
-    let ropes = rope_count(app);
+    let (ropes, folded) = rope_count(app);
     let work = (0, 0, 1920, 1040);
     let s = state.settings();
-    let (_, _, w, h) = line_rect(work, 1.0, ropes, &s.line_size, &s.line_edge);
+    let (_, _, w, h) = line_rect_folded(work, 1.0, ropes, folded, &s.line_size, &s.line_edge);
     WebviewWindowBuilder::new(app, LINE, WebviewUrl::App(LINE_PAGE.into()))
         .title("File Chameleon Line")
         .inner_size(f64::from(w), f64::from(h))
@@ -288,20 +320,29 @@ fn get_or_create(app: &AppHandle) -> Option<(WebviewWindow, bool)> {
     }
 }
 
-/// How many ropes the window needs right now (see [`rope_count_of`]).
-fn rope_count(app: &AppHandle) -> usize {
+/// How many ropes the window needs right now and how many of them are folded.
+fn rope_count(app: &AppHandle) -> (usize, usize) {
     let s = app.state::<AppState>().settings();
-    rope_count_with(app, &s.line_ropes, &s.line_files_sources)
+    rope_count_with(app, &s.line_ropes, &s.line_folded)
 }
 
-/// Like [`rope_count`] for rope switches that are not saved yet. Every enabled rope gets its
-/// band, empty or not (the page shows them all and lets the user fold any of them away).
+/// Like [`rope_count`] for settings that are not saved yet: (enabled ropes, how many of them are
+/// folded). Every enabled rope gets its band, empty or not.
 fn rope_count_with(
     _app: &AppHandle,
     r: &fc_core::settings::LineRopes,
-    _sources: &fc_core::settings::LineFilesSources,
-) -> usize {
-    rope_count_of(&[r.images, r.text, r.links, r.files, r.shortcuts])
+    folded: &[String],
+) -> (usize, usize) {
+    let keys = [
+        ("images", r.images),
+        ("text", r.text),
+        ("links", r.links),
+        ("files", r.files),
+        ("shortcuts", r.shortcuts),
+    ];
+    let on: Vec<&str> = keys.iter().filter(|(_, on)| *on).map(|(k, _)| *k).collect();
+    let folded = on.iter().filter(|k| folded.iter().any(|f| f == *k)).count();
+    (rope_count_of(&keys.map(|(_, on)| on)), folded.min(on.len()))
 }
 
 /// `line_state`: what the page needs to catch up on a show it missed.
@@ -340,9 +381,10 @@ fn place(app: &AppHandle, w: &WebviewWindow, point: (i32, i32)) {
         .flatten()
         .map(|m| m.scale_factor())
         .unwrap_or(1.0);
-    let ropes = rope_count(app);
+    let (ropes, folded) = rope_count(app);
     let s = app.state::<AppState>().settings();
-    let (x, y, width, height) = line_rect(work, scale, ropes, &s.line_size, &s.line_edge);
+    let (x, y, width, height) =
+        line_rect_folded(work, scale, ropes, folded, &s.line_size, &s.line_edge);
     // Position first: moving to a monitor with another DPI may resize the window.
     let _ = w.set_position(PhysicalPosition::new(x, y));
     let _ = w.set_size(PhysicalSize::new(width as u32, height as u32));
@@ -359,8 +401,9 @@ fn resize(app: &AppHandle, w: &WebviewWindow, s: &fc_core::settings::Settings) {
     let Some(work) = crate::platform::win::work_area_at(pos.x, pos.y) else {
         return;
     };
-    let ropes = rope_count_with(app, &s.line_ropes, &s.line_files_sources);
-    let (x, y, width, height) = line_rect(work, scale, ropes, &s.line_size, &s.line_edge);
+    let (ropes, folded) = rope_count_with(app, &s.line_ropes, &s.line_folded);
+    let (x, y, width, height) =
+        line_rect_folded(work, scale, ropes, folded, &s.line_size, &s.line_edge);
     if (x, y) != (pos.x, pos.y) {
         let _ = w.set_position(PhysicalPosition::new(x, y));
     }
@@ -1063,6 +1106,20 @@ mod tests {
         // High DPI: 1032 physical px at 1.5 = 688 logical.
         let (_, _, _, h) = line_rect((0, 0, 1920, 1032), 1.5, 4, "medium", "top");
         assert_eq!(h, 855);
+    }
+
+    #[test]
+    fn folded_ropes_take_a_thin_band() {
+        assert_eq!(strip_height(3, 0, "medium"), window_height(3, "medium"));
+        assert_eq!(strip_height(2, 3, "medium"), 2.0 * 190.0 + 3.0 * 30.0);
+        assert_eq!(strip_height(0, 5, "medium"), 150.0);
+        let (_, _, _, h) = line_rect_folded((0, 0, 1920, 1040), 1.0, 5, 3, "medium", "top");
+        assert_eq!(h, 470);
+        let (_, y, _, h) = line_rect_folded((0, 0, 1920, 1040), 2.0, 5, 3, "medium", "bottom");
+        assert_eq!((y, h), (100, 940));
+        // capped by the work area
+        let (_, _, _, h) = line_rect_folded((0, 0, 1920, 300), 1.0, 5, 1, "large", "top");
+        assert_eq!(h, 300);
     }
 
     #[test]

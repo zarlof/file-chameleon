@@ -135,21 +135,12 @@ describe('ropeCards', () => {
 });
 
 describe('collapsed ropes', () => {
-  it('toggles, saves and loads safely', async () => {
-    const { loadCollapsed, saveCollapsed, toggleCollapsed } = await import('./logic');
-    const mem = new Map<string, string>();
-    const store = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v) };
-    expect(loadCollapsed(store)).toEqual([]);
+  it('toggles', async () => {
+    const { toggleCollapsed } = await import('./logic');
     let keys = toggleCollapsed([], 'links');
     keys = toggleCollapsed(keys, 'images');
     expect(keys).toEqual(['links', 'images']);
-    saveCollapsed(store, keys);
-    expect(loadCollapsed(store).sort()).toEqual(['images', 'links']);
     expect(toggleCollapsed(keys, 'links')).toEqual(['images']);
-    mem.set('fc.line.collapsed', '{bad');
-    expect(loadCollapsed(store)).toEqual([]);
-    mem.set('fc.line.collapsed', '["nope","files"]');
-    expect(loadCollapsed(store)).toEqual(['files']);
   });
 });
 

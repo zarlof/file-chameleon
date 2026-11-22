@@ -59,6 +59,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lineRopeOrder: ['images', 'text', 'links', 'files', 'shortcuts'],
   lineRopeNames: { images: '', text: '', links: '', files: '', shortcuts: '' },
   lineShortcuts: [],
+  lineFolded: [],
   lineFilesSources: { added: true, converted: true, downloaded: true },
   lineMaxPerRope: 0,
   lineEdge: 'top',

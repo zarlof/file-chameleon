@@ -160,26 +160,6 @@ export function lineDefaults<T extends Record<string, unknown>>(defaults: T): Pa
   return Object.fromEntries(Object.entries(defaults).filter(([k]) => keep(k))) as Partial<T>;
 }
 
-const COLLAPSED_KEY = 'fc.line.collapsed';
-
-/** The ropes the user folded away (kept in the line window's localStorage). Unknown keys are dropped. */
-export function loadCollapsed(store: Pick<Storage, 'getItem'> | undefined): RopeKey[] {
-  try {
-    const raw = JSON.parse(store?.getItem(COLLAPSED_KEY) ?? '[]');
-    return Array.isArray(raw) ? sanitizeOrder(raw).filter((k) => raw.includes(k)) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function saveCollapsed(store: Pick<Storage, 'setItem'> | undefined, keys: RopeKey[]): void {
-  try {
-    store?.setItem(COLLAPSED_KEY, JSON.stringify(keys));
-  } catch {
-    // storage full or blocked: the fold just is not remembered
-  }
-}
-
 /** `keys` with `key` folded when it was open, opened when it was folded. */
 export function toggleCollapsed(keys: readonly RopeKey[], key: RopeKey): RopeKey[] {
   return keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key];
