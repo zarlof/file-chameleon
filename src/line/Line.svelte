@@ -12,7 +12,7 @@
   import type { ClipItem, ClipShelf, LineFile, Settings } from '../lib/types';
   import { fitCount, matches, overflow, ropeCards, ropeName, splitRopes, toggleCollapsed, type LineCard, type RopeKey, type ShortcutCard } from './logic';
   import { fileId } from './files';
-  import { cardOpacity, cardStyleAttr, fitFolded, foldedHeight, foldedTops, ropeColor, sizeInfo } from './layout';
+  import { cardOpacity, cardStyleAttr, fitFolded, fitSize, foldedHeight, foldedTops, ropeColor, sizeInfo } from './layout';
   import { isCommandKey, nextFocus, type Focus, type NavKey } from './keys';
   import { quiet, tick as hangTick } from './sound';
   import Preview from './Preview.svelte';
@@ -89,9 +89,10 @@
     }
   }
   const allRopes = $derived(splitRopes(items, ropeCfg, settings?.lineRopeOrder, shownFiles, shortcuts));
-  const baseRopes = $derived(
-    allRopes.slice(0, fitFolded(allRopes.map((r) => collapsed.includes(r.key)), height, settings?.lineSize ?? 'medium')),
-  );
+  const allFolded = $derived(allRopes.length > 0 ? allRopes.map((r) => collapsed.includes(r.key)) : [false]);
+  // A size that lets every rope show (Rust sized the window with the same rule).
+  const sizeName = $derived(fitSize(allFolded, height, settings?.lineSize ?? 'medium'));
+  const baseRopes = $derived(allRopes.slice(0, fitFolded(allFolded, height, sizeName)));
   const ropes = $derived(
     baseRopes.map((r) => {
       const q = query.trim();
@@ -101,8 +102,7 @@
       return { ...filtered, cards: collapsed.includes(r.key) ? [] : ropeCards(filtered, fileId) };
     }),
   );
-  const size = $derived(sizeInfo(settings?.lineSize ?? 'medium'));
-  const sizeName = $derived(settings?.lineSize ?? 'medium');
+  const size = $derived(sizeInfo(sizeName));
   const foldFlags = $derived(ropes.length > 0 ? ropes.map((r) => collapsed.includes(r.key)) : [false]);
   const tops = $derived(foldedTops(foldFlags, sizeName));
   const stripH = $derived(foldedHeight(foldFlags, sizeName));

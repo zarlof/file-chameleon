@@ -63,6 +63,20 @@ pub fn strip_height(open: usize, folded: usize, size: &str) -> f64 {
     open as f64 * (band_height(size) + BAND_GAP) + folded as f64 * FOLD_H
 }
 
+/// The line's size for the ropes on a work area `work_h` logical px high: the chosen size, or
+/// the next smaller one(s) when the ropes do not all fit (so every rope stays visible). The page
+/// makes the same choice (`fitSize` in `src/line/layout.ts`).
+pub fn fit_size(open: usize, folded: usize, size: &str, work_h: f64) -> &'static str {
+    const ORDER: [&str; 3] = ["large", "medium", "small"];
+    let start = ORDER.iter().position(|s| *s == size).unwrap_or(1);
+    for s in &ORDER[start..] {
+        if strip_height(open, folded, s) <= work_h + 0.5 {
+            return s;
+        }
+    }
+    "small"
+}
+
 /// The most whole ropes that fit a work area `work_h` logical pixels high at `size`
 /// (at least one). The page uses the same rule (`maxRopes` in `src/line/layout.ts`).
 pub fn max_ropes(work_h: f64, size: &str) -> usize {
@@ -112,6 +126,7 @@ pub fn line_rect_folded(
     };
     let (work_w, work_h) = ((right - left).max(1), (bottom - top).max(1));
     let folded = folded.min(ropes);
+    let size = fit_size(ropes - folded, folded, size, f64::from(work_h) / scale);
     let height = if folded == 0 {
         let ropes = ropes.min(max_ropes(f64::from(work_h) / scale, size));
         fit_height(ropes, size, scale, Some(work_h))
@@ -1065,8 +1080,8 @@ mod tests {
             line_rect((1920, 40, 3840, 1080), 1.0, 0, m, "top"),
             (1920, 40, 1920, 190)
         );
-        // Never taller than the work area: only whole ropes fit.
-        assert_eq!(line_rect((0, 0, 800, 300), 1.0, 3, m, "top").3, 190);
+        // Never taller than the work area: the size steps down, then only whole ropes fit.
+        assert_eq!(line_rect((0, 0, 800, 300), 1.0, 3, m, "top").3, 156);
     }
 
     #[test]
@@ -1076,10 +1091,10 @@ mod tests {
             line_rect((0, 0, 1920, 1040), 1.0, 3, "medium", "bottom"),
             (0, 470, 1920, 570)
         );
-        // A clamped window holds whole ropes only and sits on the bottom.
+        // A clamped window holds whole (small) ropes only and sits on the bottom.
         assert_eq!(
             line_rect((0, 40, 800, 340), 1.0, 3, "medium", "bottom"),
-            (0, 150, 800, 190)
+            (0, 184, 800, 156)
         );
         // An unknown edge is the top.
         assert_eq!(line_rect((0, 0, 1920, 1040), 1.0, 3, "medium", "left").1, 0);
@@ -1090,8 +1105,10 @@ mod tests {
         assert_eq!(window_height(4, "large"), 936.0);
         assert_eq!(fit_height(4, "large", 1.0, Some(900)), 900);
         assert_eq!(fit_height(4, "large", 1.0, Some(1040)), 936);
-        // 4 large ropes on a 900 px work area: 3 whole ropes fit (702), never a clipped fourth.
-        assert_eq!(line_rect((0, 0, 1600, 900), 1.0, 4, "large", "top").3, 702);
+        // 4 large ropes on a 900 px work area: the line steps down to medium (760) so all fit.
+        assert_eq!(line_rect((0, 0, 1600, 900), 1.0, 4, "large", "top").3, 760);
+        // Not even small fits: whole small ropes only.
+        assert_eq!(line_rect((0, 0, 1600, 400), 1.0, 4, "large", "top").3, 312);
     }
 
     #[test]
@@ -1100,12 +1117,22 @@ mod tests {
         assert_eq!(max_ropes(760.0, "medium"), 4);
         assert_eq!(max_ropes(100.0, "large"), 1);
         assert_eq!(max_ropes(900.0, "large"), 3);
-        // 4 ropes asked for on a 688 px work area: the window holds 3 whole ropes.
+        // 4 medium ropes on a 688 px work area: small (4 x 156 = 624) holds them all.
         let (_, _, _, h) = line_rect((0, 0, 1920, 688), 1.0, 4, "medium", "top");
-        assert_eq!(h, 570);
+        assert_eq!(h, 624);
         // High DPI: 1032 physical px at 1.5 = 688 logical.
         let (_, _, _, h) = line_rect((0, 0, 1920, 1032), 1.5, 4, "medium", "top");
-        assert_eq!(h, 855);
+        assert_eq!(h, 936);
+    }
+
+    #[test]
+    fn size_steps_down_until_every_rope_fits() {
+        assert_eq!(fit_size(5, 0, "large", 1040.0), "medium");
+        assert_eq!(fit_size(4, 1, "large", 1040.0), "large");
+        assert_eq!(fit_size(5, 0, "medium", 1040.0), "medium");
+        assert_eq!(fit_size(5, 0, "medium", 800.0), "small");
+        assert_eq!(fit_size(9, 0, "small", 100.0), "small");
+        assert_eq!(fit_size(2, 0, "weird", 1040.0), "medium");
     }
 
     #[test]

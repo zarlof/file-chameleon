@@ -67,3 +67,15 @@ describe('folded ropes', () => {
     expect(fitFolded([true], 10, 'medium')).toBe(1);
   });
 });
+
+describe('fitSize', () => {
+  it('steps down until every rope fits', async () => {
+    const { fitSize } = await import('./layout');
+    const five = [false, false, false, false, false];
+    expect(fitSize(five, 950, 'large')).toBe('medium');
+    expect(fitSize([false, false, false, false, true], 966, 'large')).toBe('large');
+    expect(fitSize(five, 700, 'medium')).toBe('small');
+    expect(fitSize(five, 100, 'small')).toBe('small');
+    expect(fitSize([false], 1000, 'odd')).toBe('medium');
+  });
+});

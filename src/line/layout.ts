@@ -114,3 +114,12 @@ export function fitFolded(folded: boolean[], height: number, size: string): numb
   }
   return Math.max(1, n);
 }
+
+/** The size to draw: `size`, or the next smaller one(s) when the ropes do not all fit `height`
+ *  (same rule as `fit_size` in src-tauri/src/line.rs). */
+export function fitSize(folded: boolean[], height: number, size: string): LineSize {
+  const order: LineSize[] = ['large', 'medium', 'small'];
+  const i = order.indexOf(size as LineSize);
+  for (const s of order.slice(i < 0 ? 1 : i)) if (foldedHeight(folded, s) <= height + 1) return s;
+  return 'small';
+}

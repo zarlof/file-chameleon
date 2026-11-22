@@ -300,7 +300,9 @@
     overflow: hidden;
     transition: box-shadow var(--dur-fast), transform var(--dur) var(--ease-out);
   }
-  .spider .card { margin-top: calc(var(--s) * 26px); }
+  /* padding, not a card margin: a margin would collapse through the peg and push the spider down */
+  .peg.spider { padding-top: calc(var(--s) * 26px); }
+  .spider .card { margin-top: 0; }
   .peg:hover .card { transform: translateY(-1px); }
   .selected .card { box-shadow: 0 0 0 2px var(--accent), var(--c-shadow, none); }
   .focused .card { outline: 2px solid var(--c-fg, #fff); outline-offset: 2px; }
