@@ -1,6 +1,4 @@
-//! Renders an SVG to a square PNG (used for the app icon).
-//! `cargo run -p fc-core --example svg_to_png -- assets/icon.svg assets/icon-source.png 1024`
-//! then `npx tauri icon assets/icon-source.png -o src-tauri/icons`.
+//! Renders an SVG to a square PNG.
 
 use resvg::{tiny_skia, usvg};
 

@@ -8,5 +8,6 @@ Thumbs.db
 /src-tauri/gen/
 /assets/*.png
 !/assets/icon-source.png
+!/assets/icon-artwork.png
 target-agents/
 .claude/
