@@ -19,6 +19,8 @@
   import { setLang, getLang, t } from './i18n';
   import { atRest, impulse, step, swingK, type Pend } from './physics';
   import Rope from './Rope.svelte';
+  import LineMenu from './LineMenu.svelte';
+  import { menuEntries, menuHeight, type MenuActions, type MenuEntry } from './menu';
 
   const LIST_LIMIT = 200;
   const SHELF: Record<'images' | 'text' | 'links', ClipShelf> = { images: 'images', text: 'texts', links: 'links' };
@@ -38,7 +40,7 @@
   let copiedId = $state<number | null>(null);
   let hoverId = $state<number | null>(null);
   let toast = $state<{ text: string; undo: boolean } | null>(null);
-  let menu = $state<{ x: number; y: number; card: LineCard } | null>(null);
+  let menu = $state<{ x: number; y: number; card: LineCard; entries: MenuEntry[] } | null>(null);
   let menuEl = $state<HTMLElement | null>(null);
   let query = $state('');
   let searchOpen = $state(false);
@@ -636,17 +638,39 @@
   // ------------------------------------------------------------ context menu
   function openMenu(c: LineCard, e: MouseEvent) {
     zoom = null;
-    const h = (c.app ? 160 : c.file ? 330 : c.item?.kind === 'image' ? 370 : 290) + 26;
-    menu = { x: Math.max(4, Math.min(e.clientX, width - MENU_W - 4)), y: Math.max(4, Math.min(e.clientY, window.innerHeight - h - 4)), card: c };
+    const entries = menuEntries(c, menuActions(c), t);
+    const h = menuHeight(entries);
+    menu = { x: Math.max(4, Math.min(e.clientX, width - MENU_W - 4)), y: Math.max(4, Math.min(e.clientY, window.innerHeight - h - 4)), card: c, entries };
   }
 
-  async function menuDo(fn: () => Promise<void> | void) {
-    closeMenu();
-    try {
-      await fn();
-    } catch (e) {
-      fail(e);
-    }
+  /** What each menu entry does for card `c`. */
+  function menuActions(c: LineCard): MenuActions {
+    const ids = () => targetsFor(c);
+    return {
+      open: () => openCard(c),
+      copy: () => copy(ids()),
+      paste: () => api.linePaste(splitTargets(ids()).clips),
+      edit: () => editCard(c),
+      pin: () => pinCard(c),
+      share: () => share(ids()),
+      trash: () => (c.app ? removeShortcut(c) : trash(ids())),
+      reveal: (path) => (c.app ? api.lineShortcutReveal(path) : api.lineFileReveal(path)),
+      copyPath: async (path) => {
+        await api.lineCopyText(path);
+        showToast(t('pathCopied'));
+      },
+      convert: async (path) => {
+        await api.wheelOpen([path]);
+        await hide();
+      },
+      float: (file) => api.floatOpen([file]),
+      save: async () => {
+        if (!c.item) return;
+        await api.clipSaveImage(c.item.id, 'png');
+        showToast(t('saved'));
+      },
+      removeShortcut: () => removeShortcut(c),
+    };
   }
 
   // ------------------------------------------------------------ input
@@ -947,51 +971,7 @@
 {/if}
 
 {#if menu}
-  {@const c = menu.card}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="menu" role="menu" tabindex="-1" bind:this={menuEl} style:left="{menu.x}px" style:top="{menu.y}px" style:width="{MENU_W}px">
-    <button type="button" class="menuclose" tabindex="-1" aria-label={t('close')} title={t('close')} onclick={closeMenu}>
-      <svg viewBox="0 0 10 10" width="8" height="8" aria-hidden="true"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
-    </button>
-    {#if c.app}
-      {@const a = c.app}
-      <button type="button" role="menuitem" onclick={() => menuDo(() => openCard(c))}>{t('menu.open')}</button>
-      <button type="button" role="menuitem" onclick={() => menuDo(() => api.lineShortcutReveal(a.path))}>{t('menu.reveal')}</button>
-      <button type="button" role="menuitem" onclick={() => menuDo(async () => { await api.lineCopyText(a.path); showToast(t('pathCopied')); })}>{t('menu.copyPath')}</button>
-      <hr />
-      <button type="button" role="menuitem" class="danger" onclick={() => menuDo(() => removeShortcut(c))}>{t('menu.removeShortcut')}</button>
-    {:else if c.file}
-      {@const f = c.file}
-      <button type="button" role="menuitem" onclick={() => menuDo(() => openCard(c))}>{t('menu.open')}</button>
-      <button type="button" role="menuitem" onclick={() => menuDo(async () => { await copy(targetsFor(c)); })}>{t('menu.copy')}</button>
-      <button type="button" role="menuitem" onclick={() => menuDo(() => api.lineFileReveal(f.path))}>{t('menu.reveal')}</button>
-      <button type="button" role="menuitem" onclick={() => menuDo(async () => { await api.wheelOpen([f.path]); await hide(); })}>{t('menu.convert')}</button>
-      <button type="button" role="menuitem" onclick={() => menuDo(async () => { await api.lineCopyText(f.path); showToast(t('pathCopied')); })}>{t('menu.copyPath')}</button>
-      <button type="button" role="menuitem" onclick={() => menuDo(() => pinCard(c))}>{f.pinned ? t('menu.unpin') : t('menu.pin')}</button>
-      <button type="button" role="menuitem" onclick={() => menuDo(() => share(targetsFor(c)))}>{t('menu.share')}</button>
-      <hr />
-      <button type="button" role="menuitem" class="danger" onclick={() => menuDo(() => trash(targetsFor(c)))}>{t('menu.removeFromList')}</button>
-    {:else if c.item}
-      {@const it = c.item}
-      <button type="button" role="menuitem" onclick={() => menuDo(() => openCard(c))}>{it.kind === 'image' || it.kind === 'text' ? t('menu.open') : t('menu.openLink')}</button>
-      <button type="button" role="menuitem" onclick={() => menuDo(async () => { await copy(targetsFor(c)); })}>{t('menu.copy')}</button>
-      <button type="button" role="menuitem" onclick={() => menuDo(() => api.linePaste(splitTargets(targetsFor(c)).clips))}>{t('menu.paste')}</button>
-      {#if it.kind === 'image' || it.kind === 'text'}
-        <button type="button" role="menuitem" onclick={() => menuDo(() => editCard(c))}>{t('menu.edit')}</button>
-      {/if}
-      <button type="button" role="menuitem" onclick={() => menuDo(() => togglePin(it))}>{it.pinned ? t('menu.unpin') : t('menu.pin')}</button>
-      <button type="button" role="menuitem" onclick={() => menuDo(() => share(targetsFor(c)))}>{t('menu.share')}</button>
-      {#if it.kind === 'image'}
-        {@const file = it.edited ?? it.image}
-        {#if file}
-          <button type="button" role="menuitem" onclick={() => menuDo(async () => { await api.floatOpen([file]); })}>{t('menu.float')}</button>
-        {/if}
-        <button type="button" role="menuitem" onclick={() => menuDo(async () => { await api.clipSaveImage(it.id, 'png'); showToast(t('saved')); })}>{t('menu.save')}</button>
-      {/if}
-      <hr />
-      <button type="button" role="menuitem" class="danger" onclick={() => menuDo(() => trash(targetsFor(c)))}>{t('menu.delete')}</button>
-    {/if}
-  </div>
+  <LineMenu x={menu.x} y={menu.y} width={MENU_W} entries={menu.entries} bind:el={menuEl} onclose={closeMenu} onerror={fail} />
 {/if}
 
 <style>
@@ -1089,43 +1069,4 @@
     cursor: default;
   }
 
-  .menu {
-    position: fixed;
-    z-index: 10;
-    display: flex;
-    flex-direction: column;
-    padding: var(--space-1);
-    border-radius: var(--radius-md);
-    background: var(--elevated-bg);
-    box-shadow: var(--shadow-lg), inset 0 0 0 1px var(--glass-edge);
-    font: var(--text-callout);
-  }
-  .menu button {
-    padding: 6px var(--space-3);
-    border: 0;
-    border-radius: var(--radius-xs);
-    background: transparent;
-    color: var(--text);
-    font: inherit;
-    text-align: left;
-    cursor: default;
-  }
-  .menu button:hover { background: var(--accent); color: var(--on-accent); }
-  .menu .danger { color: var(--red); }
-  .menu { padding-top: 26px; }
-  .menu .menuclose {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    display: grid;
-    place-items: center;
-    width: 20px;
-    height: 20px;
-    padding: 0;
-    border-radius: 50%;
-    color: var(--text-secondary);
-  }
-  .menu .menuclose:hover { background: var(--red); color: #fff; }
-  .menu .danger:hover { background: var(--red); color: var(--on-accent); }
-  .menu hr { width: 100%; height: 1px; margin: var(--space-1) 0; border: 0; background: var(--separator); }
 </style>

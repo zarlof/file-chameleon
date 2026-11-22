@@ -56,7 +56,6 @@ export function ropeColor(setting: string, accent: string, theme: 'dark' | 'ligh
   return accent;
 }
 
-export type CardStyle = 'glassDark' | 'glassLight' | 'paper';
 
 /** CSS custom properties for the card look (set on the strip and on the settings preview). */
 export function cardVars(style: string, radius: number, shadow: boolean): Record<string, string> {

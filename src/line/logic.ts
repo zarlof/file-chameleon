@@ -28,7 +28,7 @@ export function sanitizeOrder(o: readonly string[] | undefined): RopeKey[] {
   return out;
 }
 
-/** Enabled ropes in `ropeOrder` (empty ones kept; see `visibleRopes`). A rope missing from `ropes` is off. Trash is left out. */
+/** Enabled ropes in `ropeOrder` (empty ones kept: every enabled rope shows). A rope missing from `ropes` is off. Trash is left out. */
 export function splitRopes(
   items: ClipItem[],
   ropes: { images: boolean; text: boolean; links: boolean; files?: boolean; shortcuts?: boolean },
@@ -58,11 +58,6 @@ export function ropeName(key: RopeKey, names: Partial<Record<RopeKey, string>> |
 /** How many cards a rope holds. */
 export function ropeCount(r: Rope): number {
   return r.key === 'files' ? r.files.length : r.key === 'shortcuts' ? r.apps.length : r.items.length;
-}
-
-/** The ropes worth drawing: an empty rope is not shown (the window shrinks). */
-export function visibleRopes(ropes: Rope[]): Rope[] {
-  return ropes.filter((r) => ropeCount(r) > 0);
 }
 
 /** How many cards fit in a rope `widthPx` wide. At least 1. */

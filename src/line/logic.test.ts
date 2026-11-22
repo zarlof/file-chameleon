@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ClipItem, ClipKind } from '../lib/types';
-import { cardText, fitCount, lineDefaults, matches, moveRope, overflow, ropeCards, ropeName, splitRopes, visibleRopes } from './logic';
+import { cardText, fitCount, lineDefaults, matches, moveRope, overflow, ropeCards, ropeName, splitRopes } from './logic';
 
 let n = 0;
 function item(kind: ClipKind, over: Partial<ClipItem> = {}): ClipItem {
@@ -21,8 +21,8 @@ describe('splitRopes', () => {
     const textOnly = splitRopes([item('text'), item('text')], ALL);
     expect(textOnly.map((r) => r.key)).toEqual(['images', 'text', 'links']);
     expect(textOnly[0].items).toEqual([]);
-    expect(visibleRopes(textOnly).map((r) => r.key)).toEqual(['text']);
-    expect(visibleRopes(splitRopes([], ALL))).toEqual([]);
+    // empty ropes are kept: the line shows every enabled rope
+    expect(splitRopes([], ALL)).toHaveLength(3);
   });
 
   it('pinned_first_newest_first', () => {
@@ -107,7 +107,6 @@ describe('rope order and names', () => {
     const ropes = splitRopes([], { images: false, text: false, links: false, files: true }, undefined, [f]);
     expect(ropes).toHaveLength(1);
     expect(ropes[0].files).toEqual([f]);
-    expect(visibleRopes(ropes)).toHaveLength(1);
   });
 });
 
@@ -158,5 +157,22 @@ describe('shortcuts rope', () => {
     expect(cards.map((c) => c.app?.name)).toEqual(['Paint', 'Notes']);
     expect(cards.map((c) => c.id)).toEqual([APP_ID_BASE, APP_ID_BASE - 1]);
     expect(cards.every((c) => c.id < -2147483647)).toBe(true);
+  });
+});
+
+describe('card menu', () => {
+  it('lists the entries a card gets', async () => {
+    const { menuEntries, menuHeight } = await import('./menu');
+    const noop = () => undefined;
+    const a = { open: noop, copy: noop, paste: noop, edit: noop, pin: noop, share: noop, trash: noop, reveal: noop, copyPath: noop, convert: noop, float: noop, save: noop, removeShortcut: noop };
+    const tt = (k: string) => k;
+    const labels = (c: Parameters<typeof menuEntries>[0]) => menuEntries(c, a, tt).map((x) => (x === 'sep' ? '-' : x.label));
+    const img = { id: 1, kind: 'image', pinned: false, image: 'C:/i.png', edited: null } as unknown as ClipItem;
+    expect(labels({ id: 1, item: img, file: null })).toEqual(['menu.open', 'menu.copy', 'menu.paste', 'menu.edit', 'menu.pin', 'menu.share', 'menu.float', 'menu.save', '-', 'menu.delete']);
+    const link = { id: 2, kind: 'link', pinned: true } as unknown as ClipItem;
+    expect(labels({ id: 2, item: link, file: null })).toEqual(['menu.openLink', 'menu.copy', 'menu.paste', 'menu.unpin', 'menu.share', '-', 'menu.delete']);
+    const app = { name: 'A', path: 'C:/a.lnk', icon: null };
+    expect(labels({ id: -3, item: null, file: null, app })).toEqual(['menu.open', 'menu.reveal', 'menu.copyPath', '-', 'menu.removeShortcut']);
+    expect(menuHeight(menuEntries({ id: -3, item: null, file: null, app }, a, tt))).toBe(26 + 8 + 4 * 30 + 9);
   });
 });

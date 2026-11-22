@@ -1,0 +1,356 @@
+//! The work behind the line's commands: copy, paste, open, share, drag out, and the wheel's
+//! file actions (copy path, open a terminal).
+
+use super::*;
+
+/// How many folders "open a terminal here" opens at most.
+const MAX_TERMINALS: usize = 5;
+
+/// The paths as clipboard text, one per line (CRLF).
+pub fn copy_path_text(paths: &[PathBuf]) -> String {
+    paths
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join("\r\n")
+}
+
+/// The folders to open terminals in: a file -> its folder, a folder -> itself. Duplicates are
+/// dropped (first occurrence wins) and at most [`MAX_TERMINALS`] are kept.
+pub fn terminal_dirs(paths: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for p in paths {
+        let dir = if p.is_dir() {
+            Some(p.as_path())
+        } else {
+            p.parent()
+        };
+        let Some(dir) = dir.filter(|d| !d.as_os_str().is_empty()) else {
+            continue;
+        };
+        if !out.iter().any(|d| d == dir) {
+            out.push(dir.to_path_buf());
+        }
+        if out.len() == MAX_TERMINALS {
+            break;
+        }
+    }
+    out
+}
+
+/// The folder argument for `wt -d`: a trailing backslash is dropped (it would escape the closing
+/// quote of `"D:\My Dir\"`), except for a drive root such as `C:\`.
+pub fn terminal_arg(dir: &Path) -> PathBuf {
+    let s = dir.to_string_lossy();
+    let trimmed = s.trim_end_matches('\\');
+    let is_root = trimmed.len() == 2 && trimmed.ends_with(':');
+    if trimmed.len() < s.len() && !is_root && !trimmed.is_empty() {
+        PathBuf::from(trimmed)
+    } else {
+        dir.to_path_buf()
+    }
+}
+
+/// What dragging a clip out of the line carries.
+#[derive(Debug, PartialEq)]
+pub enum DragPlan {
+    /// An image: its file (the edited copy when there is one).
+    File(PathBuf),
+    /// Text or a link.
+    Text(String),
+    Nothing,
+}
+
+pub fn drag_plan(item: &fc_core::clip::ClipItem) -> DragPlan {
+    use fc_core::clip::ClipKind;
+    if item.kind == ClipKind::Image {
+        return item
+            .edited
+            .clone()
+            .or_else(|| item.image.clone())
+            .map_or(DragPlan::Nothing, DragPlan::File);
+    }
+    match item.text.as_deref() {
+        Some(t) if !t.is_empty() => DragPlan::Text(t.to_string()),
+        _ => DragPlan::Nothing,
+    }
+}
+
+/// Only web links are opened.
+pub fn is_web_url(url: &str) -> bool {
+    let lower = url.trim().to_ascii_lowercase();
+    (lower.starts_with("http://") || lower.starts_with("https://"))
+        && !url.chars().any(|c| c.is_control() || c.is_whitespace())
+}
+
+// ---------------------------------------------------------------- commands' work
+
+/// `line_paste`: copy the items, hide the line and paste into the window it came from.
+pub fn paste(app: &AppHandle, ids: &[u64]) -> CmdResult<()> {
+    crate::ipc::clipboard::copy_items(&app.state::<AppState>(), ids)?;
+    hide(app);
+    let prev = app.state::<AppState>().line_prev.load(Ordering::SeqCst);
+    paste_keys_into(prev);
+    Ok(())
+}
+
+/// `line_file_paste`: copy the files (a file list), hide the line and paste into the window it
+/// came from.
+pub fn paste_files(app: &AppHandle, paths: &[String]) -> CmdResult<()> {
+    copy_files(app, paths)?;
+    hide(app);
+    let prev = app.state::<AppState>().line_prev.load(Ordering::SeqCst);
+    paste_keys_into(prev);
+    Ok(())
+}
+
+/// `line_copy_text`: text on the clipboard as our own write, so it is neither recorded as a clip
+/// nor peeked at.
+pub fn copy_text(app: &AppHandle, text: &str) -> CmdResult<()> {
+    match crate::platform::clipboard::write_text(text) {
+        Ok(seq) => {
+            app.state::<AppState>()
+                .clip_self_write
+                .store(seq, Ordering::SeqCst);
+            Ok(())
+        }
+        Err(e) => Err(CmdError::new("clipboard", e)),
+    }
+}
+
+/// `line_open_item`: the clipboard library, with that clip selected.
+pub fn open_item(app: &AppHandle, id: u64) {
+    hide(app);
+    crate::windows::show_main(
+        app,
+        Some(NavPayload {
+            view: "clipboard".into(),
+            paths: vec![],
+            url: None,
+            clip: Some(id),
+        }),
+    );
+}
+
+/// `line_open_clip`: a click on a card. An image opens in the default image viewer, text in the
+/// library (where it can be edited), a link in the browser.
+pub fn open_clip(app: &AppHandle, id: u64) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let item = crate::ipc::clipboard::find(&app.state::<AppState>(), id)?;
+    match (
+        item.kind == fc_core::clip::ClipKind::Image,
+        drag_plan(&item),
+    ) {
+        (true, DragPlan::File(path)) if path.is_file() => {
+            hide(app);
+            app.opener()
+                .open_path(path.to_string_lossy(), None::<&str>)
+                .map_err(|e| CmdError::new("io", e.to_string()))
+        }
+        (false, DragPlan::Text(t)) if is_web_url(&t) => {
+            hide(app);
+            open_url(t.trim())
+        }
+        _ => {
+            open_item(app, id);
+            Ok(())
+        }
+    }
+}
+
+/// `line_share`: the Windows share sheet for clips (`ids`) and files of the files rope (`paths`).
+pub fn share(app: &AppHandle, ids: &[u64], paths: &[String]) -> CmdResult<()> {
+    let state = app.state::<AppState>();
+    let mut data = crate::platform::share::ShareData {
+        files: if paths.is_empty() {
+            Vec::new()
+        } else {
+            existing_files(app, paths)?
+        },
+        text: None,
+        title: "File Chameleon".into(),
+    };
+    let mut texts = Vec::new();
+    for id in ids {
+        match drag_plan(&crate::ipc::clipboard::find(&state, *id)?) {
+            DragPlan::File(p) => data.files.push(p),
+            DragPlan::Text(t) => texts.push(t),
+            DragPlan::Nothing => {}
+        }
+    }
+    if !texts.is_empty() {
+        data.text = Some(texts.join(
+            "
+",
+        ));
+    }
+    if let [one] = data.files.as_slice()
+        && let Some(name) = one.file_name()
+    {
+        data.title = name.to_string_lossy().into_owned();
+    }
+    crate::platform::share::share(data).map_err(|e| CmdError::new("share", e))
+}
+
+/// `line_drag_out`: start an OLE drag of clip `id` (copy only) and wait for the drop to end. The
+/// drag runs on the main (UI) thread, which blocks inside `SHDoDragDrop` until then.
+pub async fn drag_out(app: &AppHandle, id: u64) -> CmdResult<()> {
+    let item = crate::ipc::clipboard::find(&app.state::<AppState>(), id)?;
+    run_drag(app, drag_plan(&item)).await
+}
+
+/// `line_file_drag_out`: the same drag for a file of the files rope.
+pub async fn drag_out_file(app: &AppHandle, path: PathBuf) -> CmdResult<()> {
+    let found = existing_files(app, &[path.to_string_lossy().into_owned()])?;
+    run_drag(app, DragPlan::File(found[0].clone())).await
+}
+
+async fn run_drag(app: &AppHandle, plan: DragPlan) -> CmdResult<()> {
+    if plan == DragPlan::Nothing {
+        return Err(CmdError::new("notFound", "nothing to drag"));
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        Err(CmdError::new("unsupported", "drag out needs Windows"))
+    }
+    #[cfg(windows)]
+    {
+        use crate::platform::win;
+        let owner = app
+            .get_webview_window(LINE)
+            .and_then(|w| hwnd_of(&w))
+            .ok_or_else(|| CmdError::new("failed", "line window is not open"))?;
+        let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
+        app.run_on_main_thread(move || {
+            let result = match plan {
+                DragPlan::File(p) => win::file_data_object(&[p]),
+                DragPlan::Text(t) => win::text_data_object(&t),
+                DragPlan::Nothing => Err("nothing to drag".into()),
+            }
+            .and_then(|data| win::do_drag(owner, &data));
+            let _ = tx.send(result);
+        })
+        .map_err(|e| CmdError::new("failed", e.to_string()))?;
+        crate::ipc::blocking(move || rx.recv())
+            .await?
+            .map_err(|e| CmdError::new("failed", e.to_string()))?
+            .map_err(|e| CmdError::new("drag", e))
+    }
+}
+
+/// The files of `paths` that are on the files rope (and still exist); `notFound` when there is
+/// none. The file commands never act on a path that is not a current entry of the rope.
+fn existing_files(app: &AppHandle, paths: &[String]) -> CmdResult<Vec<PathBuf>> {
+    let found = crate::files::listed(app, paths);
+    if found.is_empty() {
+        return Err(CmdError::new("notFound", "not on the files rope or gone"));
+    }
+    Ok(found)
+}
+
+/// `line_file_copy`: the files as a file list on the clipboard (copy). Our own write is not
+/// recorded as a new clip.
+pub fn copy_files(app: &AppHandle, paths: &[String]) -> CmdResult<()> {
+    let files = existing_files(app, paths)?;
+    match crate::platform::clipboard::write_files(&files) {
+        Ok(seq) => {
+            app.state::<AppState>()
+                .clip_self_write
+                .store(seq, Ordering::SeqCst);
+            Ok(())
+        }
+        Err(e) => Err(CmdError::new("clipboard", e)),
+    }
+}
+
+/// `line_file_open`: the file in its default app.
+pub fn open_file(app: &AppHandle, path: &str) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    existing_files(app, &[path.to_string()])?;
+    app.opener()
+        .open_path(path, None::<&str>)
+        .map_err(|e| CmdError::new("io", e.to_string()))
+}
+
+/// `line_file_reveal`: the file selected in Explorer.
+pub fn reveal_file(app: &AppHandle, path: &str) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    existing_files(app, &[path.to_string()])?;
+    app.opener()
+        .reveal_item_in_dir(path)
+        .map_err(|e| CmdError::new("io", e.to_string()))
+}
+
+/// `open_url`: web links only.
+pub fn open_url(url: &str) -> CmdResult<()> {
+    if !is_web_url(url) {
+        return Err(CmdError::new("invalid", "only http and https links open"));
+    }
+    #[cfg(windows)]
+    if crate::platform::win::shell_open(url.trim()) {
+        return Ok(());
+    }
+    Err(CmdError::new("io", "could not open the link"))
+}
+
+// ---------------------------------------------------------------- file actions (wheel)
+
+/// The `copyPath` preset: the paths, one per line, on the clipboard. Our own write is not
+/// recorded as a new clip.
+pub fn copy_paths(app: &AppHandle, paths: &[PathBuf]) -> CmdResult<()> {
+    let text = copy_path_text(paths);
+    match crate::platform::clipboard::write_text(&text) {
+        Ok(seq) => {
+            app.state::<AppState>()
+                .clip_self_write
+                .store(seq, Ordering::SeqCst);
+            Ok(())
+        }
+        Err(e) => Err(CmdError::new("clipboard", e)),
+    }
+}
+
+/// The `openTerminal` preset: Windows Terminal in each folder (at most five), PowerShell when
+/// `wt.exe` is not there.
+pub fn open_terminal(paths: &[PathBuf]) -> CmdResult<()> {
+    let dirs = terminal_dirs(paths);
+    if dirs.is_empty() {
+        return Err(CmdError::new("unsupported", "no folder to open"));
+    }
+    let mut failed = None;
+    for dir in &dirs {
+        if let Err(e) = spawn_terminal(dir) {
+            failed = Some(e);
+        }
+    }
+    failed.map_or(Ok(()), |e| Err(CmdError::new("io", e.to_string())))
+}
+
+#[cfg(windows)]
+fn spawn_terminal(dir: &Path) -> std::io::Result<()> {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+    // wt.exe makes its own window: no console flash for the launcher.
+    let wt = Command::new("wt.exe")
+        .arg("-d")
+        .arg(terminal_arg(dir))
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn();
+    match wt {
+        Ok(_) => Ok(()),
+        Err(_) => Command::new("powershell.exe")
+            .arg("-NoExit")
+            .current_dir(dir)
+            .creation_flags(CREATE_NEW_CONSOLE)
+            .spawn()
+            .map(|_| ()),
+    }
+}
+
+#[cfg(not(windows))]
+fn spawn_terminal(_dir: &Path) -> std::io::Result<()> {
+    Err(std::io::Error::other("terminals need Windows"))
+}
