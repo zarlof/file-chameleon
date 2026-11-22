@@ -319,21 +319,21 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             language: "system".into(),
-            theme: "system".into(),
+            theme: "light".into(),
             accent: "blue".into(),
-            launch_at_login: false,
+            launch_at_login: true,
             close_to_tray: true,
-            context_menu: false,
+            context_menu: true,
             ui_scale: 100,
             reduce_motion: false,
             output_dir: None,
-            image_quality: 85,
+            image_quality: 100,
             download_dir: None,
             download_mode: Default::default(),
             download_quality: Default::default(),
             cookies_browser: None,
             wheel_enabled: true,
-            wheel_any_app: false,
+            wheel_any_app: true,
             recent_targets: Vec::new(),
             wheel_flip_scroll: true,
             wheel_flip_tab: true,
@@ -345,9 +345,9 @@ impl Default for Settings {
             wheel_scale: 100,
             wheel_show_detail: true,
             hotkey_shelf: String::new(),
-            hotkey_library: String::new(),
-            hotkey_download_link: "Ctrl+Alt+D".into(),
-            hotkey_line: "Ctrl+Alt+L".into(),
+            hotkey_library: "Ctrl+2".into(),
+            hotkey_download_link: "Ctrl+3".into(),
+            hotkey_line: "Ctrl+4".into(),
             hotkey_line_search: "Ctrl+Alt+F".into(),
             hotkey_capture: String::new(),
             hotkey_copy_latest_image: String::new(),
@@ -357,16 +357,16 @@ impl Default for Settings {
             line_breeze: true,
             line_ropes: LineRopes::default(),
             line_color: "#ffffff".into(),
-            line_thickness: 2,
+            line_thickness: 3,
             line_opacity: 100,
-            line_size: "medium".into(),
+            line_size: "large".into(),
             line_zoom_on_hover: false,
-            line_sound: false,
+            line_sound: true,
             line_rope_style: "web".into(),
             line_sag: 14,
             line_pin_style: "spider".into(),
             line_pin_color: "auto".into(),
-            line_card_style: "glassDark".into(),
+            line_card_style: "paper".into(),
             line_card_radius: 10,
             line_card_shadow: true,
             line_show_labels: true,
@@ -395,10 +395,10 @@ impl Default for Settings {
             clipboard_images: true,
             clipboard_suggest_links: true,
             clipboard_suggest_images: true,
-            clipboard_max_items: 500,
+            clipboard_max_items: 200,
             clipboard_retention_text: 30,
             clipboard_retention_links: 30,
-            clipboard_retention_images: 7,
+            clipboard_retention_images: 30,
             clipboard_ignore_apps: Vec::new(),
             clipboard_ocr: true,
             clipboard_link_titles: false,
@@ -626,7 +626,7 @@ mod tests {
         std::fs::write(&p, br#"{"theme":"dark"}"#).unwrap();
         let s = Settings::load(&p);
         assert_eq!(s.theme, "dark");
-        assert_eq!(s.clipboard_max_items, 500);
+        assert_eq!(s.clipboard_max_items, 200);
         assert_eq!(s.hotkey_shelf, "");
         std::fs::write(&p, b"not json").unwrap();
         assert_eq!(Settings::load(&p), Settings::default());
@@ -673,7 +673,7 @@ mod tests {
         let s = Settings::load(&p);
         assert_eq!(s.clipboard_retention_text, 5);
         assert_eq!(s.clipboard_retention_links, 30);
-        assert_eq!(s.clipboard_retention_images, 7);
+        assert_eq!(s.clipboard_retention_images, 30);
     }
 
     #[test]
@@ -699,9 +699,9 @@ mod tests {
         std::fs::write(&p, br#"{"theme":"dark"}"#).unwrap();
         let s = Settings::load(&p);
         assert_eq!(s.line_color, "#ffffff");
-        assert_eq!((s.line_thickness, s.line_opacity), (2, 100));
-        assert_eq!(s.line_size, "medium");
-        assert!(!s.line_zoom_on_hover && !s.line_sound);
+        assert_eq!((s.line_thickness, s.line_opacity), (3, 100));
+        assert_eq!(s.line_size, "large");
+        assert!(!s.line_zoom_on_hover && s.line_sound);
         assert_eq!(s.hotkey_line_search, "Ctrl+Alt+F");
         assert_eq!(s.hotkey_capture, "");
         assert_eq!(s.hotkey_copy_latest_image, "");
@@ -721,7 +721,7 @@ mod tests {
         assert_eq!((s.line_sag, s.line_card_radius), (14, 10));
         assert_eq!(s.line_pin_style, "spider");
         assert_eq!(s.line_pin_color, "auto");
-        assert_eq!(s.line_card_style, "glassDark");
+        assert_eq!(s.line_card_style, "paper");
         assert!(s.line_card_shadow && s.line_show_labels && s.line_show_numbers && s.line_fall);
         assert_eq!(
             s.line_rope_order,

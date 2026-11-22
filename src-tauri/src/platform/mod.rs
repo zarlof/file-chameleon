@@ -22,6 +22,17 @@ pub fn start(app: &AppHandle) {
     if s.clipboard_enabled {
         clipboard::start(app);
     }
+    // Launch at login is on by default, so a fresh install registers it on its first start
+    // (release builds only: a dev build must not put its own exe into autostart).
+    if s.launch_at_login && !cfg!(debug_assertions) {
+        use tauri_plugin_autostart::ManagerExt;
+        let al = app.autolaunch();
+        if !al.is_enabled().unwrap_or(true)
+            && let Err(e) = al.enable()
+        {
+            eprintln!("autostart: {e}");
+        }
+    }
     // Rewrite the Explorer verb: the exe may have moved since it was written.
     if s.context_menu
         && let Err(e) = contextmenu::set_enabled(true, &ui_language(&s.language))
