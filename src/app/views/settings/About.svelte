@@ -1,5 +1,5 @@
 <!--
-  About — app name and version, the GitHub repository, third-party licences, and the "inspired by" note.
+  About — app name and version, the GitHub repository and third-party licences.
 -->
 <script lang="ts">
   import appIcon from '../../../../src-tauri/icons/128x128.png';
@@ -37,7 +37,6 @@
     </ListRow>
   </Card>
 
-  <p class="note">{t('settings.about.credits')}</p>
 </section>
 
 <style>
@@ -48,5 +47,4 @@
   .about-name { font: var(--text-title); letter-spacing: var(--tracking-tight); }
   .about-ver { font: var(--text-callout); color: var(--text-secondary); }
   .body { display: block; font: var(--text-callout); color: var(--text-secondary); white-space: normal; }
-  .note { margin: 0 var(--space-1); font: var(--text-callout); color: var(--text-secondary); }
 </style>

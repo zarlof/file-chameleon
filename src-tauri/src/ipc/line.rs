@@ -47,6 +47,24 @@ pub fn line_clip_files(app: AppHandle, ids: Vec<u64>) -> CmdResult<Vec<String>> 
     crate::line::clip_files(&app, &ids)
 }
 
+/// Ctrl+click on cards: hide the line, then open the click-mode wheel for `paths`.
+#[tauri::command(async)]
+pub fn line_wheel(app: AppHandle, paths: Vec<String>) {
+    crate::line::open_wheel(&app, paths);
+}
+
+/// Ctrl+drag on cards: the drag wheel under the cursor with the cards' files dragged onto it.
+/// Returns when the drop ends.
+#[tauri::command]
+pub async fn line_wheel_drag(
+    app: AppHandle,
+    ids: Vec<u64>,
+    paths: Vec<String>,
+    shift: bool,
+) -> CmdResult<()> {
+    crate::line::wheel_drag(&app, &ids, &paths, shift).await
+}
+
 /// The Windows share sheet for clips and files of the files rope.
 #[tauri::command(async)]
 pub fn line_share(app: AppHandle, ids: Vec<u64>, paths: Vec<String>) -> CmdResult<()> {

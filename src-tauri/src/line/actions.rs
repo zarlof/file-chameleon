@@ -114,6 +114,68 @@ pub fn clip_files(app: &AppHandle, ids: &[u64]) -> CmdResult<Vec<String>> {
     Ok(out)
 }
 
+/// How long the window that comes to the front after the line hides gets to settle before the
+/// wheel opens: a click-mode wheel closes when the foreground window changes after it opened.
+const WHEEL_AFTER_HIDE: Duration = Duration::from_millis(150);
+
+/// `line_wheel` (Ctrl+click on cards): hide the line, then open the click-mode wheel for `paths`
+/// at the cursor.
+pub fn open_wheel(app: &AppHandle, paths: Vec<String>) {
+    hide(app);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(WHEEL_AFTER_HIDE);
+        crate::windows::open_wheel_click(&app, paths);
+    });
+}
+
+/// `line_wheel_drag` (Ctrl+drag on cards): open the drag wheel under the cursor and drag the
+/// cards' files onto it, like Ctrl+drag in File Explorer (the global hook ignores drags that start
+/// in our own windows). Clips give the files of [`wheel_file`]. Returns when the drop ends.
+pub async fn wheel_drag(
+    app: &AppHandle,
+    ids: &[u64],
+    paths: &[String],
+    shift: bool,
+) -> CmdResult<()> {
+    let mut files: Vec<PathBuf> = if paths.is_empty() {
+        Vec::new()
+    } else {
+        existing_files(app, paths)?
+    };
+    if !ids.is_empty() {
+        files.extend(clip_files(app, ids)?.into_iter().map(PathBuf::from));
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, files, shift);
+        Err(CmdError::new("unsupported", "the wheel needs Windows"))
+    }
+    #[cfg(windows)]
+    {
+        use crate::platform::win;
+        let owner = app
+            .get_webview_window(LINE)
+            .and_then(|w| hwnd_of(&w))
+            .ok_or_else(|| CmdError::new("failed", "line window is not open"))?;
+        let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
+        let a = app.clone();
+        app.run_on_main_thread(move || {
+            let (x, y) = win::cursor_pos();
+            crate::windows::show_wheel_at(&a, x, y, shift);
+            let result = win::file_data_object(&files).and_then(|data| win::do_drag(owner, &data));
+            // The hook sends no release for a drag it did not start: clean up the same way.
+            crate::windows::on_drag_released(&a);
+            let _ = tx.send(result);
+        })
+        .map_err(|e| CmdError::new("failed", e.to_string()))?;
+        crate::ipc::blocking(move || rx.recv())
+            .await?
+            .map_err(|e| CmdError::new("failed", e.to_string()))?
+            .map_err(|e| CmdError::new("drag", e))
+    }
+}
+
 /// Only web links are opened.
 pub fn is_web_url(url: &str) -> bool {
     let lower = url.trim().to_ascii_lowercase();

@@ -95,14 +95,9 @@ pub struct Settings {
     pub line_zoom_on_hover: bool,
     /// A soft sound when clips hang or fall.
     pub line_sound: bool,
-    /// "web" (default) | "twisted" | "cord" | "thin"
-    pub line_rope_style: String,
-    /// Rope sag in px, 0..=40.
+    /// Rope sag in px, 0..=40. (The rope is always spider silk and the cards hang from spiders:
+    /// the other rope and clothespin styles were removed in 0.4.2; their keys are ignored.)
     pub line_sag: u8,
-    /// "spider" (default) | "plastic" | "wood" | "metal"
-    pub line_pin_style: String,
-    /// "auto" or `#rrggbb`.
-    pub line_pin_color: String,
     /// "paper" (default) | "glassDark" | "glassLight"
     pub line_card_style: String,
     /// Background of every card: "" = the card style's own, or `#rrggbb` (a card's own colour,
@@ -323,10 +318,7 @@ impl Default for Settings {
             line_size: "large".into(),
             line_zoom_on_hover: true,
             line_sound: true,
-            line_rope_style: "web".into(),
             line_sag: 25,
-            line_pin_style: "spider".into(),
-            line_pin_color: "auto".into(),
             line_card_style: "paper".into(),
             line_card_color: String::new(),
             line_card_radius: 10,
@@ -403,16 +395,6 @@ impl Settings {
             }
         };
         pick(
-            &mut self.line_rope_style,
-            &["web", "twisted", "cord", "thin"],
-            &d.line_rope_style,
-        );
-        pick(
-            &mut self.line_pin_style,
-            &["spider", "plastic", "wood", "metal"],
-            &d.line_pin_style,
-        );
-        pick(
             &mut self.line_card_style,
             &["glassDark", "glassLight", "paper"],
             &d.line_card_style,
@@ -423,9 +405,6 @@ impl Settings {
             &["open", "copy", "copyClose", "paste"],
             &d.line_click_action,
         );
-        if self.line_pin_color != "auto" && !is_hex_colour(&self.line_pin_color) {
-            self.line_pin_color = "auto".into();
-        }
         self.line_sag = self.line_sag.clamp(0, 40);
         self.line_card_radius = self.line_card_radius.clamp(0, 16);
         self.line_max_per_rope = match self.line_max_per_rope {
@@ -502,8 +481,6 @@ impl Settings {
             // Wave 4: the user asked for a white spider-web rope held by spiders, and for a
             // click that opens the card.
             file.insert("lineColor".into(), "#ffffff".into());
-            file.insert("lineRopeStyle".into(), "web".into());
-            file.insert("linePinStyle".into(), "spider".into());
             file.insert("lineClickAction".into(), "open".into());
         }
         if version < 3 {
@@ -709,14 +686,12 @@ mod tests {
         std::fs::write(&p, br#"{"theme":"dark","lineLookVersion":3}"#).unwrap();
         let s = Settings::load(&p);
         // Wave 4 replaces the look of a version 3 file.
-        assert_eq!(s.line_rope_style, "web");
+        assert_eq!(s.line_color, "#ffffff");
         let d = Settings::default();
         assert_eq!(
             (s.line_sag, s.line_card_radius),
             (d.line_sag, d.line_card_radius)
         );
-        assert_eq!(s.line_pin_style, "spider");
-        assert_eq!(s.line_pin_color, "auto");
         assert_eq!(s.line_card_style, "paper");
         assert!(s.line_card_shadow && s.line_show_labels && s.line_show_numbers && s.line_fall);
         assert_eq!(s.line_rope_order, ["images", "text", "links", "files"]);
@@ -740,7 +715,7 @@ mod tests {
             &p,
             br##"{"lineSag":99,"lineMaxPerRope":1,"linePeekMs":10,"lineRevealDwellMs":9999,
                 "lineHideDelayMs":1,"lineSwing":999,"lineDamping":1,"lineCardRadius":99,
-                "lineSoundVolume":250,"lineEdge":"left","linePinColor":"red",
+                "lineSoundVolume":250,"lineEdge":"left","linePinStyle":"wood",
                 "lineRopeOrder":["files","files","text"],"lineLookVersion":3}"##,
         )
         .unwrap();
@@ -755,10 +730,7 @@ mod tests {
             (200, 50, 16)
         );
         assert_eq!(s.line_sound_volume, 100);
-        assert_eq!(
-            (s.line_edge.as_str(), s.line_pin_color.as_str()),
-            ("top", "auto")
-        );
+        assert_eq!(s.line_edge, "top");
         assert_eq!(s.line_rope_order, ["files", "text", "images", "links"]);
         std::fs::write(
             &p,
@@ -768,12 +740,9 @@ mod tests {
         let s = Settings::load(&p);
         assert_eq!(s.line_color, Settings::default().line_color);
         assert_eq!(s.line_rope_names.text.chars().count(), 24);
-        std::fs::write(&p, br##"{"lineMaxPerRope":50,"linePinColor":"#aabbcc"}"##).unwrap();
+        std::fs::write(&p, br##"{"lineMaxPerRope":50,"lineRopeStyle":"thin"}"##).unwrap();
         let s = Settings::load(&p);
-        assert_eq!(
-            (s.line_max_per_rope, s.line_pin_color.as_str()),
-            (30, "#aabbcc")
-        );
+        assert_eq!(s.line_max_per_rope, 30);
     }
 
     #[test]

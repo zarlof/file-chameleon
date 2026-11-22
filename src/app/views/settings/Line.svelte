@@ -67,8 +67,6 @@
     { id: '#ff6bb0', name: 'pink' },
   ] as const;
   const choice = <T extends string>(keys: readonly T[], prefix: string) => keys.map((k) => ({ value: k, label: t(`${prefix}.${k}`) }));
-  const ropeStyleOptions = $derived(choice(['web', 'twisted', 'cord', 'thin'] as const, 'line.settings.ropeStyle'));
-  const pinStyleOptions = $derived(choice(['spider', 'plastic', 'wood', 'metal'] as const, 'line.settings.pinStyle'));
   const cardStyleOptions = $derived(choice(['glassDark', 'glassLight', 'paper'] as const, 'line.settings.cardStyle'));
   const sizeOptions = $derived([
     { value: 'small' as const, label: t('line.settings.sizeSmall') },
@@ -101,7 +99,6 @@
       toast.show(errorOf(e).message, 'error');
     }
   }
-  const customPin = $derived(isHex(s.linePinColor));
 
   // ---- ropes
   const order = $derived(sanitizeOrder(s.lineRopeOrder));
@@ -276,10 +273,7 @@
           scale={size.scale}
           color={pcolor}
           thickness={vals.lineThickness}
-          ropeStyle={s.lineRopeStyle}
           sag={vals.lineSag}
-          pinStyle={s.linePinStyle}
-          pinColor={s.linePinColor}
           cardOp={cardOpacity(vals.lineOpacity)}
           ropeOp={Math.min(100, Math.max(30, vals.lineOpacity)) / 100}
           onclick={noop}
@@ -292,9 +286,6 @@
         />
       </div>
     </div>
-    <ListRow title={t('line.settings.ropeStyle')}>
-      {#snippet trailing()}<SegmentedControl options={ropeStyleOptions} value={s.lineRopeStyle} size="sm" disabled={off} onchange={(v) => set({ lineRopeStyle: v })} />{/snippet}
-    </ListRow>
     <ListRow title={t('line.settings.color')}>
       {#snippet trailing()}
         <span class="swatches" role="radiogroup" aria-label={t('line.settings.color')}>
@@ -313,19 +304,6 @@
     </ListRow>
     {@render slideRow('lineThickness', t('line.settings.thickness'), 1, 6, 1)}
     {@render slideRow('lineSag', t('line.settings.sag'), 0, 40, 1, '', t('line.settings.sagHint'))}
-    <ListRow title={t('line.settings.pinStyle')}>
-      {#snippet trailing()}<SegmentedControl options={pinStyleOptions} value={s.linePinStyle} size="sm" disabled={off} onchange={(v) => set({ linePinStyle: v })} />{/snippet}
-    </ListRow>
-    <ListRow title={t('line.settings.pinColor')}>
-      {#snippet trailing()}
-        <span class="swatches">
-          <button type="button" class="chip" class:on={s.linePinColor === 'auto'} disabled={off} onclick={() => set({ linePinColor: 'auto' })}>{t('line.settings.pinColorAuto')}</button>
-          <input type="color" class="custom" class:on={customPin} disabled={off} value={customPin ? s.linePinColor : '#cfd2d6'}
-            title={t('line.settings.pinColorCustom')} aria-label={t('line.settings.pinColorCustom')}
-            onchange={(e) => set({ linePinColor: e.currentTarget.value })} />
-        </span>
-      {/snippet}
-    </ListRow>
     <ListRow title={t('line.settings.cardStyle')}>
       {#snippet trailing()}<SegmentedControl options={cardStyleOptions} value={s.lineCardStyle} size="sm" disabled={off} onchange={(v) => set({ lineCardStyle: v })} />{/snippet}
     </ListRow>

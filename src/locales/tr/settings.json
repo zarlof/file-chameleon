@@ -201,7 +201,6 @@
     "open": "Aç",
     "licenses": "Lisanslar",
     "licensesValue": "File Chameleon açık kaynaklıdır. İsteğe bağlı motorlar kendi lisanslarını taşır (FFmpeg: GPL-3.0, yt-dlp: Unlicense, PDFium: BSD-3-Clause, Deno: MIT).",
-    "licensesOpen": "Bildirimleri göster",
-    "credits": "Filee, Nashi ve Clipboardline'dan ilham alınmıştır; onlarla bir bağı yoktur."
+    "licensesOpen": "Bildirimleri göster"
   }
 }

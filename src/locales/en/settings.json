@@ -201,7 +201,6 @@
     "open": "Open",
     "licenses": "Licenses",
     "licensesValue": "File Chameleon is open source. Optional engines keep their own licenses (FFmpeg: GPL-3.0, yt-dlp: Unlicense, PDFium: BSD-3-Clause, Deno: MIT).",
-    "licensesOpen": "Show notices",
-    "credits": "Inspired by Filee, Nashi and Clipboardline; not affiliated with them."
+    "licensesOpen": "Show notices"
   }
 }

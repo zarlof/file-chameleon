@@ -1,5 +1,5 @@
 <!--
-  Peg — one card hanging from the rope by a little clothespin (Pin.svelte). The card swings around the pin
+  Peg — one card hanging from the rope by a little spider (Spider.svelte). The card swings around it
   (`theta`, driven by the shared loop in Line.svelte). Dark glass by default (see cardVars in layout.ts):
   image = rounded thumbnail with a thin border, text = translucent note, link = preview image, title and
   domain, file = thumbnail or type glyph, name, extension chip, size and source icon. A small 1-9 badge
@@ -11,7 +11,6 @@
   import { convertFileSrc } from '@tauri-apps/api/core';
   import { cardText, type LineCard } from './logic';
   import { fileCard } from './files';
-  import Pin from './Pin.svelte';
   import Spider from './Spider.svelte';
   import { renderMd } from './markdown';
   import { colorStyle } from './layout';
@@ -29,8 +28,6 @@
     scale = 1,
     width = 112,
     cardOp = 1,
-    pinStyle = 'plastic',
-    pinColor = 'auto',
     num = null,
     previewOn = false,
     lifted = false,
@@ -58,8 +55,6 @@
     width?: number;
     /** Card opacity, 0.9 to 1. */
     cardOp?: number;
-    pinStyle?: 'spider' | 'plastic' | 'wood' | 'metal';
-    pinColor?: string;
     /** 1..9 badge (the key that picks this card), or null. */
     num?: number | null;
     /** After a 400 ms rest on the card, report its box (null when the pointer leaves). */
@@ -90,7 +85,6 @@
   const fc = $derived(file ? fileCard(file, getLang()) : null);
   const kindClass = $derived(file ? 'file' : item?.kind === 'image' ? 'image' : item?.kind === 'text' ? 'text' : 'link');
   const pinned = $derived(item?.pinned ?? file?.pinned ?? false);
-  const spider = $derived(pinStyle === 'spider');
   const label = $derived(file ? file.name : words.title || t(item?.kind === 'image' ? 'image' : 'rope.text'));
   /** The card's own colour (set with the gear) over the line's card look. */
   const ownColor = $derived(colorStyle(item?.color ?? file?.color ?? null));
@@ -162,7 +156,6 @@
 
 <div
   class="peg"
-  class:spider
   class:selected
   class:copied
   class:focused
@@ -177,12 +170,8 @@
   onpointerenter={enter}
   onpointerleave={leave}
 >
-  {#if spider}
-    {#if stretch > 0}<span class="thread" style:height="{stretch}px" style:top="calc(var(--s) * -8px - {stretch}px)"></span>{/if}
-    <span class="hanger"><Spider {scale} /></span>
-  {:else}
-    <span class="pin"><Pin pinStyle={pinStyle === 'spider' ? 'plastic' : pinStyle} color={pinColor} {pinned} {scale} /></span>
-  {/if}
+  {#if stretch > 0}<span class="thread" style:height="{stretch}px" style:top="calc(var(--s) * -8px - {stretch}px)"></span>{/if}
+  <span class="hanger"><Spider {scale} /></span>
 
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div
@@ -304,16 +293,6 @@
     transform: translateY(var(--lift)) rotate(var(--theta));
     will-change: transform;
   }
-  .pin {
-    position: absolute;
-    top: calc(var(--s) * -14px);
-    left: 50%;
-    margin-left: calc(var(--s) * -5px);
-    z-index: 2;
-    line-height: 0;
-    pointer-events: none;
-  }
-
   .hanger {
     position: absolute;
     top: calc(var(--s) * -8px);
@@ -336,7 +315,6 @@
   }
   .card {
     position: relative;
-    margin-top: calc(var(--s) * 8px);
     border-radius: var(--c-radius, 10px);
     background: var(--c-bg, rgba(20, 20, 24, 0.78));
     -webkit-backdrop-filter: var(--c-blur, none);
@@ -350,8 +328,7 @@
     transition: box-shadow var(--dur-fast), transform var(--dur) var(--ease-out);
   }
   /* padding, not a card margin: a margin would collapse through the peg and push the spider down */
-  .peg.spider { padding-top: calc(var(--s) * 26px); }
-  .spider .card { margin-top: 0; }
+  .peg { padding-top: calc(var(--s) * 26px); }
   .peg:hover .card { transform: translateY(-1px); }
   .peg.lifted { z-index: 5; }
   .lifted .card { transform: translateY(-4px) scale(1.04); box-shadow: inset 0 0 0 1px var(--c-edge, rgba(255, 255, 255, 0.1)), 0 10px 24px rgba(0, 0, 0, 0.45); }

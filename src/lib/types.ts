@@ -86,12 +86,8 @@ export interface Settings {
   lineSize: 'small' | 'medium' | 'large';
   lineZoomOnHover: boolean;
   lineSound: boolean;
-  lineRopeStyle: 'web' | 'twisted' | 'cord' | 'thin';
   /** 0..40 px */
   lineSag: number;
-  linePinStyle: 'spider' | 'plastic' | 'wood' | 'metal';
-  /** 'auto' or a #rrggbb hex. */
-  linePinColor: string;
   lineCardStyle: 'glassDark' | 'glassLight' | 'paper';
   /** Background of every card: '' = the card style's own, or a #rrggbb hex (a card's own colour wins). */
   lineCardColor: string;

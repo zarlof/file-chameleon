@@ -155,6 +155,8 @@ pub fn run() {
             ipc::line::line_file_pin,
             ipc::line::line_clip_rank,
             ipc::line::line_clip_files,
+            ipc::line::line_wheel,
+            ipc::line::line_wheel_drag,
             ipc::line::line_file_rank,
             ipc::line::line_card_color,
             ipc::line::line_clear_card_colors,

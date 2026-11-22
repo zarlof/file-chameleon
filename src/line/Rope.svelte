@@ -1,21 +1,18 @@
 <!--
-  Rope — one natural cord across the whole screen width (no band, no backdrop), a knot near each end,
-  a small label pill at the left end and the cards hanging from it by clothespins. The strokes come from
-  ropeStyle.ts (twisted / cord / thin); the swing angles and falling progress are owned by Line.svelte's
+  Rope — one spider-silk rope across the whole screen width (no band, no backdrop), a small label pill
+  at the left end and the cards hanging from it by little spiders. The strokes come from ropeStyle.ts;
+  the swing angles and falling progress are owned by Line.svelte's
   shared animation loop. While a card is dragged along the rope (`drag`, owned by Line.svelte) it follows
   the pointer and the others step aside to show where it will land. The settings page draws its live
   preview with this same component.
 -->
 <script lang="ts">
   import { fall, ropePath, ropeY } from './physics';
-  import { ropeStrokes, type RopeStyle } from './ropeStyle';
+  import { ropeStrokes } from './ropeStyle';
   import type { LineCard } from './logic';
   import { cardCenter } from './layout';
   import Peg from './Peg.svelte';
   import { t } from './i18n';
-
-  /** The knots sit this far inside each screen edge. */
-  const KNOT_INSET = 6;
 
   let {
     label,
@@ -35,10 +32,7 @@
     scale,
     color,
     thickness,
-    ropeStyle = 'twisted',
     sag = 14,
-    pinStyle = 'plastic',
-    pinColor = 'auto',
     cardOp,
     ropeOp = 1,
     previewOn = false,
@@ -79,13 +73,10 @@
     /** Rope colour (any CSS colour), thickness 1..6, style and sag in px (0..40, before the size factor). */
     color: string;
     thickness: number;
-    ropeStyle?: RopeStyle;
     sag?: number;
-    pinStyle?: 'spider' | 'plastic' | 'wood' | 'metal';
-    pinColor?: string;
     /** Card opacity 0.9..1. */
     cardOp: number;
-    /** Opacity of the rope itself (cord, knots, label), 0.3..1. */
+    /** Opacity of the rope itself (cord and label), 0.3..1. */
     ropeOp?: number;
     previewOn?: boolean;
     onpreview?: (c: LineCard, rect: DOMRect | null) => void;
@@ -124,22 +115,16 @@
     }),
   );
   const d = $derived(ropePath(width, centers, sagPx));
-  const layers = $derived(ropeStrokes(ropeStyle, color, thickness));
-  const knot = $derived(2 + thickness * 0.9);
-  const knotY = (x: number) => ropeY(width, x, centers, sagPx);
+  const layers = $derived(ropeStrokes(color, thickness));
 </script>
 
 <div class="rope" class:collapsed style:top="{top}px" style:height="{collapsed ? 26 : band}px">
   {#if !collapsed}
   <svg class="cord" style:opacity={ropeOp} {width} height={TOP + sagPx + 24} viewBox="0 0 {width} {TOP + sagPx + 24}" aria-hidden="true">
-    <g transform="translate(0 {TOP})" class="g" class:thin={ropeStyle === 'thin'}>
+    <g transform="translate(0 {TOP})" class="g">
       {#each layers as l, i (i)}
         <path {d} fill="none" stroke={l.stroke} stroke-width={l.width} stroke-dasharray={l.dash} stroke-linecap="round" stroke-linejoin="round" opacity={l.opacity} />
       {/each}
-      {#if ropeStyle !== 'thin' && ropeStyle !== 'web'}
-        <circle cx={KNOT_INSET} cy={knotY(KNOT_INSET)} r={knot} fill={color} stroke="rgba(0,0,0,0.35)" stroke-width="0.6" />
-        <circle cx={width - KNOT_INSET} cy={knotY(width - KNOT_INSET)} r={knot} fill={color} stroke="rgba(0,0,0,0.35)" stroke-width="0.6" />
-      {/if}
     </g>
   </svg>
   {/if}
@@ -176,8 +161,6 @@
         {scale}
         width={card}
         {cardOp}
-        {pinStyle}
-        {pinColor}
         num={numbers && i < 9 ? i + 1 : null}
         {previewOn}
         {lifted}
@@ -204,7 +187,6 @@
   .rope { position: absolute; left: 0; right: 0; }
   .cord { position: absolute; inset: 0 auto auto 0; overflow: visible; pointer-events: none; }
   .g { filter: drop-shadow(0 1.5px 1.5px rgba(0, 0, 0, 0.45)); }
-  .g.thin { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5)); }
   .label {
     position: absolute;
     left: 12px;

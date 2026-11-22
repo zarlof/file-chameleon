@@ -130,8 +130,8 @@ convert it in one click. **Ctrl+7** downloads the link you just copied.
   typing searches, Delete moves to the trash (Ctrl+Z brings it back). Rest on a card for a moment
   to see it 2.5 times larger (the whole picture, all of a text, a link's full address, a file's
   name and folder). Drag a card along its rope to put it in another place (the place is kept);
-  drag it out of the line to drop it into another app. **Ctrl+click** a card to open the format
-  wheel for it (a text or a link is converted as a .txt); **Shift+click** selects cards. The gear on
+  drag it out of the line to drop it into another app. **Ctrl+click** a card (or hold Ctrl and drag
+  it) to open the format wheel for it (a text or a link is converted as a .txt); **Shift+click** selects cards. The gear on
   a card gives it a colour of its own. Settings → **Line** changes the edge, size, rope and pin look, cards and their colour,
   swing, sounds, rope order and names, how many cards each rope holds, and more.
 - **The files rope:** the fourth rope holds files you added, converted or downloaded. Drag them out,
@@ -180,7 +180,7 @@ is missing.
 
 - **Ctrl + drag** files or folders from File Explorer or the desktop to open the wheel. Press
   **Esc** or release outside the wheel to cancel. **Ctrl+Shift + drag** opens the back face.
-- On the line, **Ctrl+click** a card to convert it with the wheel, **Shift+click** to select several.
+- On the line, **Ctrl+click** a card (or Ctrl+drag it) to convert it with the wheel, **Shift+click** to select several.
 - **Ctrl+1** opens the clothesline, **Ctrl+2** the clipboard library, **Ctrl+3** hangs a screenshot
   on it and **Ctrl+7** downloads the copied link. Change or turn off these shortcuts in Settings →
   **Shortcuts**.

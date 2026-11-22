@@ -505,7 +505,8 @@
   }
 
   /** The format wheel for a card (or the selection it is part of): files and image clips with their
-   *  own file, text and link clips as a .txt. The line steps aside for the wheel. */
+   *  own file, text and link clips as a .txt. Rust hides the line first, then opens the wheel (a
+   *  click-mode wheel closes when the window in front changes after it opened). */
   async function wheelFor(c: LineCard) {
     const { clips, paths } = splitTargets(targetsFor(c));
     closeHover();
@@ -513,12 +514,30 @@
       const files = clips.length > 0 ? await api.lineClipFiles(clips) : [];
       const all = [...paths, ...files];
       if (all.length === 0) return;
-      await api.wheelOpen(all);
       selected = [];
-      await hide();
+      await api.lineWheel(all);
     } catch (e) {
       console.error(e);
       showToast(t('wheelNone'));
+    }
+  }
+
+  /** Ctrl+drag on a card: the wheel opens under the pointer and the card's file (or the
+   *  selection's files) is dragged onto it, as with Ctrl+drag in File Explorer. */
+  async function wheelDrag(c: LineCard, shift: boolean) {
+    const { clips, paths } = splitTargets(targetsFor(c));
+    closeHover();
+    menu = null;
+    cardPop = null;
+    dragging = true;
+    try {
+      await api.lineWheelDrag(clips, paths, shift);
+    } catch (e) {
+      console.error(e);
+      showToast(t('wheelNone'));
+    } finally {
+      dragging = false;
+      if (!pointerInside) leave();
     }
   }
 
@@ -728,6 +747,10 @@
   /** The pointer moved 6 px on a card: from now on it follows the pointer along its rope. Leaving the
    *  window, or the rope's band by more than half its height, hands it to Windows as a drag-out. */
   function startDrag(c: LineCard, e: PointerEvent) {
+    if (e.ctrlKey || e.metaKey) {
+      void wheelDrag(c, e.shiftKey);
+      return;
+    }
     closeHover();
     menu = null;
     cardPop = null;
@@ -1040,10 +1063,7 @@
       scale={size.scale}
       {color}
       {thickness}
-      ropeStyle={settings?.lineRopeStyle ?? 'twisted'}
       sag={settings?.lineSag ?? 14}
-      pinStyle={settings?.linePinStyle ?? 'plastic'}
-      pinColor={settings?.linePinColor ?? 'auto'}
       {cardOp}
       ropeOp={op}
       previewOn={settings?.lineZoomOnHover ?? true}

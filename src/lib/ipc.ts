@@ -125,6 +125,10 @@ export const api = {
   lineFileRank: (path: string, rank: number | null) => invoke<void>('line_file_rank', { path, rank }),
   /** Files the wheel can convert for clips: an image's picture, a text or link as a .txt. */
   lineClipFiles: (ids: number[]) => invoke<string[]>('line_clip_files', { ids }),
+  /** Ctrl+click on cards: hide the line, then open the click-mode wheel for these files. */
+  lineWheel: (paths: string[]) => invoke<void>('line_wheel', { paths }),
+  /** Ctrl+drag on cards: the drag wheel under the cursor, the cards' files dragged onto it. Resolves when the drop ends. */
+  lineWheelDrag: (ids: number[], paths: string[], shift: boolean) => invoke<void>('line_wheel_drag', { ids, paths, shift }),
   /** A card's own colour (#rrggbb; null = the line's card colour): clips by id, files by path. */
   lineCardColor: (ids: number[], paths: string[], color: string | null) => invoke<void>('line_card_color', { ids, paths, color }),
   lineClearCardColors: () => invoke<void>('line_clear_card_colors'),

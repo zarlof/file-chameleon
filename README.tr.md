@@ -132,7 +132,7 @@ az önce kopyaladığınız linki indirir.
   seçer, yazmak arar, Delete çöp kutusuna taşır (Ctrl+Z geri getirir). Bir kartın üzerinde biraz
   durunca 2,5 kat büyük önizlemesi açılır (resmin tamamı, metnin hepsi, linkin tam adresi, dosyanın
   adı ve klasörü). Kartı ipin üzerinde sürükleyerek yerini değiştirebilirsiniz (yeri hatırlanır);
-  ipin dışına sürüklerseniz başka bir uygulamaya bırakılır. **Ctrl+tık** kart için dönüştürme
+  ipin dışına sürüklerseniz başka bir uygulamaya bırakılır. **Ctrl+tık** (ya da Ctrl basılıyken sürüklemek) kart için dönüştürme
   çarkını açar (metin ve link .txt olarak dönüştürülür), **Shift+tık** kart seçer. Karttaki dişli ona
   kendi rengini verir.
   Ayarlar → **İp** bölümünden kenar, boyut, ip ve mandal görünümü, kartlar ve renkleri, sallanma,
@@ -185,7 +185,7 @@ Gereksinimler: Windows 10 (1809 ve üstü) veya Windows 11, 64 bit. WebView2 yok
 - Çarkı açmak için Dosya Gezgini'nden veya masaüstünden dosya ya da klasörleri **Ctrl + sürükleyin**.
   İptal etmek için **Esc**'ye basın ya da çarkın dışında bırakın. **Ctrl+Shift + sürükle** arka yüzü
   açar.
-- İpte bir karta **Ctrl+tık** onu çarkla dönüştürür, **Shift+tık** birden çok kart seçer.
+- İpte bir karta **Ctrl+tık** (ya da Ctrl+sürükle) onu çarkla dönüştürür, **Shift+tık** birden çok kart seçer.
 - **Ctrl+1** çamaşır ipini, **Ctrl+2** pano kitaplığını açar, **Ctrl+3** ekran görüntüsünü ipe asar,
   **Ctrl+7** kopyalanan linki indirir. Bu kısayolları Ayarlar →
   **Kısayollar** bölümünden değiştirebilir veya kapatabilirsiniz.
