@@ -165,5 +165,13 @@
   "settings.resetDone": "The line is back to its defaults",
   "settings.sampleFile": "report.pdf",
   "settings.sampleLinkTitle": "Page title",
-  "settings.sampleNote": "Buy bread\nCall Ayşe"
+  "settings.sampleNote": "Buy bread\nCall Ayşe",
+  "settings.ropeStyle.web": "Spider web",
+  "settings.pinStyle.spider": "Spider",
+  "settings.clickOpen": "Opens it",
+  "menu.share": "Share…",
+  "menu.openLink": "Open in browser",
+  "rope.hide": "Hide rope",
+  "rope.show": "Show rope",
+  "rope.empty": "Nothing on this rope yet"
 }

@@ -10,6 +10,7 @@ pub mod win;
 // Clipboard v2 (Task 9): global hotkeys and Windows OCR.
 pub mod hotkeys;
 pub mod ocr;
+pub mod share;
 
 use crate::state::AppState;
 use fc_core::settings::Settings;

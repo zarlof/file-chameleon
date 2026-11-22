@@ -304,15 +304,15 @@ impl Default for Settings {
             line_peek_on_copy: true,
             line_breeze: true,
             line_ropes: LineRopes::default(),
-            line_color: "natural".into(),
+            line_color: "#ffffff".into(),
             line_thickness: 2,
             line_opacity: 100,
             line_size: "medium".into(),
             line_zoom_on_hover: false,
             line_sound: false,
-            line_rope_style: "twisted".into(),
+            line_rope_style: "web".into(),
             line_sag: 14,
-            line_pin_style: "plastic".into(),
+            line_pin_style: "spider".into(),
             line_pin_color: "auto".into(),
             line_card_style: "glassDark".into(),
             line_card_radius: 10,
@@ -327,7 +327,7 @@ impl Default for Settings {
             line_peek_ms: 2500,
             line_reveal_dwell_ms: 350,
             line_hide_delay_ms: 400,
-            line_click_action: "copy".into(),
+            line_click_action: "open".into(),
             line_swing: 100,
             line_damping: 100,
             line_breeze_strength: 100,
@@ -360,8 +360,9 @@ impl Default for Settings {
 
 impl Settings {
     pub const MAX_RECENT_TARGETS: usize = 7;
-    /// Current `line_look_version`: files rope, natural rope colour, shelf folded into the line.
-    pub const LOOK_VERSION: u8 = 3;
+    /// Current `line_look_version`: 3 = files rope, natural rope colour, shelf folded into the
+    /// line; 4 = white spider-web rope, spiders instead of pegs, a click opens the card.
+    pub const LOOK_VERSION: u8 = 4;
 
     /// Missing or corrupt file -> defaults (never fails). A field with a bad value (an unknown
     /// enum variant, a wrong type) falls back to its default; the other fields are kept.
@@ -386,13 +387,13 @@ impl Settings {
         };
         pick(
             &mut self.line_rope_style,
-            &["twisted", "cord", "thin"],
-            "twisted",
+            &["web", "twisted", "cord", "thin"],
+            "web",
         );
         pick(
             &mut self.line_pin_style,
-            &["plastic", "wood", "metal"],
-            "plastic",
+            &["spider", "plastic", "wood", "metal"],
+            "spider",
         );
         pick(
             &mut self.line_card_style,
@@ -402,8 +403,8 @@ impl Settings {
         pick(&mut self.line_edge, &["top", "bottom"], "top");
         pick(
             &mut self.line_click_action,
-            &["copy", "copyClose", "paste"],
-            "copy",
+            &["open", "copy", "copyClose", "paste"],
+            "open",
         );
         if self.line_pin_color != "auto" && !is_hex_colour(&self.line_pin_color) {
             self.line_pin_color = "auto".into();
@@ -468,7 +469,15 @@ impl Settings {
             .get("lineLookVersion")
             .and_then(Value::as_u64)
             .unwrap_or(0);
-        if version < u64::from(Self::LOOK_VERSION) {
+        if version < 4 {
+            // Wave 4: the user asked for a white spider-web rope held by spiders, and for a
+            // click that opens the card.
+            file.insert("lineColor".into(), "#ffffff".into());
+            file.insert("lineRopeStyle".into(), "web".into());
+            file.insert("linePinStyle".into(), "spider".into());
+            file.insert("lineClickAction".into(), "open".into());
+        }
+        if version < 3 {
             if file.get("lineColor").and_then(Value::as_str) == Some("accent") {
                 file.insert("lineColor".into(), "natural".into());
             }
@@ -487,6 +496,8 @@ impl Settings {
                 file.insert("hotkeyLine".into(), shelf.into());
             }
             file.insert("hotkeyShelf".into(), "".into());
+        }
+        if version < u64::from(Self::LOOK_VERSION) {
             file.insert("lineLookVersion".into(), Self::LOOK_VERSION.into());
         }
         if let Ok(s) = serde_json::from_value(Value::Object(file.clone())) {
@@ -619,7 +630,7 @@ mod tests {
         let p = dir.path().join("settings.json");
         std::fs::write(&p, br#"{"theme":"dark"}"#).unwrap();
         let s = Settings::load(&p);
-        assert_eq!(s.line_color, "natural");
+        assert_eq!(s.line_color, "#ffffff");
         assert_eq!((s.line_thickness, s.line_opacity), (2, 100));
         assert_eq!(s.line_size, "medium");
         assert!(!s.line_zoom_on_hover && !s.line_sound);
@@ -637,9 +648,10 @@ mod tests {
         let p = dir.path().join("settings.json");
         std::fs::write(&p, br#"{"theme":"dark","lineLookVersion":3}"#).unwrap();
         let s = Settings::load(&p);
-        assert_eq!(s.line_rope_style, "twisted");
+        // Wave 4 replaces the look of a version 3 file.
+        assert_eq!(s.line_rope_style, "web");
         assert_eq!((s.line_sag, s.line_card_radius), (14, 10));
-        assert_eq!(s.line_pin_style, "plastic");
+        assert_eq!(s.line_pin_style, "spider");
         assert_eq!(s.line_pin_color, "auto");
         assert_eq!(s.line_card_style, "glassDark");
         assert!(s.line_card_shadow && s.line_show_labels && s.line_show_numbers && s.line_fall);
@@ -654,7 +666,7 @@ mod tests {
             (s.line_peek_ms, s.line_reveal_dwell_ms, s.line_hide_delay_ms),
             (2500, 350, 400)
         );
-        assert_eq!(s.line_click_action, "copy");
+        assert_eq!(s.line_click_action, "open");
         assert_eq!(
             (s.line_swing, s.line_damping, s.line_breeze_strength),
             (100, 100, 100)
@@ -686,7 +698,7 @@ mod tests {
         assert_eq!(s.line_rope_order, ["files", "text", "images", "links"]);
         std::fs::write(
             &p,
-            br#"{"lineColor":"banana","lineRopeNames":{"text":"abcdefghijklmnopqrstuvwxyz123"}}"#,
+            br#"{"lineLookVersion":4,"lineColor":"banana","lineRopeNames":{"text":"abcdefghijklmnopqrstuvwxyz123"}}"#,
         )
         .unwrap();
         let s = Settings::load(&p);
@@ -712,8 +724,8 @@ mod tests {
         let s = Settings::load(&p);
         assert_eq!(s.hotkey_line, "Ctrl+1");
         assert_eq!(s.hotkey_shelf, "");
-        assert_eq!(s.line_color, "natural");
-        assert_eq!(s.line_look_version, 3);
+        assert_eq!(s.line_color, "#ffffff");
+        assert_eq!(s.line_look_version, 4);
         // A custom line hotkey is kept.
         std::fs::write(&p, br#"{"hotkeyShelf":"Ctrl+1","hotkeyLine":"Ctrl+Alt+K"}"#).unwrap();
         assert_eq!(Settings::load(&p).hotkey_line, "Ctrl+Alt+K");
@@ -722,7 +734,7 @@ mod tests {
         s.line_color = "accent".into();
         s.save(&p).unwrap();
         let s = Settings::load(&p);
-        assert_eq!((s.line_color.as_str(), s.line_look_version), ("accent", 3));
+        assert_eq!((s.line_color.as_str(), s.line_look_version), ("accent", 4));
     }
 
     #[test]

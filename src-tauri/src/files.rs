@@ -32,6 +32,7 @@ pub struct LineFile {
     /// Modification time of the file (ms since the epoch): the page adds it to the thumbnail URL
     /// so a replaced file does not show the old cached picture.
     pub mtime: u64,
+    pub pinned: bool,
 }
 
 /// File name of the cached thumbnail of `path`: a stable 64-bit FNV-1a hash of the path (case
@@ -180,19 +181,6 @@ pub fn record(app: &AppHandle, paths: Vec<PathBuf>, source: FileSource) {
     }
 }
 
-/// Is there anything on the rope for `sources` (the NEW settings may not be saved yet)? Answered
-/// from the cache of which sources have entries.
-pub fn any_listed(app: &AppHandle, sources: &LineFilesSources) -> bool {
-    let state = app.state::<AppState>();
-    let cached = *PRESENT.lock().unwrap_or_else(|e| e.into_inner());
-    let p = cached.unwrap_or_else(|| {
-        let p = presence(&lock(&state).list(&ALL));
-        *PRESENT.lock().unwrap_or_else(|e| e.into_inner()) = Some(p);
-        p
-    });
-    any_shown(p, sources)
-}
-
 /// Thumbnails that could not be made this session (not an image we can read, over the pixel cap,
 /// a failed write, a decoder panic), by thumbnail name and the source file's modification time:
 /// they are not read again on every list, but a replaced file is tried again.
@@ -274,6 +262,7 @@ pub fn list(app: &AppHandle) -> Vec<LineFile> {
                 kind,
                 thumb: thumb.map(|t| t.to_string_lossy().into_owned()),
                 mtime,
+                pinned: e.pinned,
             }
         })
         .collect();
@@ -342,6 +331,23 @@ pub fn remove(app: &AppHandle, paths: &[PathBuf]) -> fc_core::Result<()> {
     }
     let _ = app.emit(events::FILES_CHANGED, ());
     set_presence(app, p);
+    Ok(())
+}
+
+/// `line_file_pin`: pin or unpin files of the rope (only paths that are on it).
+pub fn pin(app: &AppHandle, paths: &[String], pinned: bool) -> crate::ipc::CmdResult<()> {
+    let found = listed(app, paths);
+    if found.is_empty() {
+        return Err(crate::ipc::CmdError::new(
+            "notFound",
+            "not on the files rope or gone",
+        ));
+    }
+    let state = app.state::<AppState>();
+    lock(&state)
+        .set_pinned(&found, pinned)
+        .map_err(crate::ipc::CmdError::from)?;
+    let _ = app.emit(events::FILES_CHANGED, ());
     Ok(())
 }
 

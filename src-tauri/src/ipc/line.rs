@@ -33,6 +33,24 @@ pub fn line_open_item(app: AppHandle, id: u64) {
     crate::line::open_item(&app, id);
 }
 
+/// A click on a clip card: open it (image viewer, library, browser).
+#[tauri::command(async)]
+pub fn line_open_clip(app: AppHandle, id: u64) -> CmdResult<()> {
+    crate::line::open_clip(&app, id)
+}
+
+/// The Windows share sheet for clips and files of the files rope.
+#[tauri::command(async)]
+pub fn line_share(app: AppHandle, ids: Vec<u64>, paths: Vec<String>) -> CmdResult<()> {
+    crate::line::share(&app, &ids, &paths)
+}
+
+/// Pin or unpin files of the files rope (pinned ones stay first).
+#[tauri::command]
+pub async fn line_file_pin(app: AppHandle, paths: Vec<String>, pinned: bool) -> CmdResult<()> {
+    super::blocking(move || crate::files::pin(&app, &paths, pinned)).await?
+}
+
 /// Copy the clips, hide the line and paste into the app it was opened from.
 #[tauri::command]
 pub async fn line_paste(app: AppHandle, ids: Vec<u64>) -> CmdResult<()> {

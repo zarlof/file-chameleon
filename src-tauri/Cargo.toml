@@ -30,6 +30,8 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4", features = ["monitor"] }
+# The share sheet hands WinRT a list of storage items.
+windows-collections = "0.3"
 windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_Graphics_Dwm",
@@ -50,6 +52,8 @@ windows = { version = "0.62", features = [
   "Win32_System_Com_StructuredStorage",
   "Win32_UI_WindowsAndMessaging",
   # Clipboard v2 (Task 9): Windows OCR (WinRT) on a worker thread.
+  "ApplicationModel_DataTransfer",
+  "Storage",
   "Foundation",
   "Foundation_Collections",
   "Globalization",

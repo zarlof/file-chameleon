@@ -10,7 +10,7 @@
   import { convertFileSrc } from '@tauri-apps/api/core';
   import { api, errorOf, on } from '../lib/ipc';
   import type { ClipItem, ClipShelf, LineFile, Settings } from '../lib/types';
-  import { fitCount, matches, overflow, ropeCards, ropeName, splitRopes, visibleRopes, type LineCard } from './logic';
+  import { fitCount, loadCollapsed, matches, overflow, ropeCards, ropeName, saveCollapsed, splitRopes, toggleCollapsed, type LineCard, type RopeKey } from './logic';
   import { fileId } from './files';
   import { bandTops, cardOpacity, maxRopes, cardStyleAttr, ropeColor, sizeInfo, windowHeight } from './layout';
   import { isCommandKey, nextFocus, type Focus, type NavKey } from './keys';
@@ -59,9 +59,17 @@
     const src = settings?.lineFilesSources ?? { added: true, converted: true, downloaded: true };
     return files.filter((f) => src[f.source]);
   });
+  // Every enabled rope is drawn, empty or not; the button by its label folds a rope away (remembered).
   // Only whole ropes are drawn: when the window is clamped to the work area, the last ones drop off.
+  let collapsed = $state<RopeKey[]>(loadCollapsed(localStorage));
+  function toggleRope(key: RopeKey) {
+    collapsed = toggleCollapsed(collapsed, key);
+    saveCollapsed(localStorage, collapsed);
+    focus = null;
+    zoom = null;
+  }
   const baseRopes = $derived(
-    visibleRopes(splitRopes(items, ropeCfg, settings?.lineRopeOrder, shownFiles)).slice(0, maxRopes(height, settings?.lineSize ?? 'medium')),
+    splitRopes(items, ropeCfg, settings?.lineRopeOrder, shownFiles).slice(0, maxRopes(height, settings?.lineSize ?? 'medium')),
   );
   const ropes = $derived(
     baseRopes.map((r) => {
@@ -69,7 +77,7 @@
       const filtered = q
         ? { ...r, items: r.items.filter((i) => matches(i, q)), files: r.files.filter((f) => matches(fileAsText(f), q)) }
         : r;
-      return { ...filtered, cards: ropeCards(filtered, fileId) };
+      return { ...filtered, cards: collapsed.includes(r.key) ? [] : ropeCards(filtered, fileId) };
     }),
   );
   const size = $derived(sizeInfo(settings?.lineSize ?? 'medium'));
@@ -421,11 +429,23 @@
   }
 
   // A double-click delivers two clicks first: the single-click action waits a moment and is cancelled by dblclick.
+  // "Open" needs no wait: a click opens the card at once (a second click right after is ignored).
   let clickTimer: ReturnType<typeof setTimeout> | undefined;
+  let openedAt = 0;
+  const opens = () => (settings?.lineClickAction ?? 'open') === 'open';
   function pick(c: LineCard, e: MouseEvent) {
     clearTimeout(clickTimer);
     const mods = { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey } as MouseEvent;
+    if (opens() && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      pickNow(c, mods);
+      return;
+    }
     clickTimer = setTimeout(() => pickNow(c, mods), 220);
+  }
+
+  function dblclick(c: LineCard) {
+    if (opens()) return; // the first click already opened it
+    void openCard(c);
   }
 
   function pickNow(c: LineCard, e: MouseEvent) {
@@ -451,23 +471,48 @@
     }
     selected = [];
     anchor = c.id;
-    void activate([c.id]);
+    if (opens()) void openCard(c);
+    else void activate([c.id]);
   }
 
+  /** Open a card: a file or an image in its default app, text in the library, a link in the browser. */
   async function openCard(c: LineCard) {
     clearTimeout(clickTimer);
-    const item = c.item;
+    const now = performance.now();
+    if (now - openedAt < 500) return;
+    openedAt = now;
     try {
       if (c.file) {
         await api.lineFileOpen(c.file.path);
         await hide();
-      } else if (item && (item.kind === 'image' || item.kind === 'text')) {
-        await api.lineOpenItem(item.id);
-        await hide();
-      } else if (item?.text) {
-        await api.openUrl(item.text.trim());
+      } else if (c.item) {
+        await api.lineOpenClip(c.item.id);
         await hide();
       }
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  /** Edit: a clip in the library (image editor, text); a file opens like a click. */
+  async function editCard(c: LineCard) {
+    try {
+      if (c.file) await openCard(c);
+      else if (c.item) {
+        await api.lineOpenItem(c.item.id);
+        await hide();
+      }
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  /** The Windows share sheet for the targets (clips and files). */
+  async function share(ids: number[]) {
+    const { clips, paths } = splitTargets(ids);
+    if (clips.length === 0 && paths.length === 0) return;
+    try {
+      await api.lineShare(clips, paths);
     } catch (e) {
       fail(e);
     }
@@ -530,10 +575,22 @@
     }
   }
 
+  /** Pin or unpin a card (a clip or a file): pinned cards stay at the start of their rope. */
+  async function pinCard(c: LineCard) {
+    if (c.item) return togglePin(c.item);
+    if (!c.file) return;
+    try {
+      await api.lineFilePin([c.file.path], !c.file.pinned);
+      await load();
+    } catch (e) {
+      fail(e);
+    }
+  }
+
   // ------------------------------------------------------------ context menu
   function openMenu(c: LineCard, e: MouseEvent) {
     zoom = null;
-    const h = c.file ? 200 : c.item?.kind === 'image' ? 250 : 190;
+    const h = c.file ? 330 : c.item?.kind === 'image' ? 370 : 290;
     menu = { x: Math.max(4, Math.min(e.clientX, width - MENU_W - 4)), y: Math.max(4, Math.min(e.clientY, window.innerHeight - h - 4)), card: c };
   }
 
@@ -664,11 +721,11 @@
       const n = Number(key) - 1;
       if (n < order[focus.r].length) focus = { r: focus.r, i: n };
     } else if (key === 'p' || key === 'P') {
-      const it = itemOf(targetsFor(null)[0] ?? null);
-      if (it && !e.repeat) void togglePin(it);
+      const c = byId.get(targetsFor(null)[0] ?? 0);
+      if (c && !e.repeat) void pinCard(c);
     } else if (key === 'e' || key === 'E') {
       const it = itemOf(targetsFor(null)[0] ?? null);
-      if (it && (it.kind === 'text' || it.kind === 'image')) void openCard(byId.get(it.id)!);
+      if (it && (it.kind === 'text' || it.kind === 'image')) void editCard(byId.get(it.id)!);
     }
   }
 
@@ -761,9 +818,12 @@
       ropeOp={op}
       zoomOn={settings?.lineZoomOnHover ?? false}
       onzoom={(item, rect) => (zoom = shown && item && rect ? { item, rect } : null)}
-      emptyText={query.trim() ? t('search.none') : ''}
+      emptyText={query.trim() ? t('search.none') : t('rope.empty')}
+      collapsed={collapsed.includes(rope.key)}
+      ontoggle={() => toggleRope(rope.key)}
+      onpin={(c) => void pinCard(c)}
       onclick={pick}
-      ondblclick={openCard}
+      ondblclick={dblclick}
       ondragout={dragOut}
       onremove={(c) => void trash(targetsFor(c))}
       oncontext={openMenu}
@@ -830,19 +890,24 @@
     {#if c.file}
       {@const f = c.file}
       <button type="button" role="menuitem" onclick={() => menuDo(() => openCard(c))}>{t('menu.open')}</button>
+      <button type="button" role="menuitem" onclick={() => menuDo(async () => { await copy(targetsFor(c)); })}>{t('menu.copy')}</button>
       <button type="button" role="menuitem" onclick={() => menuDo(() => api.lineFileReveal(f.path))}>{t('menu.reveal')}</button>
       <button type="button" role="menuitem" onclick={() => menuDo(async () => { await api.wheelOpen([f.path]); await hide(); })}>{t('menu.convert')}</button>
       <button type="button" role="menuitem" onclick={() => menuDo(async () => { await api.lineCopyText(f.path); showToast(t('pathCopied')); })}>{t('menu.copyPath')}</button>
+      <button type="button" role="menuitem" onclick={() => menuDo(() => pinCard(c))}>{f.pinned ? t('menu.unpin') : t('menu.pin')}</button>
+      <button type="button" role="menuitem" onclick={() => menuDo(() => share(targetsFor(c)))}>{t('menu.share')}</button>
       <hr />
       <button type="button" role="menuitem" class="danger" onclick={() => menuDo(() => trash(targetsFor(c)))}>{t('menu.removeFromList')}</button>
     {:else if c.item}
       {@const it = c.item}
+      <button type="button" role="menuitem" onclick={() => menuDo(() => openCard(c))}>{it.kind === 'image' || it.kind === 'text' ? t('menu.open') : t('menu.openLink')}</button>
       <button type="button" role="menuitem" onclick={() => menuDo(async () => { await copy(targetsFor(c)); })}>{t('menu.copy')}</button>
       <button type="button" role="menuitem" onclick={() => menuDo(() => api.linePaste(splitTargets(targetsFor(c)).clips))}>{t('menu.paste')}</button>
       {#if it.kind === 'image' || it.kind === 'text'}
-        <button type="button" role="menuitem" onclick={() => menuDo(() => openCard(c))}>{t('menu.edit')}</button>
+        <button type="button" role="menuitem" onclick={() => menuDo(() => editCard(c))}>{t('menu.edit')}</button>
       {/if}
       <button type="button" role="menuitem" onclick={() => menuDo(() => togglePin(it))}>{it.pinned ? t('menu.unpin') : t('menu.pin')}</button>
+      <button type="button" role="menuitem" onclick={() => menuDo(() => share(targetsFor(c)))}>{t('menu.share')}</button>
       {#if it.kind === 'image'}
         {@const file = it.edited ?? it.image}
         {#if file}

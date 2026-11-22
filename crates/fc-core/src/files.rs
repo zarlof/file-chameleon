@@ -22,6 +22,9 @@ pub struct FileEntry {
     pub source: FileSource,
     /// Milliseconds since the epoch.
     pub at: u64,
+    /// Pinned files stay first on the rope.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
 }
 
 pub struct FileStore {
@@ -97,17 +100,25 @@ impl FileStore {
             return Ok(());
         }
         let keys: Vec<String> = paths.iter().map(|p| key(p)).collect();
+        // A file recorded again keeps its pin.
+        let pinned: Vec<String> = self
+            .entries
+            .iter()
+            .filter(|e| e.pinned)
+            .map(|e| key(&e.path))
+            .collect();
         self.entries.retain(|e| !keys.contains(&key(&e.path)));
         let mut seen = Vec::new();
         let mut fresh = Vec::new();
         for (p, k) in paths.iter().zip(keys) {
             if !seen.contains(&k) {
-                seen.push(k);
                 fresh.push(FileEntry {
                     path: p.clone(),
                     source,
                     at: now,
+                    pinned: pinned.contains(&k),
                 });
+                seen.push(k);
             }
         }
         self.entries.splice(0..0, fresh);
@@ -125,11 +136,31 @@ impl FileStore {
         if self.entries.len() != before {
             let _ = self.save();
         }
-        self.entries
+        let mut out: Vec<FileEntry> = self
+            .entries
             .iter()
             .filter(|e| sources.contains(&e.source))
             .cloned()
-            .collect()
+            .collect();
+        // Pinned first; the sort is stable, so each group stays newest first.
+        out.sort_by_key(|e| !e.pinned);
+        out
+    }
+
+    /// Pin or unpin `paths`. Unknown paths are ignored.
+    pub fn set_pinned(&mut self, paths: &[PathBuf], pinned: bool) -> Result<()> {
+        let keys: Vec<String> = paths.iter().map(|p| key(p)).collect();
+        let mut changed = false;
+        for e in &mut self.entries {
+            if e.pinned != pinned && keys.contains(&key(&e.path)) {
+                e.pinned = pinned;
+                changed = true;
+            }
+        }
+        if changed {
+            self.save()?;
+        }
+        Ok(())
     }
 
     pub fn remove(&mut self, paths: &[PathBuf]) -> Result<()> {
@@ -158,6 +189,29 @@ mod tests {
         FileSource::Converted,
         FileSource::Downloaded,
     ];
+
+    #[test]
+    fn pinned_files_stay_first_and_keep_the_pin() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = touch(dir.path(), "a.txt");
+        let b = touch(dir.path(), "b.txt");
+        let c = touch(dir.path(), "c.txt");
+        let mut s = FileStore::open(dir.path()).unwrap();
+        s.record(&[a.clone()], FileSource::Added, 1).unwrap();
+        s.record(&[b.clone()], FileSource::Added, 2).unwrap();
+        s.set_pinned(&[a.clone()], true).unwrap();
+        s.record(&[c.clone()], FileSource::Added, 3).unwrap();
+        let names: Vec<PathBuf> = s.list(&ALL).into_iter().map(|e| e.path).collect();
+        assert_eq!(names, vec![a.clone(), c.clone(), b.clone()]);
+        // Recording a pinned file again keeps it pinned; the pin survives a reload.
+        s.record(&[a.clone()], FileSource::Converted, 4).unwrap();
+        let mut again = FileStore::open(dir.path()).unwrap();
+        let first = again.list(&ALL).remove(0);
+        assert!(first.pinned && first.path == a);
+        again.set_pinned(&[a.clone()], false).unwrap();
+        assert_eq!(again.list(&ALL)[0].path, a, "newest first once unpinned");
+        assert!(!again.list(&ALL)[0].pinned);
+    }
 
     #[test]
     fn files_store_dedupe_and_cap() {
@@ -196,6 +250,7 @@ mod tests {
             path: PathBuf::from(r"C:\A\x.png"),
             source: FileSource::Added,
             at: 1,
+            pinned: false,
         });
         s.record(&[PathBuf::from(r"c:\a\X.PNG")], FileSource::Added, 2)
             .unwrap();

@@ -300,37 +300,15 @@ fn rope_count(app: &AppHandle) -> usize {
     rope_count_with(app, &s.line_ropes, &s.line_files_sources)
 }
 
-/// Like [`rope_count`] for rope switches that are not saved yet.
+/// Like [`rope_count`] for rope switches that are not saved yet. Every enabled rope gets its
+/// band, empty or not (the page shows them all and lets the user fold any of them away).
 fn rope_count_with(
-    app: &AppHandle,
+    _app: &AppHandle,
     r: &fc_core::settings::LineRopes,
-    sources: &fc_core::settings::LineFilesSources,
+    _sources: &fc_core::settings::LineFilesSources,
 ) -> usize {
-    use fc_core::clip::{ClipQuery, Shelf};
-    let state = app.state::<AppState>();
     let enabled = [r.images, r.text, r.links, r.files];
-    if !enabled.iter().any(|on| *on) {
-        return 1;
-    }
-    let present = {
-        let store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
-        let has = |on: bool, shelf: Shelf| {
-            on && !store
-                .query(&ClipQuery {
-                    shelf: Some(shelf),
-                    limit: Some(1),
-                    ..Default::default()
-                })
-                .is_empty()
-        };
-        [
-            has(enabled[0], Shelf::Images),
-            has(enabled[1], Shelf::Texts),
-            has(enabled[2], Shelf::Links),
-            enabled[3] && crate::files::any_listed(app, sources),
-        ]
-    };
-    rope_count_of(enabled, present)
+    rope_count_of(enabled, enabled)
 }
 
 /// `line_state`: what the page needs to catch up on a show it missed.
@@ -806,6 +784,66 @@ pub fn open_item(app: &AppHandle, id: u64) {
             clip: Some(id),
         }),
     );
+}
+
+/// `line_open_clip`: a click on a card. An image opens in the default image viewer, text in the
+/// library (where it can be edited), a link in the browser.
+pub fn open_clip(app: &AppHandle, id: u64) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let item = crate::ipc::clipboard::find(&app.state::<AppState>(), id)?;
+    match (
+        item.kind == fc_core::clip::ClipKind::Image,
+        drag_plan(&item),
+    ) {
+        (true, DragPlan::File(path)) if path.is_file() => {
+            hide(app);
+            app.opener()
+                .open_path(path.to_string_lossy(), None::<&str>)
+                .map_err(|e| CmdError::new("io", e.to_string()))
+        }
+        (false, DragPlan::Text(t)) if is_web_url(&t) => {
+            hide(app);
+            open_url(t.trim())
+        }
+        _ => {
+            open_item(app, id);
+            Ok(())
+        }
+    }
+}
+
+/// `line_share`: the Windows share sheet for clips (`ids`) and files of the files rope (`paths`).
+pub fn share(app: &AppHandle, ids: &[u64], paths: &[String]) -> CmdResult<()> {
+    let state = app.state::<AppState>();
+    let mut data = crate::platform::share::ShareData {
+        files: if paths.is_empty() {
+            Vec::new()
+        } else {
+            existing_files(app, paths)?
+        },
+        text: None,
+        title: "File Chameleon".into(),
+    };
+    let mut texts = Vec::new();
+    for id in ids {
+        match drag_plan(&crate::ipc::clipboard::find(&state, *id)?) {
+            DragPlan::File(p) => data.files.push(p),
+            DragPlan::Text(t) => texts.push(t),
+            DragPlan::Nothing => {}
+        }
+    }
+    if !texts.is_empty() {
+        data.text = Some(texts.join(
+            "
+",
+        ));
+    }
+    if let [one] = data.files.as_slice()
+        && let Some(name) = one.file_name()
+    {
+        data.title = name.to_string_lossy().into_owned();
+    }
+    crate::platform::share::share(data).map_err(|e| CmdError::new("share", e))
 }
 
 /// `line_drag_out`: start an OLE drag of clip `id` (copy only) and wait for the drop to end. The

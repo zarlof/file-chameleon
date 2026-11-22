@@ -53,8 +53,11 @@
   const GAP = 6;
   /** Rounded corners: paths are inset by this and stroked twice as wide in their own colour. */
   const CORNER = 5;
-  const TURN_MS = 110;
-  const WAVE_MS = 40;
+  /** One flip: the old face spins and fades out while the new one spins in (2D only, so it stays
+   *  smooth on the CPU compositor the overlay runs on). */
+  const FLIP_MS = 280;
+  const WAVE_MS = 0;
+  const TURN_MS = 0;
 
   interface View {
     slot: WheelSlot;
@@ -116,8 +119,8 @@
     });
   }
 
-  // ---- flip: the old face turns out in a wave from the pointer, the new one turns in.
-  let flip = $state.raw<{ out: View[]; hot: number; origin: number } | null>(null);
+  // ---- flip: the old face spins out and fades, the new one spins in from the other side.
+  let flip = $state.raw<{ out: View[]; hot: number; origin: number; dir: 1 | -1 } | null>(null);
   let flipKey = $state(0);
   let shown: WheelFace | null = null;
   let flipTimer: ReturnType<typeof setTimeout> | undefined;
@@ -136,10 +139,15 @@
     }
     const pointed = hovered.slot >= 0 && hovered.slot < after.length;
     const origin = pointed ? sliceCenterAngle(hovered.slot, after.length) : 0;
-    flip = { out: ringViews(before, origin, 0), hot: pointed && before.length ? slotAtAngle(origin, before.length) : -1, origin };
+    clearTimeout(flipTimer);
+    flip = {
+      out: ringViews(before, origin, 0),
+      hot: pointed && before.length ? slotAtAngle(origin, before.length) : -1,
+      origin,
+      dir: f === 'back' ? 1 : -1,
+    };
     flipKey++;
-    const wave = WAVE_MS * Math.floor(Math.max(before.length, after.length) / 2);
-    flipTimer = setTimeout(() => (flip = null), 2 * TURN_MS + wave + 20);
+    flipTimer = setTimeout(() => (flip = null), FLIP_MS + 40);
   }
 
   $effect.pre(() => {
@@ -243,15 +251,19 @@
       <div class="slices">
         {#if flip}
           {#key flipKey}
-            {#each flip.out as v, i (i)}
-              {@render sliceView(v, -1, i === flip.hot, false, false, 'out')}
-            {/each}
+            <div class="face out" style:--flip-dir={flip.dir}>
+              {#each flip.out as v, i (i)}
+                {@render sliceView(v, -1, i === flip.hot, false, false, '')}
+              {/each}
+            </div>
           {/key}
         {/if}
         {#key flipKey}
-          {#each views as v, i (i)}
-            {@render sliceView(v, i, hovered.slot === i && hovered.child < 0, fan === i && hovered.child >= 0, i === selected, flip ? 'in' : '')}
-          {/each}
+          <div class="face" class:in={!!flip} style:--flip-dir={flip?.dir ?? 1}>
+            {#each views as v, i (i)}
+              {@render sliceView(v, i, hovered.slot === i && hovered.child < 0, fan === i && hovered.child >= 0, i === selected, '')}
+            {/each}
+          </div>
         {/key}
         {#if fanSlot}
           <div class="fan">
@@ -318,7 +330,6 @@
   .slices {
     position: absolute;
     inset: 0;
-    perspective: 1400px;
   }
   .turn,
   .body,
@@ -326,11 +337,18 @@
     position: absolute;
     inset: 0;
   }
-  .turn.out {
-    animation: turn-out 110ms ease-in both;
+  .face {
+    position: absolute;
+    inset: 0;
+    transform-origin: 270px 270px;
   }
-  .turn.in {
-    animation: turn-in 110ms var(--ease-out) both;
+  .face.out {
+    animation: face-out 280ms cubic-bezier(0.4, 0, 0.7, 0.2) both;
+    will-change: transform, opacity;
+  }
+  .face.in {
+    animation: face-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    will-change: transform, opacity;
   }
   .body {
     transition: transform var(--dur) var(--ease-spring);
@@ -531,20 +549,24 @@
       transform: scale(1);
     }
   }
-  @keyframes turn-out {
+  @keyframes face-out {
     from {
-      transform: rotateY(0deg);
+      opacity: 1;
+      transform: rotate(0deg) scale(1);
     }
     to {
-      transform: rotateY(90deg);
+      opacity: 0;
+      transform: rotate(calc(var(--flip-dir) * 28deg)) scale(0.9);
     }
   }
-  @keyframes turn-in {
+  @keyframes face-in {
     from {
-      transform: rotateY(-90deg);
+      opacity: 0;
+      transform: rotate(calc(var(--flip-dir) * -28deg)) scale(0.9);
     }
     to {
-      transform: rotateY(0deg);
+      opacity: 1;
+      transform: rotate(0deg) scale(1);
     }
   }
   @keyframes fan-in {

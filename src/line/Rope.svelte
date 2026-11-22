@@ -6,7 +6,7 @@
 -->
 <script lang="ts">
   import { fall, ropePath, ropeY } from './physics';
-  import { ropeStrokes, type RopeStyle } from './ropeStyle';
+  import { ropeStrokes, webExtras, type RopeStyle } from './ropeStyle';
   import type { LineCard } from './logic';
   import Peg from './Peg.svelte';
   import { t } from './i18n';
@@ -44,6 +44,9 @@
     zoomOn = false,
     onzoom,
     emptyText = '',
+    collapsed = false,
+    ontoggle,
+    onpin,
     onclick,
     ondblclick,
     ondragout,
@@ -76,7 +79,7 @@
     thickness: number;
     ropeStyle?: RopeStyle;
     sag?: number;
-    pinStyle?: 'plastic' | 'wood' | 'metal';
+    pinStyle?: 'spider' | 'plastic' | 'wood' | 'metal';
     pinColor?: string;
     /** Card opacity 0.9..1. */
     cardOp: number;
@@ -86,6 +89,12 @@
     onzoom?: (item: NonNullable<LineCard['item']> | null, rect: DOMRect | null) => void;
     /** Shown on the rope when a search leaves it empty. */
     emptyText?: string;
+    /** Folded away: only the label (with its show button) is drawn. */
+    collapsed?: boolean;
+    /** The hide / show button next to the label; without it the label is plain text. */
+    ontoggle?: () => void;
+    /** The pin button on a card. */
+    onpin?: (c: LineCard) => void;
     onclick: (c: LineCard, e: MouseEvent) => void;
     ondblclick: (c: LineCard) => void;
     ondragout: (c: LineCard) => void;
@@ -102,21 +111,42 @@
   const layers = $derived(ropeStrokes(ropeStyle, color, thickness));
   const knot = $derived(2 + thickness * 0.9);
   const knotY = (x: number) => ropeY(width, x, centers, sagPx);
+  const web = $derived(ropeStyle === 'web' ? webExtras(width, sagPx, TOP) : null);
+  const silk = $derived(Math.max(0.5, (layers[0]?.width ?? 1) * 0.6));
 </script>
 
-<div class="rope" style:top="{top}px" style:height="{band}px">
+<div class="rope" class:collapsed style:top="{top}px" style:height="{collapsed ? 26 : band}px">
+  {#if !collapsed}
   <svg class="cord" style:opacity={ropeOp} {width} height={TOP + sagPx + 24} viewBox="0 0 {width} {TOP + sagPx + 24}" aria-hidden="true">
     <g transform="translate(0 {TOP})" class="g" class:thin={ropeStyle === 'thin'}>
       {#each layers as l, i (i)}
         <path {d} fill="none" stroke={l.stroke} stroke-width={l.width} stroke-dasharray={l.dash} stroke-linecap="round" stroke-linejoin="round" opacity={l.opacity} />
       {/each}
-      {#if ropeStyle !== 'thin'}
+      {#if web}
+        <path d={web.anchors} fill="none" stroke={color} stroke-width={silk} stroke-linecap="round" stroke-linejoin="round" opacity="0.8" />
+        <path d={web.strand} fill="none" stroke={color} stroke-width={silk} stroke-linecap="round" opacity="0.7" />
+        <path d={web.rungs} fill="none" stroke={color} stroke-width={silk * 0.8} stroke-linecap="round" opacity="0.55" />
+      {/if}
+      {#if ropeStyle !== 'thin' && ropeStyle !== 'web'}
         <circle cx={KNOT_INSET} cy={knotY(KNOT_INSET)} r={knot} fill={color} stroke="rgba(0,0,0,0.35)" stroke-width="0.6" />
         <circle cx={width - KNOT_INSET} cy={knotY(width - KNOT_INSET)} r={knot} fill={color} stroke="rgba(0,0,0,0.35)" stroke-width="0.6" />
       {/if}
     </g>
   </svg>
-  {#if showLabel && label}<span class="label" style:opacity={ropeOp}>{label}</span>{/if}
+  {/if}
+  {#if ontoggle}
+    <span class="label tool" style:opacity={collapsed ? Math.max(0.7, ropeOp) : ropeOp}>
+      {#if showLabel || collapsed}<span class="name">{label}</span>{/if}
+      <button type="button" class="eye" tabindex="-1" title={t(collapsed ? 'rope.show' : 'rope.hide')} aria-label={t(collapsed ? 'rope.show' : 'rope.hide')} aria-pressed={collapsed} onclick={ontoggle}>
+        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+          <path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8Z" />
+          <circle cx="8" cy="8" r="2" />
+          {#if collapsed}<path d="M2.5 13.5l11-11" class="slash" />{/if}
+        </svg>
+      </button>
+    </span>
+  {:else if showLabel && label}<span class="label" style:opacity={ropeOp}>{label}</span>{/if}
+  {#if !collapsed}
   {#if cards.length === 0 && emptyText}<span class="none">{emptyText}</span>{/if}
   {#each cards as c, i (c.id)}
     <div class="slot" style:left="{centers[i] - card / 2}px" style:top="{TOP + ropeY(width, centers[i], centers, sagPx) + 8 * scale}px" style:width="{card}px">
@@ -141,11 +171,13 @@
         onremove={() => onremove(c)}
         oncontext={(e) => oncontext(c, e)}
         onhover={(dir) => onhover(c, dir)}
+        onpin={onpin ? () => onpin(c) : undefined}
       />
     </div>
   {/each}
   {#if more > 0}
     <button type="button" class="more" tabindex="-1" title={t('more', { count: more })} aria-label={t('more', { count: more })} onclick={onmore}>+{more}</button>
+  {/if}
   {/if}
 </div>
 
@@ -172,6 +204,23 @@
     pointer-events: none;
     z-index: 1;
   }
+  .label.tool { display: inline-flex; align-items: center; gap: 6px; padding: 0 3px 0 9px; pointer-events: auto; z-index: 3; }
+  .collapsed .label.tool { padding-left: 9px; }
+  .eye {
+    display: grid;
+    place-items: center;
+    width: 15px;
+    height: 15px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.9);
+    cursor: default;
+  }
+  .eye:hover { background: var(--accent); color: var(--on-accent); }
+  .eye svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .eye .slash { stroke-width: 1.7; }
   .slot { position: absolute; transition: left var(--dur) var(--ease-out), top var(--dur) var(--ease-out); }
   :global([data-reduce-motion]) .slot { transition: none; }
   .none {

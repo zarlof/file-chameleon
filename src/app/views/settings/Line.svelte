@@ -59,7 +59,7 @@
   const SWATCHES = [
     { id: 'natural', name: 'natural' },
     { id: '#3a3a3c', name: 'charcoal' },
-    { id: '#f2f2f7', name: 'white' },
+    { id: '#ffffff', name: 'white' },
     { id: 'accent', name: 'accent' },
     { id: '#ff453a', name: 'red' },
     { id: '#30d158', name: 'green' },
@@ -67,8 +67,8 @@
     { id: '#ff6bb0', name: 'pink' },
   ] as const;
   const choice = <T extends string>(keys: readonly T[], prefix: string) => keys.map((k) => ({ value: k, label: t(`${prefix}.${k}`) }));
-  const ropeStyleOptions = $derived(choice(['twisted', 'cord', 'thin'] as const, 'line.settings.ropeStyle'));
-  const pinStyleOptions = $derived(choice(['plastic', 'wood', 'metal'] as const, 'line.settings.pinStyle'));
+  const ropeStyleOptions = $derived(choice(['web', 'twisted', 'cord', 'thin'] as const, 'line.settings.ropeStyle'));
+  const pinStyleOptions = $derived(choice(['spider', 'plastic', 'wood', 'metal'] as const, 'line.settings.pinStyle'));
   const cardStyleOptions = $derived(choice(['glassDark', 'glassLight', 'paper'] as const, 'line.settings.cardStyle'));
   const sizeOptions = $derived([
     { value: 'small' as const, label: t('line.settings.sizeSmall') },
@@ -80,6 +80,7 @@
     { value: 'bottom' as const, label: t('line.settings.edgeBottom') },
   ]);
   const clickOptions = $derived([
+    { value: 'open', label: t('line.settings.clickOpen') },
     { value: 'copy', label: t('line.settings.clickCopy') },
     { value: 'copyClose', label: t('line.settings.clickCopyClose') },
     { value: 'paste', label: t('line.settings.clickPaste') },

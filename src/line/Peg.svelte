@@ -10,6 +10,7 @@
   import { cardText, type LineCard } from './logic';
   import { fileCard } from './files';
   import Pin from './Pin.svelte';
+  import Spider from './Spider.svelte';
   import { renderMd } from './markdown';
   import { getLang, t } from './i18n';
 
@@ -36,6 +37,7 @@
     onremove,
     oncontext,
     onhover,
+    onpin,
   }: {
     card: LineCard;
     theta: number;
@@ -50,7 +52,7 @@
     width?: number;
     /** Card opacity, 0.9 to 1. */
     cardOp?: number;
-    pinStyle?: 'plastic' | 'wood' | 'metal';
+    pinStyle?: 'spider' | 'plastic' | 'wood' | 'metal';
     pinColor?: string;
     /** 1..9 badge (the key that picks this card), or null. */
     num?: number | null;
@@ -63,6 +65,8 @@
     onremove: () => void;
     oncontext: (e: MouseEvent) => void;
     onhover: (dir: number) => void;
+    /** The pin button at the top left (pinned cards stay first). */
+    onpin?: () => void;
   } = $props();
 
   const item = $derived(model.item);
@@ -72,6 +76,8 @@
   const noteHtml = $derived(item?.kind === 'text' ? renderMd((item.text ?? '').split('\n').slice(0, 7).join('\n')) : '');
   const fc = $derived(file ? fileCard(file, getLang()) : null);
   const kindClass = $derived(file ? 'file' : item?.kind === 'image' ? 'image' : item?.kind === 'text' ? 'text' : 'link');
+  const pinned = $derived(item?.pinned ?? file?.pinned ?? false);
+  const spider = $derived(pinStyle === 'spider');
   const label = $derived(file ? file.name : words.title || t(item?.kind === 'image' ? 'image' : 'rope.text'));
   let cardEl = $state<HTMLElement | null>(null);
   let zoomTimer: ReturnType<typeof setTimeout> | undefined;
@@ -130,6 +136,7 @@
 
 <div
   class="peg"
+  class:spider
   class:selected
   class:copied
   class:focused
@@ -143,7 +150,11 @@
   onpointerenter={enter}
   onpointerleave={leave}
 >
-  <span class="pin"><Pin {pinStyle} color={pinColor} pinned={item?.pinned ?? false} {scale} /></span>
+  {#if spider}
+    <span class="hanger"><Spider {scale} /></span>
+  {:else}
+    <span class="pin"><Pin pinStyle={pinStyle === 'spider' ? 'plastic' : pinStyle} color={pinColor} {pinned} {scale} /></span>
+  {/if}
 
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div
@@ -209,6 +220,23 @@
       </div>
     {/if}
     {#if num !== null}<span class="num" aria-hidden="true">{num}</span>{/if}
+    {#if onpin}
+      <button type="button" class="pinbtn" class:on={pinned} tabindex="-1" aria-pressed={pinned}
+        aria-label={t(pinned ? 'menu.unpin' : 'menu.pin')} title={t(pinned ? 'menu.unpin' : 'menu.pin')}
+        onpointerdown={(e) => e.stopPropagation()}
+        ondblclick={(e) => e.stopPropagation()}
+        onclick={(e) => {
+          e.stopPropagation();
+          onpin();
+        }}>
+        <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+          <g transform="rotate(40 12 12)">
+            <path d="M12 17v5" />
+            <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" class="head" />
+          </g>
+        </svg>
+      </button>
+    {/if}
     {#if copied}<span class="tick">{t('copied')}</span>{/if}
     <button type="button" class="x" tabindex="-1" aria-label={t('remove')} title={t('remove')}
       onpointerdown={(e) => e.stopPropagation()}
@@ -238,6 +266,15 @@
     pointer-events: none;
   }
 
+  .hanger {
+    position: absolute;
+    top: calc(var(--s) * -8px);
+    left: 50%;
+    margin-left: calc(var(--s) * -13px);
+    z-index: 2;
+    line-height: 0;
+    pointer-events: none;
+  }
   .card {
     position: relative;
     margin-top: calc(var(--s) * 8px);
@@ -253,6 +290,7 @@
     overflow: hidden;
     transition: box-shadow var(--dur-fast), transform var(--dur) var(--ease-out);
   }
+  .spider .card { margin-top: calc(var(--s) * 26px); }
   .peg:hover .card { transform: translateY(-1px); }
   .selected .card { box-shadow: 0 0 0 2px var(--accent), var(--c-shadow, none); }
   .focused .card { outline: 2px solid var(--c-fg, #fff); outline-offset: 2px; }
@@ -353,5 +391,28 @@
     transition: opacity var(--dur-fast);
   }
   .card:hover .x { opacity: 1; }
+  .pinbtn {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    opacity: 0;
+    cursor: default;
+    transition: opacity var(--dur-fast);
+    z-index: 1;
+  }
+  .pinbtn svg { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .card:hover .pinbtn, .pinbtn.on { opacity: 1; }
+  .pinbtn.on { background: var(--accent); color: var(--on-accent); }
+  .pinbtn.on .head { fill: currentColor; }
+  .pinbtn:hover { background: var(--accent); color: var(--on-accent); }
   .x:hover { background: var(--red); }
 </style>

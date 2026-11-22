@@ -117,6 +117,9 @@ export const api = {
   lineState: () => invoke<{ mode: 'hotkey' | 'peek' | 'reveal' | 'search' | null; visible: boolean }>('line_state'),
   lineDragOut: (id: number) => invoke<void>('line_drag_out', { id }),
   lineOpenItem: (id: number) => invoke<void>('line_open_item', { id }),
+  lineOpenClip: (id: number) => invoke<void>('line_open_clip', { id }),
+  lineShare: (ids: number[], paths: string[]) => invoke<void>('line_share', { ids, paths }),
+  lineFilePin: (paths: string[], pinned: boolean) => invoke<void>('line_file_pin', { paths, pinned }),
   linePaste: (ids: number[]) => invoke<void>('line_paste', { ids }),
   // ---- files rope (wave 3)
   lineFiles: () => invoke<LineFile[]>('line_files'),

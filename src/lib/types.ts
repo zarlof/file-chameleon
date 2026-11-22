@@ -16,6 +16,8 @@ export interface LineFile {
   thumb: string | null;
   /** File modification time (ms): cache busting for the thumbnail URL. */
   mtime?: number;
+  /** Pinned files stay first on the rope. */
+  pinned?: boolean;
 }
 
 export type Kind = 'image' | 'vector' | 'video' | 'audio' | 'pdf' | 'data' | 'subtitle' | 'archive';
@@ -80,10 +82,10 @@ export interface Settings {
   lineSize: 'small' | 'medium' | 'large';
   lineZoomOnHover: boolean;
   lineSound: boolean;
-  lineRopeStyle: 'twisted' | 'cord' | 'thin';
+  lineRopeStyle: 'web' | 'twisted' | 'cord' | 'thin';
   /** 0..40 px */
   lineSag: number;
-  linePinStyle: 'plastic' | 'wood' | 'metal';
+  linePinStyle: 'spider' | 'plastic' | 'wood' | 'metal';
   /** 'auto' or a #rrggbb hex. */
   linePinColor: string;
   lineCardStyle: 'glassDark' | 'glassLight' | 'paper';
@@ -106,7 +108,7 @@ export interface Settings {
   lineRevealDwellMs: number;
   /** 200..2000 ms */
   lineHideDelayMs: number;
-  lineClickAction: 'copy' | 'copyClose' | 'paste';
+  lineClickAction: 'open' | 'copy' | 'copyClose' | 'paste';
   /** 0..200 percent */
   lineSwing: number;
   /** 50..200 percent */

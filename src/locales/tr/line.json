@@ -165,5 +165,13 @@
   "settings.resetDone": "İp varsayılanlara döndü",
   "settings.sampleFile": "rapor.pdf",
   "settings.sampleLinkTitle": "Sayfa başlığı",
-  "settings.sampleNote": "Ekmek al\nAyşe'yi ara"
+  "settings.sampleNote": "Ekmek al\nAyşe'yi ara",
+  "settings.ropeStyle.web": "Örümcek ağı",
+  "settings.pinStyle.spider": "Örümcek",
+  "settings.clickOpen": "Açar",
+  "menu.share": "Paylaş…",
+  "menu.openLink": "Tarayıcıda aç",
+  "rope.hide": "İpi gizle",
+  "rope.show": "İpi göster",
+  "rope.empty": "Bu ip henüz boş"
 }
