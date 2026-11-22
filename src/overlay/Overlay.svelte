@@ -141,6 +141,7 @@
 
   /** Drag mode: files dropped at (x, y) window coordinates. */
   function drop(paths: string[], x: number, y: number) {
+    console.info('[wheel] drop', paths.length, Math.round(x), Math.round(y));
     if (waiting || !wheel || done) {
       if (!done) close();
       return;
@@ -217,6 +218,7 @@
         wheelKey++;
       }),
       on.overlayWheelSlots((s) => {
+        console.info('[wheel] slots', s.front.length, s.back.length, s.click ? 'click' : 'drag');
         if (mode !== 'wheel') {
           clear();
           mode = 'wheel';
@@ -231,6 +233,15 @@
         if (last) pointAt(last.x, last.y);
       }),
       on.overlayWheelFlip(flip),
+      // A Ctrl+drag from the line (no OLE drag): the pointer moves, then the release.
+      on.overlayWheelPointer((p) => {
+        if (mode !== 'wheel' || click) return;
+        chip = p;
+        pointAt(p.x, p.y);
+      }),
+      on.overlayWheelDrop((p) => {
+        if (mode === 'wheel' && !click) drop([], p.x, p.y);
+      }),
       on.overlayWheelThumb((th) => {
         if (mode === 'wheel') thumb = th;
       }),

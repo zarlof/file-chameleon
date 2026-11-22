@@ -114,32 +114,35 @@ pub fn clip_files(app: &AppHandle, ids: &[u64]) -> CmdResult<Vec<String>> {
     Ok(out)
 }
 
-/// How long the window that comes to the front after the line hides gets to settle before the
-/// wheel opens: a click-mode wheel closes when the foreground window changes after it opened.
-const WHEEL_AFTER_HIDE: Duration = Duration::from_millis(150);
-
-/// `line_wheel` (Ctrl+click on cards): hide the line, then open the click-mode wheel for `paths`
-/// at the cursor.
+/// `line_wheel` (Ctrl+click on cards): open the click-mode wheel for `paths` at the cursor. The
+/// line stays open and keeps the keyboard: its page sends Tab and Esc on (`line_wheel_key`).
 pub fn open_wheel(app: &AppHandle, paths: Vec<String>) {
-    hide(app);
-    let app = app.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(WHEEL_AFTER_HIDE);
-        // The user is probably still holding Ctrl: Tab and Esc must work anyway.
-        crate::platform::allow_ctrl_keys();
-        crate::windows::open_wheel_click(&app, paths);
-    });
+    crate::diag::log(|| format!("line_wheel {} file(s)", paths.len()));
+    // The user is probably still holding Ctrl: Tab and Esc must work anyway.
+    crate::platform::allow_ctrl_keys();
+    crate::windows::open_wheel_click(app, paths);
 }
 
-/// `line_wheel_drag` (Ctrl+drag on cards): open the drag wheel under the cursor and drag the
-/// cards' files onto it, like Ctrl+drag in File Explorer (the global hook ignores drags that start
-/// in our own windows). Clips give the files of [`wheel_file`]. Returns when the drop ends.
-pub async fn wheel_drag(
-    app: &AppHandle,
-    ids: &[u64],
-    paths: &[String],
-    shift: bool,
-) -> CmdResult<()> {
+/// `line_wheel_key`: Tab (`flip`) or Esc (`close`) pressed on the line while its wheel is up.
+/// Returns whether a wheel was open (if not, the page handles the key itself).
+pub fn wheel_key(app: &AppHandle, key: &str) -> bool {
+    let open = crate::windows::wheel_is_open();
+    crate::diag::log(|| format!("line_wheel_key {key} open={open}"));
+    if open {
+        match key {
+            "flip" => crate::windows::wheel_flip_from(app, crate::windows::FlipFrom::Line),
+            "close" => crate::windows::wheel_close(app),
+            _ => {}
+        }
+    }
+    open
+}
+
+/// `line_wheel_start` (Ctrl+drag on cards): open the drag wheel under the cursor with the cards'
+/// files on it (clips give the files of [`wheel_file`]). No OLE drag: the line page keeps the
+/// pointer and reports its moves and the release (`line_wheel_pointer`), so the UI thread is never
+/// stuck in a drag loop and the wheel follows live (hover, Tab, the mouse wheel, Esc).
+pub fn wheel_start(app: &AppHandle, ids: &[u64], paths: &[String], shift: bool) -> CmdResult<()> {
     let mut files: Vec<PathBuf> = if paths.is_empty() {
         Vec::new()
     } else {
@@ -148,43 +151,25 @@ pub async fn wheel_drag(
     if !ids.is_empty() {
         files.extend(clip_files(app, ids)?.into_iter().map(PathBuf::from));
     }
-    #[cfg(not(windows))]
-    {
-        let _ = (app, files, shift);
-        Err(CmdError::new("unsupported", "the wheel needs Windows"))
-    }
-    #[cfg(windows)]
-    {
-        use crate::platform::win;
-        let owner = app
-            .get_webview_window(LINE)
-            .and_then(|w| hwnd_of(&w))
-            .ok_or_else(|| CmdError::new("failed", "line window is not open"))?;
-        let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
-        let a = app.clone();
-        // The line stays open: the drop may move the focus to the wheel, which must not count as
-        // leaving an activated line. Its focus comes back afterwards.
-        let was_active = ACTIVE.swap(false, Ordering::SeqCst);
-        app.run_on_main_thread(move || {
-            let (x, y) = win::cursor_pos();
-            crate::windows::show_wheel_at(&a, x, y, shift);
-            let result = win::file_data_object(&files).and_then(|data| win::do_drag(owner, &data));
-            // The hook sends no release for a drag it did not start: clean up the same way.
-            crate::windows::on_drag_released(&a);
-            if was_active {
-                if win::foreground_window() != owner {
-                    win::set_foreground(owner);
-                }
-                ACTIVE.store(true, Ordering::SeqCst);
-            }
-            let _ = tx.send(result);
-        })
-        .map_err(|e| CmdError::new("failed", e.to_string()))?;
-        crate::ipc::blocking(move || rx.recv())
-            .await?
-            .map_err(|e| CmdError::new("failed", e.to_string()))?
-            .map_err(|e| CmdError::new("drag", e))
-    }
+    // The line stays open: a focus move to the wheel must not count as leaving an activated line
+    // (it then closes when the pointer leaves it, as a peek does).
+    ACTIVE.store(false, Ordering::SeqCst);
+    let names: Vec<String> = files
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    let a = app.clone();
+    app.run_on_main_thread(move || {
+        #[cfg(windows)]
+        let (x, y) = crate::platform::win::cursor_pos();
+        #[cfg(not(windows))]
+        let (x, y) = (0, 0);
+        crate::diag::log(|| format!("line_wheel_start cursor=({x},{y}) files={}", names.len()));
+        crate::windows::show_wheel_at(&a, x, y, shift);
+        // We know the files: the slots go out at once, no drag-enter needed.
+        crate::windows::files_entered(&a, names);
+    })
+    .map_err(|e| CmdError::new("failed", e.to_string()))
 }
 
 /// Only web links are opened.

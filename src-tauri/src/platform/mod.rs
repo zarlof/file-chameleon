@@ -92,6 +92,12 @@ pub fn ensure_hooks(app: &AppHandle) {
                 down_y,
                 shift,
             } => {
+                crate::diag::log(|| {
+                    format!(
+                        "hook DragStart ({x},{y}) from ({down_x},{down_y}) allowed={}",
+                        hook::source_allowed(down_x, down_y, &[])
+                    )
+                });
                 let excluded = app.state::<AppState>().settings().wheel_excluded_apps;
                 if hook::source_allowed(down_x, down_y, &excluded) {
                     let a = app.clone();
@@ -103,8 +109,14 @@ pub fn ensure_hooks(app: &AppHandle) {
                 let a = app.clone();
                 let _ = app.run_on_main_thread(move || crate::windows::on_drag_released(&a));
             }
-            hook::HookEvent::Flip => crate::windows::wheel_flip(&app),
-            hook::HookEvent::Close => crate::windows::wheel_close(&app),
+            hook::HookEvent::Flip => {
+                crate::diag::log(|| "hook Flip".into());
+                crate::windows::wheel_flip_from(&app, crate::windows::FlipFrom::Hook);
+            }
+            hook::HookEvent::Close => {
+                crate::diag::log(|| "hook Close".into());
+                crate::windows::wheel_close(&app);
+            }
             hook::HookEvent::EdgeEnter { x, y } => crate::line::edge_enter(&app, x, y),
             hook::HookEvent::EdgeLeave => crate::line::edge_leave(),
             hook::HookEvent::Displays => {

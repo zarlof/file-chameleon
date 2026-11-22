@@ -225,6 +225,7 @@ pub fn set_wheel_open(open: bool, click: bool, rect: (i32, i32, i32, i32)) {
         0
     };
     OPEN_FG.store(fg, Relaxed);
+    crate::diag::log(|| format!("wheel_open open={open} click={click} rect={rect:?} fg={fg:#x}"));
     CLICK_MODE.store(click, Relaxed);
     if !open {
         CTRL_KEYS.store(false, Relaxed);
@@ -320,6 +321,15 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
         let info = unsafe { &*(lparam.0 as *const MSLLHOOKSTRUCT) };
         let (x, y) = (info.pt.x, info.pt.y);
         let msg = wparam.0 as u32;
+        if WHEEL_OPEN.load(Relaxed) && (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN) {
+            crate::diag::log(|| {
+                format!(
+                    "hook press ({x},{y}) inside={} click={}",
+                    inside_rect(x, y),
+                    CLICK_MODE.load(Relaxed)
+                )
+            });
+        }
         if WHEEL_OPEN.load(Relaxed) {
             match mouse_action(
                 true,
@@ -383,6 +393,17 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
 
 unsafe extern "system" fn key_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     let mut swallow = false;
+    if code >= 0 && wparam.0 as u32 == WM_KEYDOWN {
+        let vk = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) }.vkCode;
+        if vk == u32::from(VK_TAB.0) || vk == u32::from(VK_ESCAPE.0) {
+            crate::diag::log(|| {
+                format!(
+                    "hook saw key vk={vk} wheel_open={}",
+                    WHEEL_OPEN.load(Relaxed)
+                )
+            });
+        }
+    }
     if code >= 0 && WHEEL_OPEN.load(Relaxed) {
         let info = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
         // WM_SYSKEYDOWN (Alt held: Alt+Tab, Alt+Esc) is never touched.
@@ -402,6 +423,14 @@ unsafe extern "system" fn key_proc(code: i32, wparam: WPARAM, lparam: LPARAM) ->
                     mods,
                     CTRL_KEYS.load(Relaxed),
                 );
+                crate::diag::log(|| {
+                    format!(
+                        "hook key vk={} click={} ctrl_keys={} {mods:?} -> {ev:?} swallow={sw}",
+                        info.vkCode,
+                        CLICK_MODE.load(Relaxed),
+                        CTRL_KEYS.load(Relaxed)
+                    )
+                });
                 swallow = sw;
                 match ev {
                     // One flip per Tab press: key repeat while it is held does not flip again.
@@ -432,6 +461,15 @@ unsafe extern "system" fn foreground_proc(
     _thread: u32,
     _time: u32,
 ) {
+    crate::diag::log(|| {
+        format!(
+            "foreground -> {:#x} (wheel open={} click={} open_fg={:#x})",
+            hwnd.0 as isize,
+            WHEEL_OPEN.load(Relaxed),
+            CLICK_MODE.load(Relaxed),
+            OPEN_FG.load(Relaxed)
+        )
+    });
     if foreground_closes(
         WHEEL_OPEN.load(Relaxed),
         CLICK_MODE.load(Relaxed),
@@ -461,7 +499,14 @@ pub fn ensure_started(on_event: impl Fn(HookEvent) + Send + 'static) {
                 return;
             };
             // Without it the wheel still works; only Tab / Esc do nothing.
-            if SetWindowsHookExW(WH_KEYBOARD_LL, Some(key_proc), module, 0).is_err() {
+            let kb = SetWindowsHookExW(WH_KEYBOARD_LL, Some(key_proc), module, 0);
+            crate::diag::log(|| {
+                format!(
+                    "hooks installed: mouse ok, keyboard {:?}",
+                    kb.as_ref().map(|_| "ok")
+                )
+            });
+            if kb.is_err() {
                 eprintln!("keyboard hook: install failed");
             }
             // Out of context: delivered through this thread's message loop, only on a switch.

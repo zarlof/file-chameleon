@@ -1,7 +1,7 @@
 //! Window management: the main window (created on demand, destroyed on close) and the
 //! single always-alive overlay window used for the drag wheel and toasts.
 
-use crate::events::{self, NavPayload, ToastPayload, WheelPayload, WheelThumb};
+use crate::events::{self, NavPayload, ToastPayload, WheelPayload, WheelPointer, WheelThumb};
 use crate::state::AppState;
 use fc_core::jobs::{JobSnapshot, JobState};
 use serde::Serialize;
@@ -63,6 +63,8 @@ struct OverlayCtl {
     pending_wheel: Option<Vec<String>>,
     /// When the current click wheel opened (late files within `WHEEL_JOIN` join it).
     click_opened: Option<Instant>,
+    /// The wheel window's rectangle (physical pixels: left, top, right, bottom).
+    rect: (i32, i32, i32, i32),
 }
 
 static CTL: Mutex<OverlayCtl> = Mutex::new(OverlayCtl {
@@ -78,6 +80,7 @@ static CTL: Mutex<OverlayCtl> = Mutex::new(OverlayCtl {
     slots_for: None,
     pending_wheel: None,
     click_opened: None,
+    rect: (0, 0, 0, 0),
 });
 
 /// Append `more` to `into`, keeping the order and dropping paths already there.
@@ -227,7 +230,10 @@ pub fn hide_overlay(app: &AppHandle) {
     on_main(app, hide_overlay_now);
 }
 
+#[track_caller]
 fn hide_overlay_now(app: &AppHandle) {
+    let at = std::panic::Location::caller();
+    crate::diag::log(|| format!("hide_overlay_now from {at}"));
     {
         let mut c = ctl();
         c.mode = Mode::Hidden;
@@ -293,6 +299,8 @@ fn wheel_rect(app: &AppHandle, x: i32, y: i32) -> (f64, (i32, i32, i32, i32)) {
 /// Show the overlay as the wheel at `rect` (the mode is already set): reset the page, show the
 /// window without activating it, and let the hooks act on input.
 fn show_wheel_window(w: &WebviewWindow, scale: f64, rect: (i32, i32, i32, i32), click: bool) {
+    ctl().rect = rect;
+    crate::diag::log(|| format!("show_wheel_window rect={rect:?} scale={scale} click={click}"));
     let _ = w.emit(events::OVERLAY_WHEEL, WheelPayload { scale, click });
     #[cfg(windows)]
     if let Ok(hwnd) = w.hwnd() {
@@ -315,6 +323,7 @@ pub fn show_wheel_at(app: &AppHandle, x: i32, y: i32, shift: bool) {
         return; // the page is still loading and could not draw or hit-test the wheel
     }
     let (scale, rect) = wheel_rect(app, x, y);
+    crate::diag::log(|| format!("show_wheel_at ({x},{y}) shift={shift}"));
     {
         let mut c = ctl();
         c.mode = Mode::Wheel;
@@ -382,6 +391,7 @@ pub fn open_wheel_click(app: &AppHandle, paths: Vec<String>) {
         };
         let (x, y) = cursor();
         let (scale, rect) = wheel_rect(app, x, y);
+        crate::diag::log(|| format!("open_wheel_click cursor=({x},{y})"));
         let wheel_id = {
             let mut c = ctl();
             c.mode = Mode::Wheel;
@@ -425,6 +435,53 @@ pub fn queue_wheel_paths(app: &AppHandle, paths: Vec<String>) {
 }
 
 /// Hook: mouse wheel or Tab while the wheel is open.
+/// Where a flip came from: the keyboard/mouse hook, or the line page passing on a Tab.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FlipFrom {
+    Hook,
+    Line,
+}
+
+/// A flip from the hook and one from the line within this time are the same Tab press.
+const SAME_PRESS: Duration = Duration::from_millis(250);
+
+/// When each source last flipped (hook, line).
+static LAST_FLIPS: Mutex<(Option<Instant>, Option<Instant>)> = Mutex::new((None, None));
+
+/// Should this flip happen? During a Ctrl+drag from the line, Tab reaches both the hook (which
+/// never swallows keys during a drag) and the focused line page, which passes it on: one press
+/// would flip twice and leave the wheel as it was. A flip right after one from the other source
+/// is that press again, and uses up the other one.
+fn flip_counts(
+    last: &mut (Option<Instant>, Option<Instant>),
+    from: FlipFrom,
+    now: Instant,
+) -> bool {
+    let (mine, other) = match from {
+        FlipFrom::Hook => (&mut last.0, &mut last.1),
+        FlipFrom::Line => (&mut last.1, &mut last.0),
+    };
+    if other.is_some_and(|t| now.saturating_duration_since(t) < SAME_PRESS) {
+        *other = None;
+        return false;
+    }
+    *mine = Some(now);
+    true
+}
+
+/// Flip the wheel, unless the other source just flipped it for the same press.
+pub fn wheel_flip_from(app: &AppHandle, from: FlipFrom) {
+    let counts = flip_counts(
+        &mut LAST_FLIPS.lock().unwrap_or_else(|e| e.into_inner()),
+        from,
+        Instant::now(),
+    );
+    crate::diag::log(|| format!("flip from {from:?} counts={counts}"));
+    if counts {
+        wheel_flip(app);
+    }
+}
+
 pub fn wheel_flip(app: &AppHandle) {
     // No window work, so no trip to the main thread: during a Ctrl+drag that starts on the line
     // the main thread sits in the drag loop until the drop.
@@ -467,22 +524,91 @@ fn send_slots(app: &AppHandle, wheel_id: u64, paths: Vec<String>, shift: bool, c
     });
 }
 
-/// Emit to the overlay on the main thread, only if wheel `wheel_id` is still the one shown.
+/// Emit to the overlay, only if wheel `wheel_id` is still the one shown. Straight from the
+/// calling thread (emitting needs no window work): during a Ctrl+drag that starts on the line the
+/// main thread sits in the drag loop, and the slots must reach the wheel before the drop.
 fn emit_to_wheel<S: Serialize + Clone + Send + 'static>(
     app: &AppHandle,
     wheel_id: u64,
     event: &'static str,
     payload: S,
 ) {
-    on_main(app, move |app| {
-        let current = {
-            let c = ctl();
-            c.mode == Mode::Wheel && c.wheel_id == wheel_id
-        };
-        if current && let Some(w) = overlay(app) {
-            let _ = w.emit(event, payload);
+    let current = {
+        let c = ctl();
+        c.mode == Mode::Wheel && c.wheel_id == wheel_id
+    };
+    if current && let Some(w) = overlay(app) {
+        let _ = w.emit(event, payload);
+    }
+}
+
+/// Is the wheel showing?
+pub fn wheel_is_open() -> bool {
+    ctl().mode == Mode::Wheel
+}
+
+/// The overlay page's point for the physical screen point `(x, y)`, in a window at `left, top`
+/// whose device pixel ratio is `dpr`.
+fn page_point((x, y): (i32, i32), (left, top): (i32, i32), dpr: f64) -> WheelPointer {
+    let dpr = if dpr.is_finite() && dpr > 0.0 {
+        dpr
+    } else {
+        1.0
+    };
+    WheelPointer {
+        x: f64::from(x - left) / dpr,
+        y: f64::from(y - top) / dpr,
+    }
+}
+
+/// A Ctrl+drag that started on the line (no OLE drag: we own both ends): the pointer moved, or
+/// was released (`dropped`). Tells the wheel's page where the cursor is, so it highlights the
+/// slice under it or runs it. A release also cleans up like the end of a File Explorer drag.
+pub fn wheel_pointer(app: &AppHandle, dropped: bool) {
+    let (rect, open) = {
+        let c = ctl();
+        (c.rect, c.mode == Mode::Wheel && !c.click)
+    };
+    if !open {
+        return;
+    }
+    let Some(w) = overlay(app) else { return };
+    let dpr = w.scale_factor().unwrap_or(1.0);
+    let p = page_point(cursor(), (rect.0, rect.1), dpr);
+    let event = if dropped {
+        events::OVERLAY_WHEEL_DROP
+    } else {
+        events::OVERLAY_WHEEL_POINTER
+    };
+    let _ = w.emit(event, p);
+    if dropped {
+        crate::diag::log(|| format!("wheel drop at page ({:.0},{:.0})", p.x, p.y));
+        on_drag_released(app);
+    }
+}
+
+/// Files reached the drag wheel: build and send its slots (once per set of files). Called for
+/// the overlay's drag-enter event, and up front by a Ctrl+drag that starts on the line, where the
+/// files are known before the drag (the enter event only arrives through the main thread).
+pub fn files_entered(app: &AppHandle, paths: Vec<String>) {
+    let send = {
+        let mut c = ctl();
+        // No files: not a file drag. The wheel stays invisible and goes away.
+        // Click mode ignores drags (the page does too).
+        if c.mode != Mode::Wheel || c.click || paths.is_empty() {
+            return;
         }
-    });
+        c.entered = true;
+        c.generation += 1; // cancels a pending "leave" hide
+        // Re-entering with the same files keeps the face and hover state.
+        (c.slots_for.as_ref() != Some(&paths)).then(|| {
+            c.slots_for = Some(paths.clone());
+            (c.wheel_id, c.shift)
+        })
+    };
+    if let Some((wheel_id, shift)) = send {
+        send_slots(app, wheel_id, paths, shift, false);
+    }
 }
 
 /// Mouse button released somewhere: if nothing entered the wheel, hide it.
@@ -778,30 +904,15 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
     if let WindowEvent::DragDrop(dd) = event {
         match dd {
             DragDropEvent::Enter { paths, .. } => {
+                crate::diag::log(|| format!("overlay drag enter: {} file(s)", paths.len()));
                 let paths: Vec<String> = paths
                     .iter()
                     .map(|p| p.to_string_lossy().into_owned())
                     .collect();
-                let send = {
-                    let mut c = ctl();
-                    // No files: not a file drag. The wheel stays invisible and goes away.
-                    // Click mode ignores drags (the page does too).
-                    if c.mode != Mode::Wheel || c.click || paths.is_empty() {
-                        return;
-                    }
-                    c.entered = true;
-                    c.generation += 1; // cancels a pending "leave" hide
-                    // Re-entering with the same files keeps the face and hover state.
-                    (c.slots_for.as_ref() != Some(&paths)).then(|| {
-                        c.slots_for = Some(paths.clone());
-                        (c.wheel_id, c.shift)
-                    })
-                };
-                if let Some((wheel_id, shift)) = send {
-                    send_slots(app, wheel_id, paths, shift, false);
-                }
+                files_entered(app, paths);
             }
             DragDropEvent::Leave => {
+                crate::diag::log(|| "overlay drag leave".into());
                 let drag = {
                     let c = ctl();
                     c.mode == Mode::Wheel && !c.click
@@ -812,6 +923,7 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
             }
             // The page hit-tests the drop and calls `wheel_drop` or `overlay_hide`.
             DragDropEvent::Drop { .. } if !ctl().click => {
+                crate::diag::log(|| "overlay drop".into());
                 hide_overlay_later(app, 2000, false);
             }
             _ => {}
@@ -821,7 +933,51 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
 
 #[cfg(test)]
 mod tests {
-    use super::merge_paths;
+    use super::{FlipFrom, flip_counts, merge_paths, page_point};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn one_tab_seen_by_hook_and_line_flips_once() {
+        let t = Instant::now();
+        let mut last = (None, None);
+        // Hook first, then the line passing on the same press: one flip.
+        assert!(flip_counts(&mut last, FlipFrom::Hook, t));
+        assert!(!flip_counts(
+            &mut last,
+            FlipFrom::Line,
+            t + Duration::from_millis(40)
+        ));
+        // The next press, again seen by both (line first this time): one more flip.
+        let t2 = t + Duration::from_millis(600);
+        assert!(flip_counts(&mut last, FlipFrom::Line, t2));
+        assert!(!flip_counts(
+            &mut last,
+            FlipFrom::Hook,
+            t2 + Duration::from_millis(30)
+        ));
+        // Only the hook sees the presses (no line page): every press flips, even quick ones.
+        let t3 = t2 + Duration::from_millis(600);
+        assert!(flip_counts(&mut last, FlipFrom::Hook, t3));
+        assert!(flip_counts(
+            &mut last,
+            FlipFrom::Hook,
+            t3 + Duration::from_millis(100)
+        ));
+        // A late line copy (after the window) is a press of its own.
+        assert!(flip_counts(
+            &mut last,
+            FlipFrom::Line,
+            t3 + Duration::from_millis(500)
+        ));
+    }
+
+    #[test]
+    fn page_points_are_logical_and_window_relative() {
+        let p = page_point((1100, 300), (1000, 100), 1.25);
+        assert_eq!((p.x, p.y), (80.0, 160.0));
+        let p = page_point((5, 5), (0, 0), 0.0);
+        assert_eq!((p.x, p.y), (5.0, 5.0));
+    }
 
     fn strings(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()

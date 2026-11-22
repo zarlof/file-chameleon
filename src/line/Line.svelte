@@ -58,6 +58,9 @@
   let hoverTimer: ReturnType<typeof setTimeout> | undefined;
   /** A card being dragged along its rope: `r` = rope index, `from` = its slot, `slot` = where it would land. */
   let drag = $state<{ id: number; r: number; from: number; slot: number; x0: number; y0: number; dx: number; dy: number; pointer: number } | null>(null);
+  /** A wheel opened from the line (Ctrl+click / Ctrl+drag) may be up: the line stays open and
+   *  sends Tab and Esc to it. Cleared when the overlay hides. */
+  let wheelUp = false;
   /** The card settings panel (the gear) and the card it belongs to. */
   let cardPop = $state<{ card: LineCard; rect: DOMRect } | null>(null);
   let cardPopEl = $state<HTMLElement | null>(null);
@@ -320,7 +323,7 @@
       void afterRender().then(() => searchEl?.focus());
     }
     if ((mode === 'peek' || mode === 'reveal') && !pointerInside) {
-      peekTimer = setTimeout(() => !pointerInside && !document.documentElement.matches(':hover') && void hide(), peekMs);
+      peekTimer = setTimeout(() => !pointerInside && !document.documentElement.matches(':hover') && void hide('peek ended'), peekMs);
     }
   }
 
@@ -350,7 +353,9 @@
     stopLoop();
   }
 
-  async function hide() {
+  /** Hide the line. `why` only goes to the console (diagnostics). */
+  async function hide(why = 'action') {
+    console.info('[line] hide:', why);
     hidden();
     try {
       await api.lineHide();
@@ -365,9 +370,9 @@
     clearTimeout(peekTimer);
     clearTimeout(hideTimer);
     closeHover();
-    if (menu || cardPop || drag || searchFocused || query || previewOn) return; // in use: Esc or a click outside closes it
+    if (menu || cardPop || drag || wheelUp || searchFocused || query || previewOn) return; // in use: Esc or a click outside closes it
     hideTimer = setTimeout(() => {
-      if (!dragging && !menu) void hide();
+      if (!dragging && !menu) void hide('pointer left');
     }, hideDelay);
   }
 
@@ -515,6 +520,7 @@
       const all = [...paths, ...files];
       if (all.length === 0) return;
       selected = [];
+      wheelUp = true;
       await api.lineWheel(all);
     } catch (e) {
       console.error(e);
@@ -522,24 +528,49 @@
     }
   }
 
-  /** Ctrl+drag on a card: the wheel opens under the pointer and the card's file (or the
-   *  selection's files) is dragged onto it, as with Ctrl+drag in File Explorer. */
+  /** Ctrl+drag on a card: the wheel opens under the pointer with the card's file (or the
+   *  selection's files) on it. The card keeps the pointer: its moves light up the slice under
+   *  the cursor and the release runs it (Rust reads the cursor; no OLE drag). */
+  let wheelDragOn = false;
+  let wheelMovePending = false;
   async function wheelDrag(c: LineCard, shift: boolean) {
     const { clips, paths } = splitTargets(targetsFor(c));
     closeHover();
     menu = null;
     cardPop = null;
-    dragging = true;
     try {
-      await api.lineWheelDrag(clips, paths, shift);
+      await api.lineWheelStart(clips, paths, shift);
     } catch (e) {
       console.error(e);
       showToast(t('wheelNone'));
-    } finally {
-      // The line stays open after a drop on the wheel (the pointer is over the wheel, not gone):
-      // it closes as usual once the pointer comes back and leaves again.
-      dragging = false;
+      return;
     }
+    wheelUp = true;
+    wheelDragOn = true;
+    dragging = true;
+    window.addEventListener('pointermove', wheelDragMove);
+    window.addEventListener('pointerup', wheelDragEnd);
+    window.addEventListener('pointercancel', wheelDragEnd);
+  }
+
+  function wheelDragMove() {
+    if (!wheelDragOn || wheelMovePending) return;
+    wheelMovePending = true;
+    requestAnimationFrame(() => {
+      wheelMovePending = false;
+      if (wheelDragOn) void api.lineWheelPointer(false).catch(() => {});
+    });
+  }
+
+  function wheelDragEnd() {
+    if (!wheelDragOn) return;
+    wheelDragOn = false;
+    dragging = false;
+    window.removeEventListener('pointermove', wheelDragMove);
+    window.removeEventListener('pointerup', wheelDragEnd);
+    window.removeEventListener('pointercancel', wheelDragEnd);
+    // The line stays open after the drop (the pointer is over the wheel, not gone).
+    void api.lineWheelPointer(true).catch(() => {});
   }
 
   /** Open a card: a file or an image in its default app, text in the library, a link in the browser. */
@@ -768,8 +799,19 @@
     window.addEventListener('pointercancel', dragCancel);
   }
 
+  /** Ctrl pressed while a card is dragged along the rope: it goes onto the wheel instead. */
+  function dragToWheel(shift: boolean) {
+    const c = drag ? byId.get(drag.id) : undefined;
+    endDrag();
+    if (c) void wheelDrag(c, shift);
+  }
+
   function dragMove(e: PointerEvent) {
     if (!drag || e.pointerId !== drag.pointer) return;
+    if (e.ctrlKey || e.metaKey) {
+      dragToWheel(e.shiftKey);
+      return;
+    }
     const dx = e.clientX - drag.x0;
     const dy = e.clientY - drag.y0;
     const outside = e.clientX < 0 || e.clientY < 0 || e.clientX > width || e.clientY > window.innerHeight;
@@ -845,7 +887,7 @@
       return;
     }
     // A left click on the empty strip (between the cards, on a rope) closes the line.
-    if (e.button === 0 && !target?.closest(KEEP_OPEN)) void hide();
+    if (e.button === 0 && !target?.closest(KEEP_OPEN)) void hide('click on the empty strip');
   }
 
   /** A right-click while the menu is open only closes it (on a card too). */
@@ -902,6 +944,25 @@
   }
 
   function onkeydown(e: KeyboardEvent) {
+    // Ctrl while a card is dragged along the rope: drag it onto the wheel instead.
+    if (drag && (e.key === 'Control' || e.key === 'Meta')) {
+      dragToWheel(e.shiftKey);
+      return;
+    }
+    // A wheel opened from the line: Tab flips it, Esc closes it (the line keeps the keyboard).
+    if (wheelUp && (e.key === 'Tab' || e.key === 'Escape')) {
+      e.preventDefault();
+      const key = e.key;
+      void api
+        .lineWheelKey(key === 'Tab' ? 'flip' : 'close')
+        .then((open) => {
+          if (key === 'Escape' || !open) wheelUp = false;
+          // No wheel after all: the key does what it normally does.
+          if (!open) onkeydown(new KeyboardEvent('keydown', { key }));
+        })
+        .catch(() => (wheelUp = false));
+      return;
+    }
     const inField = e.target === searchEl;
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -910,7 +971,7 @@
       else if (menu) closeMenu();
       else if (selected.length > 0) selected = [];
       else if (query) query = '';
-      else void hide();
+      else void hide('Esc');
       return;
     }
     if (inField) {
@@ -1009,6 +1070,7 @@
       keep(await on.filesChanged(() => markDirty()));
       keep(await on.clipPaused((v) => (paused = v)));
       keep(await on.settingsChanged(applySettings));
+      keep(await on.overlayHide(() => (wheelUp = false)));
       // A show may have happened before the listeners existed: ask Rust for the latest mode.
       try {
         const st = await api.lineState();
@@ -1080,7 +1142,7 @@
       onremove={(c) => void trash(targetsFor(c))}
       oncontext={openMenu}
       onhover={onHover}
-      onmore={() => void api.showMain(rope.key === 'files' ? 'recent' : 'clipboard').then(hide).catch(fail)}
+      onmore={() => void api.showMain(rope.key === 'files' ? 'recent' : 'clipboard').then(() => hide('opened the library')).catch(fail)}
       ongear={openCardPop}
     />
   {/each}

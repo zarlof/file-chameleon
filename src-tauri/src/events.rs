@@ -22,6 +22,17 @@ pub const OVERLAY_WHEEL_THUMB: &str = "overlay://wheel-thumb";
 pub const OVERLAY_TOAST: &str = "overlay://toast";
 /// Overlay: hide everything.
 pub const OVERLAY_HIDE: &str = "overlay://hide";
+/// Overlay: a Ctrl+drag that started on the line moved (`WheelPointer`, page coordinates).
+pub const OVERLAY_WHEEL_POINTER: &str = "overlay://wheel-pointer";
+/// Overlay: that drag was released at a point (`WheelPointer`): run the slice there, if any.
+pub const OVERLAY_WHEEL_DROP: &str = "overlay://wheel-drop";
+
+/// Where the pointer is on the overlay page (logical pixels from its top left).
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct WheelPointer {
+    pub x: f64,
+    pub y: f64,
+}
 
 // ---- clipboard v2 (Task 9)
 /// One clipboard item changed (OCR done, link title, edit, field): payload `ClipItem`.

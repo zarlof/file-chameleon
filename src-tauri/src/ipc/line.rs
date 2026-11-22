@@ -13,6 +13,7 @@ pub fn line_show(app: AppHandle, mode: String) {
 
 #[tauri::command]
 pub fn line_hide(app: AppHandle) {
+    crate::diag::log(|| "line_hide asked by the page".into());
     crate::line::hide(&app);
 }
 
@@ -53,16 +54,27 @@ pub fn line_wheel(app: AppHandle, paths: Vec<String>) {
     crate::line::open_wheel(&app, paths);
 }
 
-/// Ctrl+drag on cards: the drag wheel under the cursor with the cards' files dragged onto it.
-/// Returns when the drop ends.
-#[tauri::command]
-pub async fn line_wheel_drag(
+/// Tab (`flip`) or Esc (`close`) on the line while its wheel is up; false when no wheel is open.
+#[tauri::command(async)]
+pub fn line_wheel_key(app: AppHandle, key: String) -> bool {
+    crate::line::wheel_key(&app, &key)
+}
+
+/// Ctrl+drag on cards: the drag wheel under the cursor with the cards' files on it.
+#[tauri::command(async)]
+pub fn line_wheel_start(
     app: AppHandle,
     ids: Vec<u64>,
     paths: Vec<String>,
     shift: bool,
 ) -> CmdResult<()> {
-    crate::line::wheel_drag(&app, &ids, &paths, shift).await
+    crate::line::wheel_start(&app, &ids, &paths, shift)
+}
+
+/// That drag moved, or was released (`dropped`): the wheel hears where the cursor is.
+#[tauri::command(async)]
+pub fn line_wheel_pointer(app: AppHandle, dropped: bool) {
+    crate::windows::wheel_pointer(&app, dropped);
 }
 
 /// The Windows share sheet for clips and files of the files rope.

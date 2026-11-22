@@ -127,8 +127,12 @@ export const api = {
   lineClipFiles: (ids: number[]) => invoke<string[]>('line_clip_files', { ids }),
   /** Ctrl+click on cards: hide the line, then open the click-mode wheel for these files. */
   lineWheel: (paths: string[]) => invoke<void>('line_wheel', { paths }),
-  /** Ctrl+drag on cards: the drag wheel under the cursor, the cards' files dragged onto it. Resolves when the drop ends. */
-  lineWheelDrag: (ids: number[], paths: string[], shift: boolean) => invoke<void>('line_wheel_drag', { ids, paths, shift }),
+  /** Ctrl+drag on cards: the drag wheel under the cursor with the cards' files on it. */
+  lineWheelStart: (ids: number[], paths: string[], shift: boolean) => invoke<void>('line_wheel_start', { ids, paths, shift }),
+  /** That drag moved, or was released (`dropped`): the wheel hears where the cursor is. */
+  lineWheelPointer: (dropped: boolean) => invoke<void>('line_wheel_pointer', { dropped }),
+  /** Tab (flip) or Esc (close) on the line while its wheel is up; false when no wheel is open. */
+  lineWheelKey: (key: 'flip' | 'close') => invoke<boolean>('line_wheel_key', { key }),
   /** A card's own colour (#rrggbb; null = the line's card colour): clips by id, files by path. */
   lineCardColor: (ids: number[], paths: string[], color: string | null) => invoke<void>('line_card_color', { ids, paths, color }),
   lineClearCardColors: () => invoke<void>('line_clear_card_colors'),
@@ -183,6 +187,9 @@ export const on = {
   /** Flip front <-> back (mouse wheel / Tab caught by the global hooks). */
   overlayWheelFlip: (cb: () => void) => listen('overlay://wheel-flip', () => cb()),
   overlayWheelThumb: (cb: (t: WheelThumb) => void) => listen<WheelThumb>('overlay://wheel-thumb', (e) => cb(e.payload)),
+  /** A Ctrl+drag from the line moved / was released: page coordinates of the cursor. */
+  overlayWheelPointer: (cb: (p: { x: number; y: number }) => void) => listen<{ x: number; y: number }>('overlay://wheel-pointer', (e) => cb(e.payload)),
+  overlayWheelDrop: (cb: (p: { x: number; y: number }) => void) => listen<{ x: number; y: number }>('overlay://wheel-drop', (e) => cb(e.payload)),
   overlayToast: (cb: (t: ToastPayload) => void) => listen<ToastPayload>('overlay://toast', (e) => cb(e.payload)),
   overlayHide: (cb: () => void) => listen('overlay://hide', () => cb()),
   lineShow: (cb: (p: { mode: 'hotkey' | 'peek' | 'reveal' | 'search' }) => void) =>

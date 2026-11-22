@@ -2,6 +2,7 @@
 //! listener, job queue) lives in Rust; webviews only exist while visible (main) or are
 //! kept tiny (overlay), to keep memory low.
 
+mod diag;
 mod events;
 mod files;
 mod float;
@@ -50,6 +51,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
             let handle = app.handle().clone();
+            // Opens the diagnostics log now (FC_DIAG), not inside a hook callback later.
+            diag::log(|| format!("start {}", env!("CARGO_PKG_VERSION")));
             let state = state::AppState::init(&handle)?;
             // The files rope's thumbnails are shown through the asset protocol; the static
             // scope pattern never matches a Windows path, so allow the folder itself.
@@ -156,7 +159,9 @@ pub fn run() {
             ipc::line::line_clip_rank,
             ipc::line::line_clip_files,
             ipc::line::line_wheel,
-            ipc::line::line_wheel_drag,
+            ipc::line::line_wheel_start,
+            ipc::line::line_wheel_pointer,
+            ipc::line::line_wheel_key,
             ipc::line::line_file_rank,
             ipc::line::line_card_color,
             ipc::line::line_clear_card_colors,

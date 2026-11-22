@@ -327,7 +327,10 @@ pub fn show_at(app: &AppHandle, mode: &str, at: Option<(i32, i32)>) {
 }
 
 /// Hide the line (the window and its page stay alive).
+#[track_caller]
 pub fn hide(app: &AppHandle) {
+    let at = std::panic::Location::caller();
+    crate::diag::log(|| format!("line hide from {at}"));
     #[cfg(windows)]
     {
         edge_leave();
@@ -408,6 +411,7 @@ pub fn toggle_hotkey(app: &AppHandle) {
 
 /// The line window lost focus: close it if it was active.
 pub fn on_blur(app: &AppHandle) {
+    crate::diag::log(|| format!("line blur (active={})", ACTIVE.load(Ordering::SeqCst)));
     if should_hide_on_blur(ACTIVE.load(Ordering::SeqCst), false) {
         hide(app);
     }
