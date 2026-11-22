@@ -33,7 +33,7 @@ Notes:
 
 - Commits carry the git e-mail configured on this computer. To keep it private, publish with
   `--private` first, or switch to your GitHub `noreply` address before publishing.
-- The repository is published (private) at https://github.com/zarlof/file-chameleon. Make it public in GitHub → Settings → General → Danger Zone → Change visibility.
+- The repository is public at https://github.com/zarlof31/file-chameleon.
 
 ## 3. Make a release
 
