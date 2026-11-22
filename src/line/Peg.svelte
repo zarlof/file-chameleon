@@ -401,6 +401,8 @@
     font-weight: 600;
     pointer-events: none;
   }
+  /* A file card's bottom row holds its type chip: the number goes to the top left there. */
+  .kind-file .num { top: 5px; bottom: auto; }
   .tick {
     position: absolute;
     inset: auto 6px 6px auto;
