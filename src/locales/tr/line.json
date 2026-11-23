@@ -188,5 +188,12 @@
   "text.cleanLink": "Bağlantıyı temizle (izleyicileri sil)",
   "text.json": "JSON'u düzenle",
   "text.ascii": "Türkçe harfleri sadeleştir (ş→s)",
-  "textChanged": "Yeni metin kopyalandı ve ipe asıldı"
+  "textChanged": "Yeni metin kopyalandı ve ipe asıldı",
+  "translate.working": "Ekran okunuyor ve çevriliyor…",
+  "translate.live": "Ekran çevirisi açık · {lang} · kapatmak için Esc",
+  "translate.both": "Türkçe ↔ İngilizce",
+  "translate.toTr": "Türkçeye",
+  "translate.toEn": "İngilizceye",
+  "translate.empty": "Ekranda çevrilecek metin bulunamadı · Esc",
+  "translate.error": "Çevrilemedi: internet bağlantınızı kontrol edin · Esc"
 }

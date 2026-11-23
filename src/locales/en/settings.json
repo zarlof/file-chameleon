@@ -102,11 +102,21 @@
     "captureHint": "Hangs the screen under the cursor on the line as an image. Suggestion: Ctrl+Alt+A",
     "copyLatestImage": "Copy the latest image",
     "copyLatestImageHint": "Copies the newest image on the line to the clipboard.",
+    "translate": "Translate the screen",
+    "translateHint": "Writes the translation over the text on the screen and keeps it up to date. The same shortcut or Esc turns it off.",
     "home": "Open the home page",
     "homeHint": "Opens File Chameleon on the Convert page.",
     "pinned": "Paste pinned cards (Ctrl+Shift+1…9)",
     "pinnedHint": "Pastes your pinned cards into the window in front, without opening the line. They count as on the line: from the top rope, left to right.",
     "pinnedConflict": "Another app uses some of these keys; those keys do not work."
+  },
+  "translate": {
+    "title": "Screen translation",
+    "hint": "The text on the screen is read with Windows text recognition and sent to Google Translate (only while the translation is on).",
+    "target": "Translate into",
+    "auto": "Automatic (Turkish ↔ English)",
+    "tr": "Always into Turkish",
+    "en": "Always into English"
   },
   "clipboard": {
     "enable": "Keep clipboard history",

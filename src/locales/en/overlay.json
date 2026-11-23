@@ -33,6 +33,8 @@
   "toast.updateInstalling.title": "Downloading {version}…",
   "toast.updateInstalling.body": "The app closes and reopens when the installer starts.",
   "toast.updateFailed.title": "Could not install the update",
+  "toast.translateFailed.title": "Could not start the screen translation",
+  "toast.translateFailed.body": "Windows needs a language pack for text recognition (Settings > Time & language > Language).",
   "toast.updateFailed.body": "Try again later from Settings > About.",
   "action.reveal": "Show in Folder",
   "action.open": "Open",

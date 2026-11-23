@@ -1314,7 +1314,7 @@ checksum = "caf1079563223d5d59d83c85886a56e586cfd5c1a26292e971a0fa266531ac5a"
 
 [[package]]
 name = "fc-core"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "base64 0.22.1",
  "csv",
@@ -1359,7 +1359,7 @@ dependencies = [
 
 [[package]]
 name = "file-chameleon"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "clipboard-win",
  "fc-core",

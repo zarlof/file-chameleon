@@ -76,6 +76,10 @@ pub struct Settings {
     pub hotkey_home: String,
     /// Ctrl+Shift+1..9 paste the pinned clips, in their order on the line.
     pub pin_hotkeys: bool,
+    /// Turns the live screen translation on and off.
+    pub hotkey_translate: String,
+    /// Screen translation language: "auto" (Turkish -> English, else -> Turkish), "tr", "en".
+    pub translate_target: String,
 
     /// The clothesline: a rope of recent clips that peeks in from a screen edge.
     pub line_enabled: bool,
@@ -315,6 +319,8 @@ impl Default for Settings {
             hotkey_copy_latest_image: String::new(),
             hotkey_home: "Ctrl+4".into(),
             pin_hotkeys: false,
+            hotkey_translate: "Ctrl+5".into(),
+            translate_target: "auto".into(),
             line_enabled: true,
             line_edge_reveal: true,
             line_peek_on_copy: false,
@@ -409,6 +415,11 @@ impl Settings {
             &d.line_card_style,
         );
         pick(&mut self.line_edge, &["top", "bottom"], &d.line_edge);
+        pick(
+            &mut self.translate_target,
+            &["auto", "tr", "en"],
+            &d.translate_target,
+        );
         pick(
             &mut self.line_click_action,
             &["open", "copy", "copyClose", "paste"],

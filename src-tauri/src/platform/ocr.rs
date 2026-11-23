@@ -79,6 +79,40 @@ pub fn recognize_files(paths: &[PathBuf]) -> Result<String, String> {
     }
 }
 
+/// Reads text with positions from screen captures (screen translation). Keeps one Windows OCR
+/// engine for a whole session; create it on the thread that uses it.
+pub struct LineReader {
+    #[cfg(windows)]
+    inner: imp::Reader,
+}
+
+impl LineReader {
+    pub fn new() -> Result<Self, String> {
+        #[cfg(windows)]
+        return Ok(Self {
+            inner: imp::Reader::new()?,
+        });
+        #[cfg(not(windows))]
+        Err("text recognition needs Windows".into())
+    }
+
+    /// The lines in an RGBA image, with boxes in the image's own pixels.
+    pub fn read(
+        &self,
+        rgba: Vec<u8>,
+        w: u32,
+        h: u32,
+    ) -> Result<Vec<fc_core::translate::OcrLine>, String> {
+        #[cfg(windows)]
+        return self.inner.read(rgba, w, h);
+        #[cfg(not(windows))]
+        {
+            let _ = (rgba, w, h);
+            Err("text recognition needs Windows".into())
+        }
+    }
+}
+
 /// Size with the longest side at most `max`, aspect ratio kept (never upscales, never 0).
 fn fit_within(w: u32, h: u32, max: u32) -> (u32, u32) {
     let longest = w.max(h);
@@ -170,6 +204,84 @@ mod imp {
             }
         }
         Ok(parts.join("\n\n"))
+    }
+
+    pub struct Reader {
+        engine: OcrEngine,
+        max: u32,
+    }
+
+    impl Reader {
+        pub fn new() -> Result<Self, String> {
+            let _ = unsafe { RoInitialize(RO_INIT_MULTITHREADED) };
+            let engine = OcrEngine::TryCreateFromUserProfileLanguages()
+                .map_err(|_| "Windows has no text recognizer for your languages".to_string())?;
+            let max = OcrEngine::MaxImageDimension().unwrap_or(2600).max(64);
+            Ok(Self { engine, max })
+        }
+
+        pub fn read(
+            &self,
+            rgba: Vec<u8>,
+            w: u32,
+            h: u32,
+        ) -> Result<Vec<fc_core::translate::OcrLine>, String> {
+            let img = image::RgbaImage::from_raw(w, h, rgba).ok_or("bad image size")?;
+            let (sw, sh) = fit_within(w, h, self.max);
+            let img = if (sw, sh) == (w, h) {
+                img
+            } else {
+                image::imageops::resize(&img, sw, sh, image::imageops::FilterType::Triangle)
+            };
+            // Boxes come back in the scaled image: scale them to the capture's pixels.
+            let back = f64::from(w) / f64::from(sw);
+            let result = self
+                .engine
+                .RecognizeAsync(&bitmap(&img)?)
+                .and_then(|op| op.join())
+                .map_err(|e| e.message())?;
+            let mut out = Vec::new();
+            for line in &result.Lines().map_err(|e| e.message())? {
+                let text = line.Text().map_err(|e| e.message())?.to_string_lossy();
+                let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+                for word in &line.Words().map_err(|e| e.message())? {
+                    let r = word.BoundingRect().map_err(|e| e.message())?;
+                    x0 = x0.min(f64::from(r.X));
+                    y0 = y0.min(f64::from(r.Y));
+                    x1 = x1.max(f64::from(r.X + r.Width));
+                    y1 = y1.max(f64::from(r.Y + r.Height));
+                }
+                if x1 > x0 && y1 > y0 {
+                    out.push(fc_core::translate::OcrLine {
+                        text,
+                        x: x0 * back,
+                        y: y0 * back,
+                        w: (x1 - x0) * back,
+                        h: (y1 - y0) * back,
+                    });
+                }
+            }
+            Ok(out)
+        }
+    }
+
+    /// An RGBA image as the engine's bitmap (flattened onto white).
+    fn bitmap(img: &image::RgbaImage) -> Result<SoftwareBitmap, String> {
+        let win = |e: windows::core::Error| e.message();
+        let bgra = bgra_on_white(img.as_raw());
+        let buffer = {
+            let writer = DataWriter::new().map_err(win)?;
+            writer.WriteBytes(&bgra).map_err(win)?;
+            writer.DetachBuffer().map_err(win)?
+        };
+        SoftwareBitmap::CreateCopyWithAlphaFromBuffer(
+            &buffer,
+            BitmapPixelFormat::Bgra8,
+            img.width() as i32,
+            img.height() as i32,
+            BitmapAlphaMode::Premultiplied,
+        )
+        .map_err(win)
     }
 
     fn recognize(engine: &OcrEngine, path: &Path, max: u32) -> Result<String, String> {

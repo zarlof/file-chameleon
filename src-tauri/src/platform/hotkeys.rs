@@ -3,9 +3,10 @@
 //! One thread owns the hotkeys and runs a message loop: `WM_HOTKEY` only sends the action to a
 //! second thread (so the loop never blocks), `WM_APP` re-registers after a settings change.
 //! Hotkeys: 1 = clipboard library, 2 = download the copied link, 3 = clothesline, 4 = clothesline
-//! search, 5 = screen capture, 6 = copy the latest image, 7 = the main window's home page, and
-//! 8..=16 = Ctrl+Shift+1..9, which paste the pinned clips (off unless `pin_hotkeys`). (The shelf
-//! hotkey is gone since wave 3.)
+//! search, 5 = screen capture, 6 = copy the latest image, 7 = the main window's home page,
+//! 8 = live screen translation, then Ctrl+Shift+1..9, which paste the pinned clips (off unless
+//! `pin_hotkeys`), and last a bare Esc, registered only while the screen translation is on.
+//! (The shelf hotkey is gone since wave 3.)
 //! A combination another app already owns (or one Windows reserves) is reported as `ok: false`
 //! by [`status`]; the app keeps running.
 
@@ -30,7 +31,7 @@ pub struct HotkeyStatus {
 }
 
 /// Hotkey names in id order (id = index + 1). The pinned-clip keys follow them.
-const NAMES: [&str; 7] = [
+const NAMES: [&str; 8] = [
     "library",
     "downloadLink",
     "line",
@@ -38,11 +39,23 @@ const NAMES: [&str; 7] = [
     "capture",
     "copyLatestImage",
     "home",
+    "translate",
 ];
 /// How many pinned clips get a key (Ctrl+Shift+1..9).
 pub const PIN_KEYS: usize = 9;
 /// Every hotkey: the named ones, then the pinned-clip keys.
 const COUNT: usize = NAMES.len() + PIN_KEYS;
+/// Id of the bare Esc that ends the screen translation (registered only while it is on).
+const ESC_ID: i32 = COUNT as i32 + 1;
+/// Is the screen translation on (Esc registered)?
+static ESCAPE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Register (or drop) the bare Esc that ends the screen translation.
+pub fn set_escape(on: bool) {
+    ESCAPE.store(on, std::sync::atomic::Ordering::SeqCst);
+    #[cfg(windows)]
+    imp::rerun();
+}
 
 /// The `n`th (1-based) pinned-clip key.
 fn pin_key(n: usize) -> String {
@@ -136,6 +149,7 @@ fn wanted_hotkeys(s: &fc_core::settings::Settings) -> Vec<(String, bool)> {
         (s.hotkey_capture.clone(), s.clipboard_enabled),
         (s.hotkey_copy_latest_image.clone(), s.clipboard_enabled),
         (s.hotkey_home.clone(), true),
+        (s.hotkey_translate.clone(), true),
     ];
     let pins = s.pin_hotkeys && s.clipboard_enabled;
     v.extend((1..=PIN_KEYS).map(|n| (pin_key(n), pins)));
@@ -183,7 +197,7 @@ pub fn configure(app: &tauri::AppHandle, s: &fc_core::settings::Settings) {
 
 #[cfg(windows)]
 mod imp {
-    use super::{COUNT, HotkeyStatus, NAMES, parse_hotkey, status_of};
+    use super::{COUNT, ESC_ID, ESCAPE, HotkeyStatus, NAMES, parse_hotkey, status_of};
     use crate::events::NavPayload;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
     use std::sync::mpsc::{Sender, channel};
@@ -234,6 +248,14 @@ mod imp {
         }
     }
 
+    /// Re-register now (the Esc of the screen translation changed).
+    pub fn rerun() {
+        let tid = THREAD_ID.load(Ordering::SeqCst);
+        if tid != 0 {
+            let _ = unsafe { PostThreadMessageW(tid, WM_APP, WPARAM(0), LPARAM(0)) };
+        }
+    }
+
     pub fn status() -> Vec<HotkeyStatus> {
         let guard = shared();
         let (guard, _) = DONE
@@ -253,6 +275,9 @@ mod imp {
         Capture,
         CopyLatestImage,
         Home,
+        Translate,
+        /// Esc while the screen translation is on.
+        TranslateOff,
         /// Paste the `n`th pinned clip (1-based).
         Pinned(usize),
     }
@@ -299,7 +324,9 @@ mod imp {
                         5 => Action::Capture,
                         6 => Action::CopyLatestImage,
                         7 => Action::Home,
-                        n @ 8..=16 => Action::Pinned(n - NAMES.len()),
+                        8 => Action::Translate,
+                        n if n > NAMES.len() && n <= COUNT => Action::Pinned(n - NAMES.len()),
+                        n if n == ESC_ID as usize => Action::TranslateOff,
                         _ => continue,
                     };
                     let _ = tx.send(action);
@@ -318,10 +345,14 @@ mod imp {
             let s = shared();
             (s.wanted.clone(), s.wanted_gen)
         };
-        for id in 1..=COUNT as i32 {
+        for id in 1..=ESC_ID {
             unsafe {
                 let _ = UnregisterHotKey(None, id);
             }
+        }
+        if ESCAPE.load(Ordering::SeqCst) {
+            // Bare Esc (no modifier): only while the translation is on screen.
+            let _ = unsafe { RegisterHotKey(None, ESC_ID, MOD_NOREPEAT, 0x1b) };
         }
         let mut wanted = wanted;
         wanted.resize(COUNT, (String::new(), false));
@@ -366,6 +397,8 @@ mod imp {
                     clip: None,
                 }),
             ),
+            Action::Translate => crate::screen_translate::toggle(app),
+            Action::TranslateOff => crate::screen_translate::stop(app),
             Action::Pinned(n) => crate::line::paste_pinned(app, n),
         }
     }
@@ -435,6 +468,7 @@ mod tests {
             ..Default::default()
         };
         s.hotkey_home = "Ctrl+5".into();
+        s.hotkey_translate = "Ctrl+6".into();
         let all_on = |lib: bool, line: bool| {
             let mut v = vec![
                 ("Ctrl+2".to_string(), lib),
@@ -444,6 +478,7 @@ mod tests {
                 (String::new(), lib),
                 (String::new(), lib),
                 ("Ctrl+5".to_string(), true),
+                ("Ctrl+6".to_string(), true),
             ];
             v.extend((1..=9).map(|n| (format!("Ctrl+Shift+{n}"), false)));
             v
@@ -459,7 +494,7 @@ mod tests {
     #[test]
     fn shelf_hotkey_not_registered() {
         assert!(!NAMES.contains(&"shelf"));
-        assert_eq!(NAMES.len(), 7);
+        assert_eq!(NAMES.len(), 8);
         // A leftover shelf hotkey in old settings registers nothing.
         let s = fc_core::settings::Settings {
             hotkey_shelf: "Ctrl+Alt+9".into(),
@@ -513,10 +548,12 @@ mod tests {
         let st = status_of(&wanted, &ok);
         assert_eq!(st.len(), NAMES.len() + 1);
         assert_eq!(st[6].name, "home");
-        assert_eq!(st[7].name, "pinned");
-        assert!(st[7].ok);
+        assert_eq!(st[7].name, "translate");
+        assert_eq!(st[8].name, "pinned");
+        assert!(st[8].ok);
         ok[COUNT - 1] = false; // Ctrl+Shift+9 is taken
-        assert!(!status_of(&wanted, &ok)[7].ok);
+        assert!(!status_of(&wanted, &ok)[8].ok);
+        assert_eq!(ESC_ID as usize, COUNT + 1);
     }
 
     #[cfg(windows)]

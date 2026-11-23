@@ -34,6 +34,8 @@
   "hotkeyCopyLatestImage": "",
   "hotkeyHome": "Ctrl+4",
   "pinHotkeys": false,
+  "hotkeyTranslate": "Ctrl+5",
+  "translateTarget": "auto",
   "lineEnabled": true,
   "lineEdgeReveal": true,
   "linePeekOnCopy": false,

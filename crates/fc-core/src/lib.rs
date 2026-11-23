@@ -8,6 +8,7 @@
 //! - [`download`]   media downloader (yt-dlp + direct HTTP)
 //! - [`clip`]       clipboard classification and history store
 //! - [`settings`]   persisted user settings
+//! - [`translate`]  screen translation: OCR lines into paragraphs, Google Translate
 //! - [`presets`]    presets, groups and wheel profiles
 //! - [`files`]      the clothesline files rope store
 //! - [`watch`]      polling folder watcher
@@ -27,6 +28,7 @@ pub mod jobs;
 pub mod presets;
 pub mod proc;
 pub mod settings;
+pub mod translate;
 pub mod watch;
 
 pub use cancel::CancelToken;

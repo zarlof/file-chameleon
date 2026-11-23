@@ -77,6 +77,10 @@ export interface Settings {
   pinHotkeys: boolean;
   /** Look for a new version on GitHub at start. */
   updateCheck: boolean;
+  /** Turns the live screen translation on and off. */
+  hotkeyTranslate: string;
+  /** Screen translation language: 'auto' (Turkish -> English, else -> Turkish), 'tr', 'en'. */
+  translateTarget: 'auto' | 'tr' | 'en';
   /** The clothesline (clip rope). */
   lineEnabled: boolean;
   lineEdgeReveal: boolean;
@@ -539,7 +543,7 @@ export interface ClipStats {
 
 export interface HotkeyStatus {
   /** 'pinned' stands for all nine Ctrl+Shift+1..9 keys (ok only if every one registered). */
-  name: 'library' | 'downloadLink' | 'line' | 'lineSearch' | 'capture' | 'copyLatestImage' | 'home' | 'pinned';
+  name: 'library' | 'downloadLink' | 'line' | 'lineSearch' | 'capture' | 'copyLatestImage' | 'home' | 'translate' | 'pinned';
   keys: string;
   /** false = could not register (another app owns it, or invalid). */
   ok: boolean;
@@ -610,7 +614,9 @@ export type ToastKind =
   | 'updateAvailable'
   /** The update is downloading / its installer starting. data: { version } */
   | 'updateInstalling'
-  | 'updateFailed';
+  | 'updateFailed'
+  /** The screen translation could not start (no OCR for the user's languages). */
+  | 'translateFailed';
 
 /** A newer version (`update_check`). */
 export interface UpdateInfo {

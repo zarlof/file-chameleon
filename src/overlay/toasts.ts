@@ -129,6 +129,8 @@ export function toastView(p: ToastPayload, t: T): ToastView {
       return { title: t('toast.updateAvailable.title', { version: String(d.version ?? '') }), body: t('toast.updateAvailable.body'), actions: [a('install'), a('dismiss')], thumb: null };
     case 'updateInstalling':
       return { title: t('toast.updateInstalling.title', { version: String(d.version ?? '') }), body: t('toast.updateInstalling.body'), actions: [], thumb: null };
+    case 'translateFailed':
+      return { title: t('toast.translateFailed.title'), body: t('toast.translateFailed.body'), actions: [], thumb: null };
     case 'updateFailed':
       return { title: t('toast.updateFailed.title'), body: t('toast.updateFailed.body'), actions: [], thumb: null };
     default:

@@ -28,6 +28,17 @@ pub fn make_overlay_style(h: isize) {
     }
 }
 
+/// Leave the window out of screen captures (it stays visible on screen): the screen translation
+/// reads the screen under its own window.
+pub fn exclude_from_capture(h: isize) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE,
+    };
+    unsafe {
+        let _ = SetWindowDisplayAffinity(hwnd(h), WDA_EXCLUDEFROMCAPTURE);
+    }
+}
+
 /// Move/resize and show topmost without activating (focus stays in Explorer).
 pub fn show_no_activate(h: isize, x: i32, y: i32, w: i32, hgt: i32) {
     unsafe {

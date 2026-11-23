@@ -188,5 +188,12 @@
   "text.cleanLink": "Clean link (remove trackers)",
   "text.json": "Format JSON",
   "text.ascii": "Plain Turkish letters (ş→s)",
-  "textChanged": "New text copied and hung on the line"
+  "textChanged": "New text copied and hung on the line",
+  "translate.working": "Reading and translating the screen…",
+  "translate.live": "Screen translation on · {lang} · Esc to close",
+  "translate.both": "Turkish ↔ English",
+  "translate.toTr": "into Turkish",
+  "translate.toEn": "into English",
+  "translate.empty": "No text to translate on the screen · Esc",
+  "translate.error": "Could not translate: check your internet connection · Esc"
 }

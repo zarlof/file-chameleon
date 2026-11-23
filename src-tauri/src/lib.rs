@@ -10,6 +10,7 @@ mod hang;
 mod ipc;
 mod line;
 mod platform;
+mod screen_translate;
 mod state;
 mod tray;
 mod update;
@@ -167,6 +168,8 @@ pub fn run() {
             ipc::line::line_wheel_key,
             ipc::line::line_image_text,
             update::update_check,
+            screen_translate::translate_view,
+            screen_translate::translate_toggle,
             update::update_install,
             ipc::line::line_new_text,
             ipc::line::line_file_rank,

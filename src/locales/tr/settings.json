@@ -102,11 +102,21 @@
     "captureHint": "Fare hangi ekrandaysa onu resim olarak ipe asar. Öneri: Ctrl+Alt+A",
     "copyLatestImage": "Son resmi kopyala",
     "copyLatestImageHint": "İpteki en yeni resmi panoya kopyalar.",
+    "translate": "Ekranı çevir",
+    "translateHint": "Ekrandaki yazıların çevirisini üstlerine yazar; açık kaldıkça günceller. Aynı kısayol ya da Esc kapatır.",
     "home": "Ana sayfayı aç",
     "homeHint": "File Chameleon'u Dönüştür sayfasında açar.",
     "pinned": "Sabit kartları yapıştır (Ctrl+Shift+1…9)",
     "pinnedHint": "İpi açmadan, sabitlediğiniz kartları önünüzdeki pencereye yapıştırır. Sıra ipteki gibidir: üstteki ipten başlayarak soldan sağa.",
     "pinnedConflict": "Bu tuşlardan bazılarını başka bir uygulama kullanıyor; o tuşlar çalışmaz."
+  },
+  "translate": {
+    "title": "Ekran çevirisi",
+    "hint": "Ekrandaki yazı Windows'un metin tanımasıyla okunur ve çeviri için Google Çeviri'ye gönderilir (yalnızca çeviri açıkken).",
+    "target": "Çeviri dili",
+    "auto": "Otomatik (Türkçe ↔ İngilizce)",
+    "tr": "Her zaman Türkçeye",
+    "en": "Her zaman İngilizceye"
   },
   "clipboard": {
     "enable": "Pano geçmişini tut",

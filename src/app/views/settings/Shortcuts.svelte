@@ -11,7 +11,7 @@
   import { api } from '../../../lib/ipc';
   import { settings } from '../../../lib/stores/settings.svelte';
   import type { HotkeyStatus, Settings } from '../../../lib/types';
-  import { Button, Card, HotkeyRecorder, ListRow, SectionHeader, TextField, Toggle, toast } from '../../../lib/ui';
+  import { Button, Card, HotkeyRecorder, ListRow, SectionHeader, Select, TextField, Toggle, toast } from '../../../lib/ui';
   import { addExe } from './logic';
 
   const s = $derived(settings.value);
@@ -32,9 +32,10 @@
   }
 
   // ---- global hotkeys
-  type HotkeyKey = 'hotkeyHome' | 'hotkeyLibrary' | 'hotkeyDownloadLink' | 'hotkeyLine' | 'hotkeyLineSearch' | 'hotkeyCapture' | 'hotkeyCopyLatestImage';
+  type HotkeyKey = 'hotkeyHome' | 'hotkeyTranslate' | 'hotkeyLibrary' | 'hotkeyDownloadLink' | 'hotkeyLine' | 'hotkeyLineSearch' | 'hotkeyCapture' | 'hotkeyCopyLatestImage';
   const HOTKEYS: { key: HotkeyKey; name: HotkeyStatus['name'] }[] = [
     { key: 'hotkeyHome', name: 'home' },
+    { key: 'hotkeyTranslate', name: 'translate' },
     { key: 'hotkeyLibrary', name: 'library' },
     { key: 'hotkeyDownloadLink', name: 'downloadLink' },
     { key: 'hotkeyLine', name: 'line' },
@@ -159,6 +160,24 @@
     <ListRow title={t('settings.hotkeys.pinned')} subtitle={pinClash ? undefined : t('settings.hotkeys.pinnedHint')}>
       {#if pinClash}<span class="conflict"><TriangleAlert size={13} />{t('settings.hotkeys.pinnedConflict')}</span>{/if}
       {#snippet trailing()}<Toggle checked={s.pinHotkeys} label={t('settings.hotkeys.pinned')} onchange={(v) => void setPins(v)} />{/snippet}
+    </ListRow>
+  </Card>
+
+  <SectionHeader title={t('settings.translate.title')} subtitle={t('settings.translate.hint')} />
+  <Card>
+    <ListRow title={t('settings.translate.target')}>
+      {#snippet trailing()}
+        <Select
+          value={s.translateTarget}
+          label={t('settings.translate.target')}
+          options={[
+            { value: 'auto', label: t('settings.translate.auto') },
+            { value: 'tr', label: t('settings.translate.tr') },
+            { value: 'en', label: t('settings.translate.en') },
+          ]}
+          onchange={(v) => set({ translateTarget: v as Settings['translateTarget'] })}
+        />
+      {/snippet}
     </ListRow>
   </Card>
 </section>

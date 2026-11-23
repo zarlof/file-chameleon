@@ -33,6 +33,8 @@
   "toast.updateInstalling.title": "{version} indiriliyor…",
   "toast.updateInstalling.body": "Kurulum başlayınca uygulama kapanıp yeniden açılacak.",
   "toast.updateFailed.title": "Güncelleme kurulamadı",
+  "toast.translateFailed.title": "Ekran çevirisi başlatılamadı",
+  "toast.translateFailed.body": "Windows'ta metin tanıma için bir dil paketi gerekli (Ayarlar > Saat ve dil > Dil).",
   "toast.updateFailed.body": "Daha sonra Ayarlar > Hakkında'dan yeniden deneyin.",
   "action.reveal": "Klasörde göster",
   "action.open": "Aç",
