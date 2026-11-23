@@ -255,7 +255,8 @@ fn slots_hide_inapplicable_and_carry_details() {
     assert_eq!(slot(&back, "resize-50").detail.as_deref(), Some("50%"));
     assert_eq!(slot(&back, "resize-50").icon, "resize");
     assert_eq!(slot(&back, "fit-1920").detail.as_deref(), Some("1920 px"));
-    assert_eq!(slot(&back, "pixelate").detail, None);
+    assert_eq!(slot(&back, "copy-text").icon, "copyText");
+    assert_eq!(slot(&back, "copy-text").kind, Some(Kind::Image));
     assert_eq!(slot(&back, "blur").detail, None);
     assert_eq!(slot(&back, "rotate-left").icon, "rotateLeft");
     assert_eq!(slot(&back, "annotate").icon, "annotate");

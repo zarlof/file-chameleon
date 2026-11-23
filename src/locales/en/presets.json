@@ -59,6 +59,7 @@
     "copy-path": "Copy path",
     "open-terminal": "Open in terminal",
     "float": "Float on screen",
+    "copy-text": "Copy text",
     "to-tga": "TGA",
     "to-qoi": "QOI",
     "to-pnm": "PNM",

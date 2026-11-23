@@ -210,6 +210,8 @@ pub fn apply_settings(app: &AppHandle, old: &Settings, mut new: Settings) -> Set
         || old.hotkey_line_search != new.hotkey_line_search
         || old.hotkey_capture != new.hotkey_capture
         || old.hotkey_copy_latest_image != new.hotkey_copy_latest_image
+        || old.hotkey_home != new.hotkey_home
+        || old.pin_hotkeys != new.pin_hotkeys
         || old.line_enabled != new.line_enabled
         || old.clipboard_enabled != new.clipboard_enabled
     {

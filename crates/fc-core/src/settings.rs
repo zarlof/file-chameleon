@@ -72,6 +72,10 @@ pub struct Settings {
     pub hotkey_capture: String,
     /// Copies the newest image clip back to the clipboard.
     pub hotkey_copy_latest_image: String,
+    /// Opens the main window on its home page (Convert).
+    pub hotkey_home: String,
+    /// Ctrl+Shift+1..9 paste the pinned clips, in their order on the line.
+    pub pin_hotkeys: bool,
 
     /// The clothesline: a rope of recent clips that peeks in from a screen edge.
     pub line_enabled: bool,
@@ -178,6 +182,8 @@ pub struct Settings {
 
     /// Set after the first-run welcome was shown.
     pub onboarded: bool,
+    /// Look for a new version on GitHub at start (Settings > About).
+    pub update_check: bool,
 }
 
 /// Which kinds of clips hang on the clothesline's ropes.
@@ -307,6 +313,8 @@ impl Default for Settings {
             hotkey_line_search: "Ctrl+Alt+F".into(),
             hotkey_capture: "Ctrl+3".into(),
             hotkey_copy_latest_image: String::new(),
+            hotkey_home: "Ctrl+4".into(),
+            pin_hotkeys: false,
             line_enabled: true,
             line_edge_reveal: true,
             line_peek_on_copy: false,
@@ -361,6 +369,7 @@ impl Default for Settings {
             shelf_click_copies: true,
             clipboard_paused: false,
             onboarded: false,
+            update_check: true,
         }
     }
 }

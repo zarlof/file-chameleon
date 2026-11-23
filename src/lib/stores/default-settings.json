@@ -32,6 +32,8 @@
   "hotkeyLineSearch": "Ctrl+Alt+F",
   "hotkeyCapture": "Ctrl+3",
   "hotkeyCopyLatestImage": "",
+  "hotkeyHome": "Ctrl+4",
+  "pinHotkeys": false,
   "lineEnabled": true,
   "lineEdgeReveal": true,
   "linePeekOnCopy": false,
@@ -108,5 +110,6 @@
   "shelfCardSize": "medium",
   "shelfClickCopies": true,
   "clipboardPaused": false,
-  "onboarded": false
+  "onboarded": false,
+  "updateCheck": true
 }

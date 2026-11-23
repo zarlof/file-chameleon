@@ -7,7 +7,7 @@ import { presetLabel, type Translate } from '../../../lib/wheel/labels';
 export const DEFAULT_PRESET = 'to-webp';
 
 /** Presets the shell handles itself and never queues: the image editor and the file actions. */
-const SHELL_ONLY = new Set(['annotate', 'copyPath', 'openTerminal', 'float']);
+const SHELL_ONLY = new Set(['annotate', 'copyPath', 'openTerminal', 'float', 'copyText']);
 
 /** Presets that can run without anyone watching: not the shell-only ones (`annotate`, `copyPath`,
  *  `openTerminal`, `float`) and not a copy/move that asks for its folder (`copyTo` without one).

@@ -3,7 +3,9 @@
 //! One thread owns the hotkeys and runs a message loop: `WM_HOTKEY` only sends the action to a
 //! second thread (so the loop never blocks), `WM_APP` re-registers after a settings change.
 //! Hotkeys: 1 = clipboard library, 2 = download the copied link, 3 = clothesline, 4 = clothesline
-//! search, 5 = screen capture, 6 = copy the latest image. (The shelf hotkey is gone since wave 3.)
+//! search, 5 = screen capture, 6 = copy the latest image, 7 = the main window's home page, and
+//! 8..=16 = Ctrl+Shift+1..9, which paste the pinned clips (off unless `pin_hotkeys`). (The shelf
+//! hotkey is gone since wave 3.)
 //! A combination another app already owns (or one Windows reserves) is reported as `ok: false`
 //! by [`status`]; the app keeps running.
 
@@ -19,22 +21,33 @@ pub const MOD_WIN: u32 = 0x8;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HotkeyStatus {
-    /// "library" | "downloadLink" | "line" | "lineSearch" | "capture" | "copyLatestImage"
+    /// "library" | "downloadLink" | "line" | "lineSearch" | "capture" | "copyLatestImage" |
+    /// "home" | "pinned" (all nine Ctrl+Shift+1..9 keys: ok only if every one registered)
     pub name: String,
     pub keys: String,
     /// false = could not register (another app owns it, or invalid). An empty (off) hotkey is ok.
     pub ok: bool,
 }
 
-/// Hotkey names in id order (id = index + 1).
-const NAMES: [&str; 6] = [
+/// Hotkey names in id order (id = index + 1). The pinned-clip keys follow them.
+const NAMES: [&str; 7] = [
     "library",
     "downloadLink",
     "line",
     "lineSearch",
     "capture",
     "copyLatestImage",
+    "home",
 ];
+/// How many pinned clips get a key (Ctrl+Shift+1..9).
+pub const PIN_KEYS: usize = 9;
+/// Every hotkey: the named ones, then the pinned-clip keys.
+const COUNT: usize = NAMES.len() + PIN_KEYS;
+
+/// The `n`th (1-based) pinned-clip key.
+fn pin_key(n: usize) -> String {
+    format!("Ctrl+Shift+{n}")
+}
 
 fn modifier(name: &str) -> Option<u32> {
     Some(match name {
@@ -112,16 +125,41 @@ pub fn parse_hotkey(s: &str) -> Option<(u32, u32)> {
 }
 
 /// Keys to register in id order, each with whether it is active: the library, capture and copy
-/// hotkeys are not registered while the clipboard is off (the download-link hotkey still works).
-fn wanted_hotkeys(s: &fc_core::settings::Settings) -> [(String, bool); 6] {
-    [
+/// hotkeys are not registered while the clipboard is off (the download-link and home hotkeys
+/// still work); the pinned-clip keys only with `pin_hotkeys` and the clipboard on.
+fn wanted_hotkeys(s: &fc_core::settings::Settings) -> Vec<(String, bool)> {
+    let mut v = vec![
         (s.hotkey_library.clone(), s.clipboard_enabled),
         (s.hotkey_download_link.clone(), true),
         (s.hotkey_line.clone(), s.line_enabled),
         (s.hotkey_line_search.clone(), s.line_enabled),
         (s.hotkey_capture.clone(), s.clipboard_enabled),
         (s.hotkey_copy_latest_image.clone(), s.clipboard_enabled),
-    ]
+        (s.hotkey_home.clone(), true),
+    ];
+    let pins = s.pin_hotkeys && s.clipboard_enabled;
+    v.extend((1..=PIN_KEYS).map(|n| (pin_key(n), pins)));
+    v
+}
+
+/// What is reported per hotkey: one entry per named hotkey, and one ("pinned") for the nine
+/// pinned-clip keys, ok only when every active one registered.
+fn status_of(wanted: &[(String, bool)], ok: &[bool]) -> Vec<HotkeyStatus> {
+    let mut out: Vec<HotkeyStatus> = NAMES
+        .iter()
+        .enumerate()
+        .map(|(i, name)| HotkeyStatus {
+            name: (*name).into(),
+            keys: wanted[i].0.clone(),
+            ok: ok[i],
+        })
+        .collect();
+    out.push(HotkeyStatus {
+        name: "pinned".into(),
+        keys: format!("{}..{PIN_KEYS}", pin_key(1)),
+        ok: ok[NAMES.len()..].iter().all(|&o| o),
+    });
+    out
 }
 
 /// Current registration result for each hotkey (waits briefly for a pending re-registration).
@@ -145,7 +183,7 @@ pub fn configure(app: &tauri::AppHandle, s: &fc_core::settings::Settings) {
 
 #[cfg(windows)]
 mod imp {
-    use super::{HotkeyStatus, NAMES, parse_hotkey};
+    use super::{COUNT, HotkeyStatus, NAMES, parse_hotkey, status_of};
     use crate::events::NavPayload;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
     use std::sync::mpsc::{Sender, channel};
@@ -163,21 +201,14 @@ mod imp {
 
     struct Shared {
         /// Wanted key strings in id order, with whether each is active.
-        wanted: [(String, bool); 6],
+        wanted: Vec<(String, bool)>,
         wanted_gen: u64,
         done_gen: u64,
         status: Vec<HotkeyStatus>,
     }
 
     static SHARED: Mutex<Shared> = Mutex::new(Shared {
-        wanted: [
-            (String::new(), false),
-            (String::new(), false),
-            (String::new(), false),
-            (String::new(), false),
-            (String::new(), false),
-            (String::new(), false),
-        ],
+        wanted: Vec::new(),
         wanted_gen: 0,
         done_gen: 0,
         status: Vec::new(),
@@ -189,7 +220,7 @@ mod imp {
         SHARED.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    pub fn configure(app: &AppHandle, wanted: [(String, bool); 6]) {
+    pub fn configure(app: &AppHandle, wanted: Vec<(String, bool)>) {
         {
             let mut s = shared();
             s.wanted = wanted;
@@ -221,6 +252,9 @@ mod imp {
         LineSearch,
         Capture,
         CopyLatestImage,
+        Home,
+        /// Paste the `n`th pinned clip (1-based).
+        Pinned(usize),
     }
 
     fn start(app: &AppHandle) {
@@ -264,6 +298,8 @@ mod imp {
                         4 => Action::LineSearch,
                         5 => Action::Capture,
                         6 => Action::CopyLatestImage,
+                        7 => Action::Home,
+                        n @ 8..=16 => Action::Pinned(n - NAMES.len()),
                         _ => continue,
                     };
                     let _ = tx.send(action);
@@ -282,27 +318,23 @@ mod imp {
             let s = shared();
             (s.wanted.clone(), s.wanted_gen)
         };
-        for id in 1..=NAMES.len() as i32 {
+        for id in 1..=COUNT as i32 {
             unsafe {
                 let _ = UnregisterHotKey(None, id);
             }
         }
-        let mut status = Vec::with_capacity(NAMES.len());
+        let mut wanted = wanted;
+        wanted.resize(COUNT, (String::new(), false));
+        let mut ok = vec![true; COUNT];
         for (i, (keys, active)) in wanted.iter().enumerate() {
             let id = i as i32 + 1;
-            let ok = if keys.trim().is_empty() || !active {
-                true
-            } else {
-                parse_hotkey(keys).is_some_and(|(mods, vk)| unsafe {
+            if !keys.trim().is_empty() && *active {
+                ok[i] = parse_hotkey(keys).is_some_and(|(mods, vk)| unsafe {
                     RegisterHotKey(None, id, HOT_KEY_MODIFIERS(mods) | MOD_NOREPEAT, vk).is_ok()
-                })
-            };
-            status.push(HotkeyStatus {
-                name: NAMES[i].into(),
-                keys: keys.clone(),
-                ok,
-            });
+                });
+            }
         }
+        let status = status_of(&wanted, &ok);
         let mut s = shared();
         s.status = status;
         s.done_gen = s.done_gen.max(generation);
@@ -325,6 +357,16 @@ mod imp {
             Action::LineSearch => crate::line::toggle_search(app),
             Action::Capture => crate::hang::capture(app),
             Action::CopyLatestImage => crate::hang::copy_latest_image(app),
+            Action::Home => crate::windows::show_main(
+                app,
+                Some(NavPayload {
+                    view: "convert".into(),
+                    paths: vec![],
+                    url: None,
+                    clip: None,
+                }),
+            ),
+            Action::Pinned(n) => crate::line::paste_pinned(app, n),
         }
     }
 
@@ -392,15 +434,19 @@ mod tests {
             hotkey_copy_latest_image: String::new(),
             ..Default::default()
         };
+        s.hotkey_home = "Ctrl+5".into();
         let all_on = |lib: bool, line: bool| {
-            [
+            let mut v = vec![
                 ("Ctrl+2".to_string(), lib),
                 ("Ctrl+3".to_string(), true),
                 ("Ctrl+4".to_string(), line),
                 ("Ctrl+Alt+F".to_string(), line),
                 (String::new(), lib),
                 (String::new(), lib),
-            ]
+                ("Ctrl+5".to_string(), true),
+            ];
+            v.extend((1..=9).map(|n| (format!("Ctrl+Shift+{n}"), false)));
+            v
         };
         assert_eq!(wanted_hotkeys(&s), all_on(true, true));
         s.clipboard_enabled = false;
@@ -413,7 +459,7 @@ mod tests {
     #[test]
     fn shelf_hotkey_not_registered() {
         assert!(!NAMES.contains(&"shelf"));
-        assert_eq!(NAMES.len(), 6);
+        assert_eq!(NAMES.len(), 7);
         // A leftover shelf hotkey in old settings registers nothing.
         let s = fc_core::settings::Settings {
             hotkey_shelf: "Ctrl+Alt+9".into(),
@@ -437,7 +483,40 @@ mod tests {
             super::parse_hotkey("Ctrl+Alt+F"),
             Some((MOD_CONTROL | MOD_ALT, 0x46))
         );
-        assert_eq!(&NAMES[3..], ["lineSearch", "capture", "copyLatestImage"]);
+        assert_eq!(&NAMES[3..6], ["lineSearch", "capture", "copyLatestImage"]);
+    }
+
+    #[test]
+    fn pinned_keys_follow_their_switch_and_report_as_one() {
+        let mut s = fc_core::settings::Settings {
+            pin_hotkeys: false,
+            ..Default::default()
+        };
+        let pins = |s: &fc_core::settings::Settings| wanted_hotkeys(s)[NAMES.len()..].to_vec();
+        assert_eq!(pins(&s).len(), PIN_KEYS);
+        assert!(pins(&s).iter().all(|(_, on)| !on));
+        assert_eq!(pins(&s)[0].0, "Ctrl+Shift+1");
+        assert_eq!(pins(&s)[8].0, "Ctrl+Shift+9");
+        assert!(
+            pins(&s)
+                .iter()
+                .all(|(k, _)| super::parse_hotkey(k).is_some())
+        );
+        s.pin_hotkeys = true;
+        assert!(pins(&s).iter().all(|(_, on)| *on));
+        // They paste clips: off with the clipboard.
+        s.clipboard_enabled = false;
+        assert!(pins(&s).iter().all(|(_, on)| !on));
+
+        let wanted = wanted_hotkeys(&s);
+        let mut ok = vec![true; COUNT];
+        let st = status_of(&wanted, &ok);
+        assert_eq!(st.len(), NAMES.len() + 1);
+        assert_eq!(st[6].name, "home");
+        assert_eq!(st[7].name, "pinned");
+        assert!(st[7].ok);
+        ok[COUNT - 1] = false; // Ctrl+Shift+9 is taken
+        assert!(!status_of(&wanted, &ok)[7].ok);
     }
 
     #[cfg(windows)]

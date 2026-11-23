@@ -178,5 +178,15 @@
   "settings.cardColorsResetDone": "Kartların özel renkleri sıfırlandı",
   "settings.dragHint": "Kartları ipin üzerinde sürükleyerek sıralayabilirsin; pencerenin dışına sürüklersen başka bir uygulamaya bırakılır. Ctrl basılıyken bir karta tıklarsan ya da sürüklersen dönüştürme çarkı açılır, Shift ile kart seçersin.",
   "preview.path": "Konum",
-  "wheelNone": "Bu kartta dönüştürülecek bir şey yok"
+  "wheelNone": "Bu kartta dönüştürülecek bir şey yok",
+  "menu.textActions": "Metni değiştir",
+  "menu.copyText": "Metni kopyala",
+  "text.upper": "BÜYÜK HARF",
+  "text.lower": "küçük harf",
+  "text.title": "Baş Harfler Büyük",
+  "text.spaces": "Fazla boşlukları temizle",
+  "text.cleanLink": "Bağlantıyı temizle (izleyicileri sil)",
+  "text.json": "JSON'u düzenle",
+  "text.ascii": "Türkçe harfleri sadeleştir (ş→s)",
+  "textChanged": "Yeni metin kopyalandı ve ipe asıldı"
 }

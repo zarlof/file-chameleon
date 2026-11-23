@@ -32,10 +32,12 @@ pub const LINE: &str = "line";
 mod actions;
 mod geometry;
 mod paste;
+mod pins;
 
 pub use actions::*;
 pub use geometry::*;
 use paste::*;
+pub use pins::*;
 
 /// How a show mode treats focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -38,7 +38,8 @@
     "annotate": "Görseli düzenle",
     "copyPath": "Yolu kopyala",
     "openTerminal": "Terminalde aç",
-    "float": "Ekranda sabitle"
+    "float": "Ekranda sabitle",
+    "copyText": "Metni kopyala"
   },
   "errors": {
     "cancelled": "İptal edildi.",

@@ -178,5 +178,15 @@
   "settings.cardColorsResetDone": "The cards' own colours were reset",
   "settings.dragHint": "Drag cards along a rope to reorder them; drag one out of the window to drop it into another app. Ctrl+click or Ctrl+drag a card to open the format wheel, Shift+click to select cards.",
   "preview.path": "Folder",
-  "wheelNone": "Nothing to convert on this card"
+  "wheelNone": "Nothing to convert on this card",
+  "menu.textActions": "Change text",
+  "menu.copyText": "Copy text",
+  "text.upper": "UPPER CASE",
+  "text.lower": "lower case",
+  "text.title": "Title Case",
+  "text.spaces": "Tidy extra spaces",
+  "text.cleanLink": "Clean link (remove trackers)",
+  "text.json": "Format JSON",
+  "text.ascii": "Plain Turkish letters (ş→s)",
+  "textChanged": "New text copied and hung on the line"
 }

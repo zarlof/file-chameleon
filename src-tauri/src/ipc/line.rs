@@ -54,6 +54,18 @@ pub fn line_wheel(app: AppHandle, paths: Vec<String>) {
     crate::line::open_wheel(&app, paths);
 }
 
+/// "Copy text" on an image card: its text (OCR) copied as a new clip. Returns the characters.
+#[tauri::command(async)]
+pub fn line_image_text(app: AppHandle, id: u64) -> CmdResult<usize> {
+    crate::line::copy_clip_text(&app, id)
+}
+
+/// A text action's result on a card (upper case, clean link...) copied as a new clip.
+#[tauri::command(async)]
+pub fn line_new_text(text: String) -> CmdResult<()> {
+    crate::line::copy_new_text(&text)
+}
+
 /// Tab (`flip`) or Esc (`close`) on the line while its wheel is up; false when no wheel is open.
 #[tauri::command(async)]
 pub fn line_wheel_key(app: AppHandle, key: String) -> bool {

@@ -32,8 +32,9 @@
   }
 
   // ---- global hotkeys
-  type HotkeyKey = 'hotkeyLibrary' | 'hotkeyDownloadLink' | 'hotkeyLine' | 'hotkeyLineSearch' | 'hotkeyCapture' | 'hotkeyCopyLatestImage';
+  type HotkeyKey = 'hotkeyHome' | 'hotkeyLibrary' | 'hotkeyDownloadLink' | 'hotkeyLine' | 'hotkeyLineSearch' | 'hotkeyCapture' | 'hotkeyCopyLatestImage';
   const HOTKEYS: { key: HotkeyKey; name: HotkeyStatus['name'] }[] = [
+    { key: 'hotkeyHome', name: 'home' },
     { key: 'hotkeyLibrary', name: 'library' },
     { key: 'hotkeyDownloadLink', name: 'downloadLink' },
     { key: 'hotkeyLine', name: 'line' },
@@ -61,6 +62,16 @@
     const value = s[h.key];
     const st = statuses.find((x) => x.name === h.name);
     return !!value && !!st && !st.ok && (st.keys === value || sameHotkey(st.keys, value));
+  }
+
+  /** Ctrl+Shift+1..9 (on) could not all be registered. */
+  const pinClash = $derived(s.pinHotkeys && statuses.some((x) => x.name === 'pinned' && !x.ok));
+
+  async function setPins(on: boolean) {
+    if (await settings.update({ pinHotkeys: on })) {
+      clearTimeout(statusTimer);
+      statusTimer = setTimeout(() => void loadStatus(), 300);
+    }
   }
 
   async function setHotkey(key: HotkeyKey, value: string) {
@@ -145,6 +156,10 @@
         {/snippet}
       </ListRow>
     {/each}
+    <ListRow title={t('settings.hotkeys.pinned')} subtitle={pinClash ? undefined : t('settings.hotkeys.pinnedHint')}>
+      {#if pinClash}<span class="conflict"><TriangleAlert size={13} />{t('settings.hotkeys.pinnedConflict')}</span>{/if}
+      {#snippet trailing()}<Toggle checked={s.pinHotkeys} label={t('settings.hotkeys.pinned')} onchange={(v) => void setPins(v)} />{/snippet}
+    </ListRow>
   </Card>
 </section>
 

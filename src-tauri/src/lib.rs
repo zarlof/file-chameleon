@@ -12,6 +12,7 @@ mod line;
 mod platform;
 mod state;
 mod tray;
+mod update;
 mod watchfolders;
 mod windows;
 
@@ -49,6 +50,7 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             let handle = app.handle().clone();
             // Opens the diagnostics log now (FC_DIAG), not inside a hook callback later.
@@ -68,6 +70,7 @@ pub fn run() {
                 windows::show_main(&handle, None);
             }
             platform::start(&handle);
+            update::check_at_start(&handle);
             // Opens once the overlay page is ready (with paths of further invocations).
             windows::queue_wheel_paths(&handle, wheel_args);
             hang::import_paths(&handle, hang_args);
@@ -162,6 +165,10 @@ pub fn run() {
             ipc::line::line_wheel_start,
             ipc::line::line_wheel_pointer,
             ipc::line::line_wheel_key,
+            ipc::line::line_image_text,
+            update::update_check,
+            update::update_install,
+            ipc::line::line_new_text,
             ipc::line::line_file_rank,
             ipc::line::line_card_color,
             ipc::line::line_clear_card_colors,

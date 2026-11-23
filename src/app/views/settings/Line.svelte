@@ -153,6 +153,7 @@
 
   // ---- hotkeys
   const OTHERS = [
+    { key: 'hotkeyHome', name: 'settings.hotkeys.home' },
     { key: 'hotkeyLibrary', name: 'settings.hotkeys.library' },
     { key: 'hotkeyDownloadLink', name: 'settings.hotkeys.downloadLink' },
   ] as const;

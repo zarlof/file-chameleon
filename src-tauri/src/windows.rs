@@ -775,6 +775,7 @@ pub fn toast_action(
                 clip: None,
             }),
         ),
+        ("updateAvailable", "install") => crate::update::install_from_toast(app),
         ("clipLink", "download") => show_main(
             app,
             Some(NavPayload {

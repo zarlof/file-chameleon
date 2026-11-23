@@ -132,7 +132,7 @@ pub fn run_preset(
             return Ok(vec![]);
         }
         // File actions: handled here, never queued, no Recent entry.
-        Operation::CopyPath | Operation::OpenTerminal | Operation::Float => {
+        Operation::CopyPath | Operation::OpenTerminal | Operation::Float | Operation::CopyText => {
             if !interactive {
                 return Err(
                     fc_core::Error::Invalid("file actions are not available here".into()).into(),
@@ -141,6 +141,15 @@ pub fn run_preset(
             match &preset.op {
                 Operation::CopyPath => crate::line::copy_paths(app, &paths)?,
                 Operation::OpenTerminal => crate::line::open_terminal(&paths)?,
+                Operation::CopyText => {
+                    // OCR takes a moment: not on the caller's thread (the wheel's drop).
+                    let app = app.clone();
+                    std::thread::spawn(move || {
+                        if let Err(e) = crate::line::copy_image_text(&app, &paths) {
+                            eprintln!("copy text: {}", e.message);
+                        }
+                    });
+                }
                 _ => crate::float::open(app, paths),
             }
             return Ok(vec![]);

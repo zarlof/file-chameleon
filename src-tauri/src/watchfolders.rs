@@ -56,7 +56,11 @@ pub fn rule_problem(config: &WheelConfig, preset_id: &str) -> Option<&'static st
     match config.preset(preset_id).map(|p| &p.op) {
         None => Some("presetMissing"),
         Some(
-            Operation::Annotate | Operation::CopyPath | Operation::OpenTerminal | Operation::Float,
+            Operation::Annotate
+            | Operation::CopyPath
+            | Operation::OpenTerminal
+            | Operation::Float
+            | Operation::CopyText,
         ) => Some("presetNotUnattended"),
         Some(Operation::CopyTo { dir: None, .. }) => Some("presetNotUnattended"),
         Some(_) => None,
@@ -390,6 +394,7 @@ mod tests {
             ("cp", Operation::CopyPath),
             ("term", Operation::OpenTerminal),
             ("fl", Operation::Float),
+            ("txt", Operation::CopyText),
         ] {
             config.presets.push(user(id, op));
             assert_eq!(

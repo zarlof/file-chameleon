@@ -194,14 +194,20 @@ describe('card menu', () => {
   it('lists the entries a card gets', async () => {
     const { menuEntries, menuHeight } = await import('./menu');
     const noop = () => undefined;
-    const a = { open: noop, copy: noop, paste: noop, edit: noop, pin: noop, share: noop, trash: noop, reveal: noop, copyPath: noop, convert: noop, float: noop, save: noop, card: noop };
+    const a = { open: noop, copy: noop, paste: noop, edit: noop, pin: noop, share: noop, trash: noop, reveal: noop, copyPath: noop, convert: noop, float: noop, save: noop, card: noop, imageText: noop, textAction: noop };
     const tt = (k: string) => k;
     const labels = (c: Parameters<typeof menuEntries>[0]) => menuEntries(c, a, tt).map((x) => (x === 'sep' ? '-' : x.label));
     const img = { id: 1, kind: 'image', pinned: false, image: 'C:/i.png', edited: null } as unknown as ClipItem;
-    expect(labels({ id: 1, item: img, file: null })).toEqual(['menu.open', 'menu.copy', 'menu.paste', 'menu.edit', 'menu.pin', 'menu.share', 'menu.float', 'menu.save', 'menu.card', '-', 'menu.delete']);
+    expect(labels({ id: 1, item: img, file: null })).toEqual(['menu.open', 'menu.copy', 'menu.paste', 'menu.edit', 'menu.pin', 'menu.share', 'menu.copyText', 'menu.float', 'menu.save', 'menu.card', '-', 'menu.delete']);
     const link = { id: 2, kind: 'link', pinned: true } as unknown as ClipItem;
     expect(labels({ id: 2, item: link, file: null })).toEqual(['menu.openLink', 'menu.copy', 'menu.paste', 'menu.unpin', 'menu.share', 'menu.card', '-', 'menu.delete']);
     expect(menuHeight(menuEntries({ id: 2, item: link, file: null }, a, tt))).toBe(26 + 8 + 7 * 30 + 9);
+    // A text card gets "Change text" with only the actions that change it.
+    const text = { id: 4, kind: 'text', pinned: false, text: 'HELLO' } as unknown as ClipItem;
+    const entries = menuEntries({ id: 4, item: text, file: null }, a, tt);
+    expect(labels({ id: 4, item: text, file: null })).toEqual(['menu.open', 'menu.copy', 'menu.paste', 'menu.edit', 'menu.textActions', 'menu.pin', 'menu.share', 'menu.card', '-', 'menu.delete']);
+    const sub = entries.find((x) => x !== 'sep' && 'sub' in x);
+    expect(typeof sub === 'object' && 'sub' in sub ? sub.sub.map((x) => (x === 'sep' ? '-' : x.label)) : null).toEqual(['text.lower', 'text.title']);
     const file = { path: 'C:/f.pdf', name: 'f.pdf', source: 'added' as const, at: 1, size: 1, kind: null, thumb: null, pinned: false };
     expect(labels({ id: -3, item: null, file })).toEqual(['menu.open', 'menu.copy', 'menu.reveal', 'menu.convert', 'menu.copyPath', 'menu.pin', 'menu.share', 'menu.card', '-', 'menu.removeFromList']);
   });

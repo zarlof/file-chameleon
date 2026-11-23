@@ -200,6 +200,58 @@ pub fn paste_files(app: &AppHandle, paths: &[String]) -> CmdResult<()> {
     Ok(())
 }
 
+/// Text the user made (OCR, a text action on a card) on the clipboard as a normal copy: the
+/// history records it, so it also hangs on the line as a new card.
+pub fn copy_new_text(text: &str) -> CmdResult<()> {
+    crate::platform::clipboard::write_text(text)
+        .map(|_| ())
+        .map_err(|e| CmdError::new("clipboard", e))
+}
+
+/// "Copy text": `text` (already recognized) copied as a new clip with a toast, or the "no text"
+/// toast. Returns the number of characters copied.
+fn copy_recognized(app: &AppHandle, text: &str) -> CmdResult<usize> {
+    let text = text.trim();
+    if text.is_empty() {
+        crate::windows::show_toast(app, "noText", serde_json::json!({}), Some(3000));
+        return Ok(0);
+    }
+    copy_new_text(text)?;
+    let chars = text.chars().count();
+    crate::windows::show_toast(
+        app,
+        "textCopied",
+        serde_json::json!({ "chars": chars }),
+        Some(3000),
+    );
+    Ok(chars)
+}
+
+/// The wheel's "Copy text": read the text in the images and copy it.
+pub fn copy_image_text(app: &AppHandle, paths: &[PathBuf]) -> CmdResult<usize> {
+    let text = crate::platform::ocr::recognize_files(paths).map_err(|e| CmdError::new("ocr", e))?;
+    copy_recognized(app, &text)
+}
+
+/// `line_image_text`: "Copy text" on an image card: its stored OCR text when there is some, else
+/// read now (OCR off, or not done yet).
+pub fn copy_clip_text(app: &AppHandle, id: u64) -> CmdResult<usize> {
+    let item = {
+        let state = app.state::<AppState>();
+        let store = state.clips().lock().unwrap_or_else(|e| e.into_inner());
+        store.get(id).cloned()
+    }
+    .ok_or_else(|| CmdError::new("notFound", "no such clip"))?;
+    if let Some(text) = item.ocr.as_deref().filter(|t| !t.trim().is_empty()) {
+        return copy_recognized(app, text);
+    }
+    let path = item
+        .edited
+        .or(item.image)
+        .ok_or_else(|| CmdError::new("notFound", "not an image"))?;
+    copy_image_text(app, &[path])
+}
+
 /// `line_copy_text`: text on the clipboard as our own write, so it is neither recorded as a clip
 /// nor peeked at.
 pub fn copy_text(app: &AppHandle, text: &str) -> CmdResult<()> {

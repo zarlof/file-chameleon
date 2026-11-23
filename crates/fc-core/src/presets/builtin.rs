@@ -115,6 +115,7 @@ pub(super) fn presets() -> Vec<Preset> {
         preset("copy-path", Operation::CopyPath),
         preset("open-terminal", Operation::OpenTerminal),
         preset("float", Operation::Float),
+        preset("copy-text", Operation::CopyText),
     ]);
     v
 }
@@ -210,7 +211,7 @@ pub(super) fn profiles() -> Vec<Profile> {
                 "flip-h",
                 "grayscale",
                 "trim",
-                "pixelate",
+                "copy-text",
                 "blur",
                 "resize-50",
                 "fit-1920",

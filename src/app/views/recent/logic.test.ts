@@ -43,6 +43,7 @@ describe('recent logic', () => {
       copyPath: { type: 'copyPath' },
       openTerminal: { type: 'openTerminal' },
       float: { type: 'float' },
+      copyText: { type: 'copyText' },
       mergePdf: { type: 'mergePdf' },
       splitPdf: { type: 'splitPdf' },
       compress: { type: 'compress', level: 'light' },

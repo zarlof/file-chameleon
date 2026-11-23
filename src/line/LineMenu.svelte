@@ -1,6 +1,7 @@
 <!--
   LineMenu — the right-click menu of a card: a close button at the top right and the entries from
-  menu.ts. Choosing an entry closes the menu first, then runs it.
+  menu.ts. Choosing an entry closes the menu first, then runs it; an entry with a sub-list shows
+  that list in place, under a "back" row.
 -->
 <script lang="ts">
   import type { MenuEntry } from './menu';
@@ -24,6 +25,10 @@
     onerror: (e: unknown) => void;
   } = $props();
 
+  /** The sub-list shown instead of `entries` (and its title), if one was opened. */
+  let sub = $state<{ label: string; entries: MenuEntry[] } | null>(null);
+  const shown = $derived(sub?.entries ?? entries);
+
   async function choose(run: () => unknown) {
     onclose();
     try {
@@ -39,9 +44,14 @@
   <button type="button" class="close" tabindex="-1" aria-label={t('close')} title={t('close')} onclick={onclose}>
     <svg viewBox="0 0 10 10" width="8" height="8" aria-hidden="true"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
   </button>
-  {#each entries as entry, i (i)}
+  {#if sub}
+    <button type="button" role="menuitem" class="back" onclick={() => (sub = null)}>‹ {sub.label}</button>
+  {/if}
+  {#each shown as entry, i (i)}
     {#if entry === 'sep'}
       <hr />
+    {:else if 'sub' in entry}
+      <button type="button" role="menuitem" class="more" onclick={() => (sub = { label: entry.label, entries: entry.sub })}>{entry.label}<span aria-hidden="true">›</span></button>
     {:else}
       <button type="button" role="menuitem" class:danger={entry.danger} onclick={() => choose(entry.run)}>{entry.label}</button>
     {/if}
@@ -71,6 +81,8 @@
     cursor: default;
   }
   button:hover { background: var(--accent); color: var(--on-accent); }
+  .more { display: flex; justify-content: space-between; gap: var(--space-2); }
+  .back { color: var(--text-secondary); }
   .danger { color: var(--red); }
   .danger:hover { background: var(--red); color: var(--on-accent); }
   .close {

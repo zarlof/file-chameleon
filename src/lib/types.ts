@@ -71,6 +71,12 @@ export interface Settings {
   hotkeyCapture: string;
   /** Copies the newest image clip back to the clipboard. */
   hotkeyCopyLatestImage: string;
+  /** Opens the main window on its home page (Convert). */
+  hotkeyHome: string;
+  /** Ctrl+Shift+1..9 paste the pinned clips, in their order on the line. */
+  pinHotkeys: boolean;
+  /** Look for a new version on GitHub at start. */
+  updateCheck: boolean;
   /** The clothesline (clip rope). */
   lineEnabled: boolean;
   lineEdgeReveal: boolean;
@@ -238,6 +244,8 @@ export type Operation =
   | { type: 'openTerminal' }
   /** Pins the image(s) on screen (shell, never queued). */
   | { type: 'float' }
+  /** Reads the text in the image(s) and copies it (shell, never queued). */
+  | { type: 'copyText' }
   | { type: 'mergePdf' }
   | { type: 'splitPdf' }
   | { type: 'compress'; level: CompressLevel }
@@ -300,7 +308,7 @@ export type SlotIcon =
   | Kind
   | 'grayscale' | 'rotateLeft' | 'rotateRight' | 'rotate180' | 'flipH' | 'flipV' | 'trim' | 'pixelate' | 'blur'
   | 'resize' | 'annotate' | 'compress' | 'mute' | 'speed' | 'crop' | 'merge' | 'split' | 'zip' | 'extract'
-  | 'copy' | 'move' | 'ringtone' | 'group' | 'copyPath' | 'openTerminal' | 'float';
+  | 'copy' | 'move' | 'ringtone' | 'group' | 'copyPath' | 'openTerminal' | 'float' | 'copyText';
 
 /** One resolved wheel slot (only slots that fit every dragged file are sent). */
 export interface WheelSlot {
@@ -530,7 +538,8 @@ export interface ClipStats {
 }
 
 export interface HotkeyStatus {
-  name: 'library' | 'downloadLink' | 'line' | 'lineSearch' | 'capture' | 'copyLatestImage';
+  /** 'pinned' stands for all nine Ctrl+Shift+1..9 keys (ok only if every one registered). */
+  name: 'library' | 'downloadLink' | 'line' | 'lineSearch' | 'capture' | 'copyLatestImage' | 'home' | 'pinned';
   keys: string;
   /** false = could not register (another app owns it, or invalid). */
   ok: boolean;
@@ -590,7 +599,24 @@ export type ToastKind =
   | 'imageSaved'
   | 'downloadDone'
   /** The "download the copied link" hotkey found no link on the clipboard. */
-  | 'noLink';
+  | 'noLink'
+  /** Ctrl+Shift+N with fewer than N pinned clips. data: { n } */
+  | 'noPinned'
+  /** "Copy text" (OCR) put text on the clipboard. data: { chars } */
+  | 'textCopied'
+  /** "Copy text" found no text in the image(s). */
+  | 'noText'
+  /** A newer version is out. data: { version }; action "install". */
+  | 'updateAvailable'
+  /** The update is downloading / its installer starting. data: { version } */
+  | 'updateInstalling'
+  | 'updateFailed';
+
+/** A newer version (`update_check`). */
+export interface UpdateInfo {
+  version: string;
+  notes: string | null;
+}
 
 export interface ToastPayload {
   id: number;

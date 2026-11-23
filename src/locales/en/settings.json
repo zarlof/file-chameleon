@@ -101,7 +101,12 @@
     "capture": "Capture the screen",
     "captureHint": "Hangs the screen under the cursor on the line as an image. Suggestion: Ctrl+Alt+A",
     "copyLatestImage": "Copy the latest image",
-    "copyLatestImageHint": "Copies the newest image on the line to the clipboard."
+    "copyLatestImageHint": "Copies the newest image on the line to the clipboard.",
+    "home": "Open the home page",
+    "homeHint": "Opens File Chameleon on the Convert page.",
+    "pinned": "Paste pinned cards (Ctrl+Shift+1…9)",
+    "pinnedHint": "Pastes your pinned cards into the window in front, without opening the line. They count as on the line: from the top rope, left to right.",
+    "pinnedConflict": "Another app uses some of these keys; those keys do not work."
   },
   "clipboard": {
     "enable": "Keep clipboard history",
@@ -201,6 +206,16 @@
     "open": "Open",
     "licenses": "Licenses",
     "licensesValue": "File Chameleon is open source. Optional engines keep their own licenses (FFmpeg: GPL-3.0, yt-dlp: Unlicense, PDFium: BSD-3-Clause, Deno: MIT).",
-    "licensesOpen": "Show notices"
+    "licensesOpen": "Show notices",
+    "update": "Updates",
+    "updateHint": "New versions come from GitHub; the installer's signature is verified.",
+    "updateCheck": "Check",
+    "updateChecking": "Checking…",
+    "updateLatest": "You have the newest version.",
+    "updateFound": "Version {version} is ready.",
+    "updateInstall": "Install and restart",
+    "updateInstalling": "Downloading; the app closes and reopens when the installer starts…",
+    "updateFailed": "Could not check. Check your internet connection and try again.",
+    "updateAuto": "Check for a new version at start"
   }
 }

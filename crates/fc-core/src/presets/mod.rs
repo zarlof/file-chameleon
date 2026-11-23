@@ -599,7 +599,7 @@ pub fn applicable(preset: &Preset, paths: &[PathBuf]) -> bool {
         }
         Operation::Mute => all(|k| k == Kind::Video),
         Operation::Extract => all(|k| k == Kind::Archive),
-        Operation::Float => all(|k| k == Kind::Image),
+        Operation::Float | Operation::CopyText => all(|k| k == Kind::Image),
         Operation::CopyTo { .. }
         | Operation::Zip
         | Operation::CopyPath
@@ -744,6 +744,7 @@ fn describe(p: &Preset, paths: &[PathBuf]) -> WheelSlot {
         Operation::CopyPath => ("copyPath", None),
         Operation::OpenTerminal => ("openTerminal", None),
         Operation::Float => ("float", Some(Kind::Image)),
+        Operation::CopyText => ("copyText", Some(Kind::Image)),
     };
     WheelSlot {
         id: p.id.clone(),

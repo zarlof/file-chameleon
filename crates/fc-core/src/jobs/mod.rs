@@ -73,6 +73,9 @@ pub enum Operation {
     OpenTerminal,
     /// Pins the image(s) on screen in a floating window. Handled by the shell, never queued.
     Float,
+    /// Reads the text in the image(s) (Windows OCR) and copies it. Handled by the shell, never
+    /// queued.
+    CopyText,
 }
 
 /// One image edit step (`Operation::Edit`).
@@ -139,9 +142,10 @@ impl Operation {
     pub fn queueable(&self) -> Result<()> {
         match self {
             Operation::Annotate => Err(invalid("annotate opens the image editor")),
-            Operation::CopyPath | Operation::OpenTerminal | Operation::Float => {
-                Err(invalid("file actions are handled by the shell"))
-            }
+            Operation::CopyPath
+            | Operation::OpenTerminal
+            | Operation::Float
+            | Operation::CopyText => Err(invalid("file actions are handled by the shell")),
             Operation::CopyTo { dir: None, .. } => Err(invalid("no target folder chosen")),
             _ => Ok(()),
         }

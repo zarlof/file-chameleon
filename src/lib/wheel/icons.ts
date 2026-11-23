@@ -7,6 +7,7 @@ import Captions from '@lucide/svelte/icons/captions';
 import Contrast from '@lucide/svelte/icons/contrast';
 import ClipboardCopy from '@lucide/svelte/icons/clipboard-copy';
 import Copy from '@lucide/svelte/icons/copy';
+import ScanText from '@lucide/svelte/icons/scan-text';
 import Crop from '@lucide/svelte/icons/crop';
 import Droplet from '@lucide/svelte/icons/droplet';
 import FastForward from '@lucide/svelte/icons/fast-forward';
@@ -75,6 +76,7 @@ const icons: Record<SlotIcon, IconComponent> = {
   copyPath: ClipboardCopy,
   openTerminal: SquareTerminal,
   float: Pin,
+  copyText: ScanText,
 };
 
 /** Icon for a slot (or a file kind); a plain file icon for null or an unknown key. */

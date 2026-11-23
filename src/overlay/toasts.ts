@@ -119,6 +119,18 @@ export function toastView(p: ToastPayload, t: T): ToastView {
       };
     case 'noLink':
       return { title: t('toast.noLink.title'), body: '', actions: [], thumb: null };
+    case 'noPinned':
+      return { title: t('toast.noPinned.title', { n: String(d.n ?? '') }), body: t('toast.noPinned.body'), actions: [], thumb: null };
+    case 'textCopied':
+      return { title: t('toast.textCopied.title'), body: t('toast.textCopied.body', { chars: String(d.chars ?? 0) }), actions: [], thumb: null };
+    case 'noText':
+      return { title: t('toast.noText.title'), body: '', actions: [], thumb: null };
+    case 'updateAvailable':
+      return { title: t('toast.updateAvailable.title', { version: String(d.version ?? '') }), body: t('toast.updateAvailable.body'), actions: [a('install'), a('dismiss')], thumb: null };
+    case 'updateInstalling':
+      return { title: t('toast.updateInstalling.title', { version: String(d.version ?? '') }), body: t('toast.updateInstalling.body'), actions: [], thumb: null };
+    case 'updateFailed':
+      return { title: t('toast.updateFailed.title'), body: t('toast.updateFailed.body'), actions: [], thumb: null };
     default:
       return { title: String(p.kind), body: '', actions: [], thumb: null };
   }

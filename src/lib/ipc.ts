@@ -10,6 +10,7 @@ import type {
   ClipStats,
   ClipTag,
   HotkeyStatus,
+  UpdateInfo,
   LineFile,
   DownloadRequest,
   DownloadSnapshot,
@@ -131,6 +132,14 @@ export const api = {
   lineWheelStart: (ids: number[], paths: string[], shift: boolean) => invoke<void>('line_wheel_start', { ids, paths, shift }),
   /** That drag moved, or was released (`dropped`): the wheel hears where the cursor is. */
   lineWheelPointer: (dropped: boolean) => invoke<void>('line_wheel_pointer', { dropped }),
+  /** Is a newer version out? (null = this is the newest) */
+  updateCheck: () => invoke<UpdateInfo | null>('update_check'),
+  /** Install the newer version: the app closes and the new one starts. */
+  updateInstall: () => invoke<void>('update_install'),
+  /** "Copy text" on an image card: its text (OCR) copied as a new clip; returns the characters. */
+  lineImageText: (id: number) => invoke<number>('line_image_text', { id }),
+  /** A text action's result copied as a new clip. */
+  lineNewText: (text: string) => invoke<void>('line_new_text', { text }),
   /** Tab (flip) or Esc (close) on the line while its wheel is up; false when no wheel is open. */
   lineWheelKey: (key: 'flip' | 'close') => invoke<boolean>('line_wheel_key', { key }),
   /** A card's own colour (#rrggbb; null = the line's card colour): clips by id, files by path. */

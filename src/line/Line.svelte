@@ -24,6 +24,7 @@
   import Rope from './Rope.svelte';
   import LineMenu from './LineMenu.svelte';
   import { menuEntries, menuHeight, type MenuActions, type MenuEntry } from './menu';
+  import { applyTextAction } from './textActions';
 
   const LIST_LIMIT = 200;
   const SHELF: Record<'images' | 'text' | 'links', ClipShelf> = { images: 'images', text: 'texts', links: 'links' };
@@ -689,7 +690,7 @@
   function openMenu(c: LineCard, e: MouseEvent) {
     closeHover();
     cardPop = null;
-    const entries = menuEntries(c, menuActions(c, new DOMRect(e.clientX, e.clientY, 0, 0)), t);
+    const entries = menuEntries(c, menuActions(c, new DOMRect(e.clientX, e.clientY, 0, 0)), t, getLang());
     const h = menuHeight(entries);
     menu = { x: Math.max(4, Math.min(e.clientX, width - MENU_W - 4)), y: Math.max(4, Math.min(e.clientY, window.innerHeight - h - 4)), card: c, entries };
   }
@@ -721,6 +722,16 @@
         showToast(t('saved'));
       },
       card: () => openCardPop(c, at),
+      // The result is a new clip: the history records it and it hangs on the line.
+      imageText: async () => {
+        if (c.item) await api.lineImageText(c.item.id);
+      },
+      textAction: async (id) => {
+        const out = c.item?.text != null ? applyTextAction(id, c.item.text, getLang()) : null;
+        if (out === null) return;
+        await api.lineNewText(out);
+        showToast(t('textChanged'));
+      },
     };
   }
 

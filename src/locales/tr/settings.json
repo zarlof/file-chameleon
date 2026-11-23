@@ -101,7 +101,12 @@
     "capture": "Ekran görüntüsü al",
     "captureHint": "Fare hangi ekrandaysa onu resim olarak ipe asar. Öneri: Ctrl+Alt+A",
     "copyLatestImage": "Son resmi kopyala",
-    "copyLatestImageHint": "İpteki en yeni resmi panoya kopyalar."
+    "copyLatestImageHint": "İpteki en yeni resmi panoya kopyalar.",
+    "home": "Ana sayfayı aç",
+    "homeHint": "File Chameleon'u Dönüştür sayfasında açar.",
+    "pinned": "Sabit kartları yapıştır (Ctrl+Shift+1…9)",
+    "pinnedHint": "İpi açmadan, sabitlediğiniz kartları önünüzdeki pencereye yapıştırır. Sıra ipteki gibidir: üstteki ipten başlayarak soldan sağa.",
+    "pinnedConflict": "Bu tuşlardan bazılarını başka bir uygulama kullanıyor; o tuşlar çalışmaz."
   },
   "clipboard": {
     "enable": "Pano geçmişini tut",
@@ -201,6 +206,16 @@
     "open": "Aç",
     "licenses": "Lisanslar",
     "licensesValue": "File Chameleon açık kaynaklıdır. İsteğe bağlı motorlar kendi lisanslarını taşır (FFmpeg: GPL-3.0, yt-dlp: Unlicense, PDFium: BSD-3-Clause, Deno: MIT).",
-    "licensesOpen": "Bildirimleri göster"
+    "licensesOpen": "Bildirimleri göster",
+    "update": "Güncellemeler",
+    "updateHint": "Yeni sürümler GitHub'dan gelir; kurulum imzası doğrulanır.",
+    "updateCheck": "Denetle",
+    "updateChecking": "Denetleniyor…",
+    "updateLatest": "En yeni sürümü kullanıyorsunuz.",
+    "updateFound": "{version} sürümü hazır.",
+    "updateInstall": "Kur ve yeniden başlat",
+    "updateInstalling": "İndiriliyor; kurulum başlayınca uygulama kapanıp yeniden açılacak…",
+    "updateFailed": "Denetlenemedi. İnternet bağlantınızı kontrol edip yeniden deneyin.",
+    "updateAuto": "Açılışta yeni sürümü denetle"
   }
 }

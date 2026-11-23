@@ -66,6 +66,19 @@ pub fn backfill(app: &AppHandle) {
     enqueue(app, jobs);
 }
 
+/// Read the text in image files right now, on the calling thread (the wheel's "Copy text", the
+/// line's image cards). Each image's lines joined with `\n`, images separated by a blank line;
+/// images without text are left out. Works whether or not clipboard OCR is on.
+pub fn recognize_files(paths: &[PathBuf]) -> Result<String, String> {
+    #[cfg(windows)]
+    return imp::recognize_files(paths);
+    #[cfg(not(windows))]
+    {
+        let _ = paths;
+        Err("text recognition needs Windows".into())
+    }
+}
+
 /// Size with the longest side at most `max`, aspect ratio kept (never upscales, never 0).
 fn fit_within(w: u32, h: u32, max: u32) -> (u32, u32) {
     let longest = w.max(h);
@@ -142,6 +155,21 @@ mod imp {
                 let _ = app.emit(events::CLIP_UPDATED, &item);
             }
         }
+    }
+
+    pub fn recognize_files(paths: &[PathBuf]) -> Result<String, String> {
+        let _ = unsafe { RoInitialize(RO_INIT_MULTITHREADED) };
+        let engine = OcrEngine::TryCreateFromUserProfileLanguages()
+            .map_err(|_| "Windows has no text recognizer for your languages".to_string())?;
+        let max = OcrEngine::MaxImageDimension().unwrap_or(2600).max(64);
+        let mut parts = Vec::new();
+        for path in paths {
+            let text = recognize(&engine, path, max)?;
+            if !text.trim().is_empty() {
+                parts.push(text);
+            }
+        }
+        Ok(parts.join("\n\n"))
     }
 
     fn recognize(engine: &OcrEngine, path: &Path, max: u32) -> Result<String, String> {
